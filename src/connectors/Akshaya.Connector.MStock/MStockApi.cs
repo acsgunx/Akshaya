@@ -4,6 +4,8 @@ using System.Text;
 using Akshaya.Connectors.Abstractions;
 using Akshaya.Connectors.Sdk;
 using Akshaya.SharedKernel;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Akshaya.Connector.MStock;
 
@@ -69,7 +71,8 @@ internal sealed class MStockApi : IAsyncDisposable
         MStockOptions options,
         MStockErrorMapper errors,
         BrokerSession? session,
-        HttpClient? httpClient = null)
+        HttpClient? httpClient = null,
+        ILogger? logger = null)
     {
         var ownsClient = httpClient is null;
         var http = httpClient ?? new HttpClient();
@@ -89,7 +92,18 @@ internal sealed class MStockApi : IAsyncDisposable
         ApplyStandardHeaders(http, options, apiKey, session?.AccessToken);
 
         return new MStockApi(
-            new HttpConnectorClient(http, errors, MStockJson.Options),
+            new HttpConnectorClient(
+                http,
+                errors,
+                new ConnectorHttpOptions
+                {
+                    ConnectorId = MStockAuth.ConnectorId,
+                    Json = MStockJson.Options,
+                    // mStock reports business failures as HTTP 200 with status:"error".
+                    BodyStatusField = "status",
+                    BodyFailureStatusValues = ["error"],
+                },
+                logger ?? NullLogger.Instance),
             http,
             ownsClient,
             options,
@@ -212,7 +226,19 @@ internal sealed class MStockApi : IAsyncDisposable
     {
         try
         {
-            return await _client.GetStreamAsync(Combine(path, query), ct).ConfigureAwait(false);
+            // The SDK client is JSON-typed; the script master is a huge CSV, so this one call
+            // goes straight to the underlying HttpClient and streams the body without buffering.
+            var response = await _client.Inner
+                .GetAsync(Combine(path, query), HttpCompletionOption.ResponseHeadersRead, ct)
+                .ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                return Result<Stream>.Failure(_errors.MapHttp((int)response.StatusCode, body));
+            }
+
+            return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {

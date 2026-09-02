@@ -5,11 +5,25 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!--
+      Warnings-as-errors is kept for CI (which gates merges) but relaxed for local builds so
+      `dotnet build` and scripts/rerun.* work while the ~750 style/analyzer warnings from the
+      first compile are still being burned down. The deliberate per-rule escalations in
+      .editorconfig (CA1305, CA1310, CA2016 — the ones that are real bug classes in a trading
+      system) stay as errors everywhere.
+    -->
+    <TreatWarningsAsErrors Condition="'$(CI)' == 'true'">true</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors Condition="'$(CI)' != 'true'">false</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!--
+      NU1901-1904 are the NuGet vulnerability advisories. They fire on transitive pins the repo
+      cannot currently move without a wider dependency bump; keep them visible as warnings
+      rather than failing every local build.
+    -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 

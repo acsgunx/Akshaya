@@ -17,6 +17,17 @@
     <RootNamespace>Akshaya.Connectors.Host</RootNamespace>
     <!-- See the SDK csproj for the reasoning behind each of these. -->
     <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+
+    <!--
+      The .proto is compiled only when this is set. Grpc.Tools runs the native `protoc`, which
+      ships x64-only for macOS and needs Rosetta 2 on Apple Silicon; a machine without it cannot
+      restore-and-build the solution at all. Nothing consumes the generated stubs yet — the gRPC
+      transport in OutOfProcess/ is still written against IRemoteConnectorTransport and the
+      binding is unimplemented (see IRemoteConnectorTransport.cs) — so gating the codegen keeps
+      the build portable. Turn it on with `-p:EnableGrpcCodegen=true` when implementing the
+      transport on a host that has protoc.
+    -->
+    <EnableGrpcCodegen Condition="'$(EnableGrpcCodegen)' == ''">false</EnableGrpcCodegen>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,10 +49,11 @@
     -->
     <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
     <PackageReference Include="Google.Protobuf" Version="3.29.3" />
-    <PackageReference Include="Grpc.Tools" Version="2.71.0" PrivateAssets="all" />
+    <PackageReference Include="Grpc.Tools" Version="2.71.0" PrivateAssets="all"
+                      Condition="'$(EnableGrpcCodegen)' == 'true'" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(EnableGrpcCodegen)' == 'true'">
     <!--
       Client-side stubs only. The host never SERVES this contract; an out-of-process connector
       implements the server side in whatever language it is written in.

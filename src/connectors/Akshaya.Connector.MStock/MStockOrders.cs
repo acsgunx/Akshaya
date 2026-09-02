@@ -45,7 +45,7 @@ public sealed class MStockOrders : IConnectorOrders
     private readonly TimeZoneInfo _venueZone;
 
     /// <summary>Creates the orders facet.</summary>
-    public MStockOrders(MStockApi api, MStockOptions options, ISymbolTranslator symbols, IClock clock)
+    internal MStockOrders(MStockApi api, MStockOptions options, ISymbolTranslator symbols, IClock clock)
     {
         _api = api;
         _options = options;

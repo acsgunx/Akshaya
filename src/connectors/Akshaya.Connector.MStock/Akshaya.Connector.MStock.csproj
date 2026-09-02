@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The test project exercises internals directly (MStockTime, the facet ctors, MStockApi). -->
+    <InternalsVisibleTo Include="Akshaya.Connector.MStock.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!--
       The manifest ships both as a loose file next to the assembly (so an operator can read
       and diff it without a decompiler) and as an embedded resource (so ManifestLoader can

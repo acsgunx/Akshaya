@@ -11,6 +11,7 @@
 // ============================================================================================
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Akshaya.Api.Contracts;
@@ -39,7 +40,7 @@ using Serilog;
 // ── Serilog bootstrap: a logger exists before the host does, so startup failures are logged
 // rather than lost to a crashed console. ──────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
+    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
     .CreateBootstrapLogger();
 
 try
@@ -321,7 +322,7 @@ static Result<IBrokerConnector> CreatePaperConnector(
     }
 
     var accountId = context.Session.AccountId;
-    var connector = cache.GetOrAdd(accountId, _ =>
+    var connector = cache.GetOrAdd(accountId, _key =>
     {
         var logger = context.LoggerFactory.CreateLogger<PaperConnector>();
         var source = new DevPaperMarketDataSource(context.Clock);
@@ -336,7 +337,10 @@ static Result<IBrokerConnector> CreatePaperConnector(
     return Result<IBrokerConnector>.Success(new NonDisposingConnectorProxy(connector));
 }
 
-static async Task RunPaperTapeAsync(PaperConnector connector, string accountId, ILogger logger)
+static async Task RunPaperTapeAsync(
+    PaperConnector connector,
+    string accountId,
+    Microsoft.Extensions.Logging.ILogger logger)
 {
     try
     {

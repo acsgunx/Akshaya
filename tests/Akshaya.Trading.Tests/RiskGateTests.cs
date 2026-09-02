@@ -7,6 +7,7 @@ using Akshaya.Trading.Tests.TestSupport;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Xunit;
 
 namespace Akshaya.Trading.Tests;
 
@@ -932,7 +933,7 @@ public sealed class RiskGateTests
         rule.Name.Returns("Cancellable");
         rule.Order.Returns(10);
         rule.EvaluateAsync(Arg.Any<RiskEvaluationContext>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw new OperationCanceledException());
+            .Returns<RiskDecision>(_ => throw new OperationCanceledException());
 
         var gate = new RiskGate([rule], NullLogger<RiskGate>.Instance);
 

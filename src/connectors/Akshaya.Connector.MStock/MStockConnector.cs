@@ -64,7 +64,7 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
         // every order until it finishes would make a restart look like an outage.
         Symbols = new MStockSymbolTranslator(_instruments);
 
-        _api = MStockApi.Create(options, Errors, session);
+        _api = MStockApi.Create(options, Errors, session, logger: Logger);
 
         AuthFacet = new MStockAuth(options, Errors, Clock);
         OrdersFacet = new MStockOrders(_api, options, Symbols, Clock);

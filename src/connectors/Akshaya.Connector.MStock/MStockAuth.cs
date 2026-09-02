@@ -51,7 +51,7 @@ public sealed class MStockAuth : IConnectorAuth
     public const string TotpChallenge = "totp";
 
     /// <summary>Creates the auth facet.</summary>
-    public MStockAuth(
+    internal MStockAuth(
         MStockOptions options,
         MStockErrorMapper errors,
         IClock clock,
