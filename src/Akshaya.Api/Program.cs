@@ -88,6 +88,19 @@ try
         // would register any other first-party, compiled-in connector — see AddInProcess's own
         // doc comment. This is the ONLY connector this file may name.
         options.AddInProcess(paperManifest, context => CreatePaperConnector(context, paperConnectors));
+
+        // Every other compiled-in connector is discovered by its IConnectorPlugin entry point —
+        // the same contract a dropped-in plugin implements — so this file never names one. Paper
+        // is the exception above only because its lifetime is special (one instance per account).
+        foreach (var plugin in DiscoverInProcessPlugins())
+        {
+            var alreadyRegistered = options.InProcess.Any(
+                r => string.Equals(r.Manifest.Id, plugin.Manifest.Id, StringComparison.OrdinalIgnoreCase));
+            if (!alreadyRegistered)
+            {
+                options.AddInProcess(plugin.Manifest, plugin.Create);
+            }
+        }
     });
 
     builder.Services.AddSingleton<ConnectorCatalog>();
@@ -292,6 +305,44 @@ static ConnectorManifest LoadEmbeddedManifest(Assembly assembly, string label)
     }
 
     return result.Value;
+}
+
+/// <summary>
+/// Finds every <see cref="IConnectorPlugin"/> compiled into this deployment by loading the
+/// connector assemblies that sit next to the API and scanning them for the entry-point
+/// interface. This is the same shape the on-disk plugin loader uses; it names no broker.
+/// </summary>
+static IReadOnlyList<IConnectorPlugin> DiscoverInProcessPlugins()
+{
+    var plugins = new List<IConnectorPlugin>();
+    var baseDir = AppContext.BaseDirectory;
+
+    foreach (var dll in Directory.EnumerateFiles(baseDir, "Akshaya.Connector.*.dll"))
+    {
+        Assembly assembly;
+        try
+        {
+            assembly = Assembly.LoadFrom(dll);
+        }
+        catch (Exception ex) when (ex is BadImageFormatException or FileLoadException or FileNotFoundException)
+        {
+            continue;
+        }
+
+        foreach (var type in assembly.GetExportedTypes())
+        {
+            if (!typeof(IConnectorPlugin).IsAssignableFrom(type)
+                || type is { IsAbstract: true } or { IsInterface: true }
+                || type.GetConstructor(Type.EmptyTypes) is null)
+            {
+                continue;
+            }
+
+            plugins.Add((IConnectorPlugin)Activator.CreateInstance(type)!);
+        }
+    }
+
+    return plugins;
 }
 
 /// <summary>

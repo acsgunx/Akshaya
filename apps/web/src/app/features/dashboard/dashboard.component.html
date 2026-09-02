@@ -115,7 +115,7 @@
                   <td class="ak-col-pnl" [class.ak-buy-text]="!pos.unrealisedPnl || +pos.unrealisedPnl.amount >= 0" [class.ak-sell-text]="pos.unrealisedPnl && +pos.unrealisedPnl.amount < 0">
                     {{ pos.unrealisedPnl | akMoney }}
                   </td>
-                  <td>{{ pos.isSplitAcrossBrokers ? pos.legs.length + ' brokers' : pos.legs[0]?.displayName }}</td>
+                  <td>{{ pos.legs.length > 1 ? pos.legs.length + ' brokers' : pos.legs[0]?.displayName }}</td>
                 </tr>
               }
             </tbody>
