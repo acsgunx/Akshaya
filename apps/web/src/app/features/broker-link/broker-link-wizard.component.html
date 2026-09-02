@@ -35,6 +35,39 @@
           </p>
         }
 
+        @if (savedLogins().length > 0) {
+          <div class="ak-saved-picker" role="group" aria-label="Saved logins">
+            @for (saved of savedLogins(); track saved.id) {
+              <button
+                type="button"
+                class="ak-saved-option"
+                [class.ak-saved-option--active]="selectedSaved()?.id === saved.id"
+                [attr.aria-pressed]="selectedSaved()?.id === saved.id"
+                (click)="useSaved(saved)"
+              >
+                <mat-icon aria-hidden="true">{{ selectedSaved()?.id === saved.id ? 'check_circle' : 'key' }}</mat-icon>
+                <span class="ak-saved-option-text">
+                  <span class="ak-saved-option-name">{{ saved.nickname ?? 'Saved login' }}</span>
+                  <span class="ak-saved-option-keys">{{ saved.rememberedKeys.length }} field(s) remembered</span>
+                </span>
+              </button>
+            }
+            <button
+              type="button"
+              class="ak-saved-option"
+              [class.ak-saved-option--active]="!selectedSaved()"
+              [attr.aria-pressed]="!selectedSaved()"
+              (click)="enterManually()"
+            >
+              <mat-icon aria-hidden="true">edit</mat-icon>
+              <span class="ak-saved-option-text">
+                <span class="ak-saved-option-name">Enter details manually</span>
+                <span class="ak-saved-option-keys">Use a different account</span>
+              </span>
+            </button>
+          </div>
+        }
+
         <div class="ak-fields">
           <div class="ak-field">
             <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -44,7 +77,7 @@
             <p class="ak-field-msg">Optional. Helps you tell this link apart if you connect the same broker twice.</p>
           </div>
 
-          @for (field of manifest()!.auth.credentialFields; track field.key) {
+          @for (field of visibleFields(); track field.key) {
             <div class="ak-field">
               <mat-form-field appearance="outline" subscriptSizing="dynamic">
                 <mat-label>
@@ -67,7 +100,25 @@
               } @else if (field.help) {
                 <p class="ak-field-msg" [id]="field.key + '-msg'">{{ field.help }}</p>
               }
+
+              <mat-checkbox
+                class="ak-remember"
+                [checked]="isRemembered(field.key)"
+                (change)="toggleRemember(field.key, $event.checked)"
+              >
+                Remember this
+              </mat-checkbox>
             </div>
+          }
+
+          @if (selectedSaved(); as saved) {
+            <p class="ak-banner ak-banner--info">
+              <mat-icon aria-hidden="true">key</mat-icon>
+              <span>
+                Using your saved login for {{ saved.rememberedKeys.length }} field(s). They stay on the server and are
+                never sent to this browser.
+              </span>
+            </p>
           }
         </div>
 

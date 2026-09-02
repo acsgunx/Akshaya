@@ -37,11 +37,20 @@ const initialState: State = {
 export const BrokerLinkStore = signalStore(
   withState(initialState),
   withMethods((store, api = inject(ApiService)) => ({
-    begin: rxMethod<{ connectorId: string; credentials: AuthCredentials; nickname?: string; redirectUri?: string }>(
+    begin: rxMethod<{
+      connectorId: string;
+      credentials: AuthCredentials;
+      nickname?: string;
+      redirectUri?: string;
+      /** A saved login to fill the gaps from. The server resolves it; the browser only names it. */
+      savedCredentialId?: string;
+      /** Field keys to remember, applied only if the broker accepts this login. */
+      rememberFields?: readonly string[];
+    }>(
       pipe(
         tap(() => patchState(store, { loading: true, error: undefined })),
-        switchMap(({ connectorId, credentials, nickname, redirectUri }) =>
-          api.beginLink(connectorId, credentials, nickname, redirectUri).pipe(
+        switchMap((request) =>
+          api.beginLink(request).pipe(
             tapResponse({
               next: (wire) => patchState(store, { step: toAuthStepView(wire), loading: false }),
               error: (err: unknown) => patchState(store, { loading: false, error: toProblem(err) }),

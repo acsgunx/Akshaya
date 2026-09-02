@@ -21,17 +21,59 @@ about a broker comes from a declarative capability manifest and one interface.
 scripts/bootstrap.sh          # checks toolchain, restores packages, installs web deps
 
 # 2. Infrastructure (Postgres+TimescaleDB, Redis, OpenTelemetry collector, Seq)
-scripts/dev-up.sh
+scripts/dev-up.sh             # REQUIRED — user accounts live in Postgres
 
-# 3. Backend  → http://localhost:5080 (Scalar API docs at /scalar)
-dotnet run --project src/Akshaya.Api
+# 3. Database schema
+dotnet ef database update --context IdentityDbContext --project src/Akshaya.Api
 
-# 4. Frontend → http://localhost:4200
-cd apps/web && npm start
+# 4. Backend + frontend, in one command
+scripts/rerun.sh              # or: dotnet run --project src/Akshaya.Api  +  cd apps/web && npm start
 ```
+
+Then open http://localhost:4200 and **create an account** — the app requires one, and every API
+endpoint except sign-up/sign-in rejects an unauthenticated caller.
 
 The Paper connector is registered by default, so you can place orders against the simulated
 matching engine without any broker credentials.
+
+---
+
+## Accounts and saved broker logins
+
+You sign in to Akshaya with an email address and a password; the session is an HTTP-only cookie,
+so nothing the browser runs can read it. Each account gets its own tenant, which is what every
+tenant-scoped store below (risk policy, kill switch, broker links) is keyed by.
+
+When you link a broker, each credential field carries a **"Remember this"** toggle. Whatever you
+leave ticked is stored — encrypted — *after* the broker accepts the login, never before, so a
+failed attempt saves nothing. Next time, the wizard offers that saved login and asks only for
+what is missing; for a broker whose session dies at venue midnight, the daily relink becomes one
+click instead of retyping an API key and a client code.
+
+**How the secrets are held:**
+
+- **Envelope encryption, AES-256-GCM.** A fresh 256-bit data key encrypts each record; the master
+  key encrypts that data key. Rotating the master key rewraps small data keys instead of
+  re-encrypting every blob, and a leaked data key costs exactly one record.
+- **Authenticated, not just encrypted.** A payload with a single flipped bit fails to open rather
+  than decrypting to something an attacker steered.
+- **Never sent to the browser.** There is no endpoint that returns a saved value — not even to
+  the account that saved it. The UI shows which *fields* are held ("API key, Client code"), so a
+  stolen session cannot be turned into a credential dump. Secrets go from the vault into a broker
+  login call inside one request and nowhere else.
+- **Rotation is a config change.** `CredentialProtection:Keys` is a map, and `ActiveKeyId` names
+  the one that seals new records. Keep an old key in the map and records sealed under it keep
+  opening; drop it and those records report "re-enter this" rather than failing opaquely.
+
+Configure the master key **outside** source control:
+
+```bash
+export CredentialProtection__ActiveKeyId=prod-1
+export CredentialProtection__Keys__prod-1=$(openssl rand -base64 32)
+```
+
+`appsettings.Development.json` ships a throwaway key so a fresh clone runs. It is committed and
+therefore public — **only ever save paper/sandbox broker credentials against it.**
 
 ---
 
@@ -49,6 +91,7 @@ src/
   Modules/
     Trading/                       Order state machine, risk gate, reconciliation
     Portfolio/                     Multi-currency blended portfolio
+    Identity/                      Accounts, sessions, and the encrypted saved-login vault
   Akshaya.Api/                     Minimal APIs, SignalR hub, composition root
 apps/web/                          Angular app — renders itself from connector manifests
 tests/
@@ -56,6 +99,7 @@ tests/
   Akshaya.Architecture.Tests/      The rules that keep the design honest
   Akshaya.Trading.Tests/           Order state machine and risk gate
   Akshaya.Connector.MStock.Tests/  Mapping, session expiry, symbol translation
+  Akshaya.Identity.Tests/          Password hashing, the credential cipher, vault isolation
 scripts/                           Dev and verification scripts (see scripts/README.md)
 docs/                              Architecture, ADRs, per-connector notes, compliance
 ```
@@ -132,8 +176,16 @@ cd apps/web && npm run lint && npm test
 
 ## Safety and compliance
 
-- Broker credentials are envelope-encrypted; plaintext exists only in memory during a login call.
-- API keys and access tokens never reach the browser — all broker traffic is server-side.
+- Broker credentials are envelope-encrypted (AES-256-GCM); plaintext exists only in memory during
+  a login call. See "Accounts and saved broker logins" above.
+- API keys and access tokens never reach the browser — all broker traffic is server-side, and no
+  endpoint returns a saved credential value to any caller.
+- Account passwords are PBKDF2-HMAC-SHA256 at 600k iterations with a per-hash salt, and the cost
+  is stored per hash so it can be raised without locking anyone out.
+- Sign-in gives one answer for "no such address" and "wrong password", and spends the same time
+  on both, so the form cannot be used to discover which addresses hold credentials here.
+- Every API endpoint requires a session by default (a fail-closed fallback authorization policy);
+  sign-up and sign-in opt out explicitly.
 - Live strategy automation is **supervised by default**: a strategy emits a signal, which becomes
   a notification with a one-click order ticket, not an order. Automatic execution is gated behind
   2FA, a daily loss cap, a kill switch, and a per-connector compliance flag.

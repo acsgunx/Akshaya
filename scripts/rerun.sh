@@ -115,6 +115,30 @@ clean_step() {
   fi
 }
 
+migrate_step() {
+  [ "$SCOPE_API" = 1 ] || return 0
+
+  # The API will not start without its database: user accounts and the saved-credential vault
+  # live in Postgres. Checked here rather than left to a stack trace on first request.
+  if ! (exec 3<>/dev/tcp/127.0.0.1/5432) 2>/dev/null; then
+    warn "Nothing is listening on 5432 — start Postgres first (scripts/dev-up.sh)."
+    warn "The API needs it for accounts and saved broker logins."
+    return 0
+  fi
+  exec 3>&- 3<&- 2>/dev/null || true
+
+  if ! command -v dotnet-ef >/dev/null 2>&1 && ! dotnet ef --version >/dev/null 2>&1; then
+    warn "dotnet-ef not installed; skipping migrations."
+    warn "Install with: dotnet tool install --global dotnet-ef"
+    return 0
+  fi
+
+  say "Applying database migrations"
+  dotnet ef database update --context IdentityDbContext \
+    --project "${REPO_ROOT}/${API_PROJECT}" >/dev/null 2>&1 \
+    || warn "Migrations failed; the API may not start. Run dotnet ef database update to see why."
+}
+
 build_step() {
   if [ "$SCOPE_API" = 1 ]; then
     say "dotnet build ${API_PROJECT}"
@@ -206,5 +230,6 @@ if [ "$KILL_ONLY" = 1 ]; then say "Done (kill only)"; exit 0; fi
 
 [ "$NO_CLEAN" = 0 ] && clean_step
 build_step
+migrate_step
 
 if [ "$DETACHED" = 1 ]; then run_detached; else run_foreground; fi

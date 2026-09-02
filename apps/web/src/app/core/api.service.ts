@@ -1,6 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 
 import type {
   AuthCredentials,
@@ -20,6 +20,10 @@ import type {
   PlaceOrderRequest,
   PortfolioSnapshot,
   Quote,
+  RegisterRequest,
+  SavedCredential,
+  SignInRequest,
+  UserProfile,
 } from './models';
 
 /**
@@ -39,6 +43,39 @@ import type {
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
+
+  // ---- Account and the saved-login vault -------------------------------------
+
+  register(request: RegisterRequest): Observable<UserProfile> {
+    return this.http.post<UserProfile>('/api/account/register', request);
+  }
+
+  signIn(request: SignInRequest): Observable<UserProfile> {
+    return this.http.post<UserProfile>('/api/account/sign-in', request);
+  }
+
+  signOut(): Observable<void> {
+    return this.http.post<void>('/api/account/sign-out', {});
+  }
+
+  /**
+   * The signed-in user, or `null` when nobody is. A 204 (not a 401) for a
+   * signed-out visitor, because "nobody is signed in" is the expected answer
+   * to this question on a cold load, not an error.
+   */
+  me(): Observable<UserProfile | null> {
+    return this.http
+      .get<UserProfile>('/api/account/me', { observe: 'response' })
+      .pipe(map((response) => response.body ?? null));
+  }
+
+  getSavedCredentials(): Observable<readonly SavedCredential[]> {
+    return this.http.get<readonly SavedCredential[]>('/api/account/credentials');
+  }
+
+  deleteSavedCredential(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/account/credentials/${encodeURIComponent(id)}`);
+  }
 
   // ---- Connectors (the manifest is the whole point) --------------------------
 
@@ -60,8 +97,26 @@ export class ApiService {
     return this.http.get<readonly BrokerLink[]>('/api/links');
   }
 
-  beginLink(connectorId: string, credentials: AuthCredentials, nickname?: string, redirectUri?: string): Observable<AuthStepWire> {
-    return this.http.post<AuthStepWire>('/api/links', { connectorId, credentials, nickname, redirectUri });
+  /**
+   * Starts a link.
+   *
+   * `savedCredentialId` lets the server fill in fields the user asked it to
+   * remember; anything in `credentials` is layered on top. The saved values
+   * themselves never travel — the browser sends an id, and the server holds
+   * the only key that turns it back into secrets.
+   *
+   * `rememberFields` names the field keys to store once the broker ACCEPTS
+   * this login. Nothing is saved on a failed attempt.
+   */
+  beginLink(request: {
+    connectorId: string;
+    credentials: AuthCredentials;
+    nickname?: string;
+    redirectUri?: string;
+    savedCredentialId?: string;
+    rememberFields?: readonly string[];
+  }): Observable<AuthStepWire> {
+    return this.http.post<AuthStepWire>('/api/links', request);
   }
 
   continueLink(linkId: string, response: string, state: Readonly<Record<string, string>>): Observable<AuthStepWire> {

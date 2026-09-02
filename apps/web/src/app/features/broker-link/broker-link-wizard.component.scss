@@ -85,6 +85,74 @@
   padding: 22px 24px 24px;
 }
 
+// ---- Saved-login picker ----------------------------------------------------
+.ak-saved-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ak-saved-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--ak-text-secondary);
+  background: var(--ak-surface-2);
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius-md);
+  cursor: pointer;
+}
+
+.ak-saved-option:hover {
+  border-color: var(--ak-border-strong);
+  color: var(--ak-text-primary);
+}
+
+.ak-saved-option--active {
+  border-color: var(--ak-brand);
+  background: color-mix(in srgb, var(--ak-brand) 10%, var(--ak-surface-2));
+  color: var(--ak-text-primary);
+}
+
+.ak-saved-option mat-icon {
+  flex: none;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  color: var(--ak-brand);
+}
+
+.ak-saved-option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ak-saved-option-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ak-saved-option-keys {
+  font-size: 11px;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-remember {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.ak-remember ::ng-deep .mdc-form-field > label {
+  font-size: 12px;
+  color: var(--ak-text-tertiary);
+  padding-left: 4px;
+}
+
 .ak-fields {
   display: flex;
   flex-direction: column;
