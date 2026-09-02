@@ -29,6 +29,7 @@ appsettings.Local.json
 connector-credentials/
 
 # Local tooling
+.run/
 .idea/
 .DS_Store
 Thumbs.db

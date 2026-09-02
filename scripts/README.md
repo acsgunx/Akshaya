@@ -7,6 +7,7 @@ you need to work on it.
 |---|---|---|
 | `bootstrap.sh` | Checks the toolchain, restores NuGet packages, installs web dependencies, and reports exactly which package versions failed to resolve | First thing, on a fresh clone |
 | `dev-up.sh` / `dev-down.sh` | Brings the local infrastructure up and down (Postgres+TimescaleDB, Redis, OpenTelemetry collector, Seq) | Before running the API |
+| `rerun.sh` / `rerun.ps1` / `rerun.py` | Kills any running app, clean-builds, and runs it again — API (`:5080`) and Angular web (`:4200`). Three equivalent implementations; pick the one for your shell. `--api-only` / `--web-only`, `--detached`, `--no-clean`, `--reinstall`, `--relaxed`, `--kill` | After a change, to restart from a clean build |
 | `verify-structure.py` | Static consistency checks that stand in for a compiler: broker-name leakage, ambient time, manifest validity, project-reference layering, undeclared types, connector completeness | Pre-commit, and in CI |
 | `validate-manifests.py` | Validates every `connector.manifest.json` against the JSON schema | After editing a manifest |
 | `check-web.py` | Structural checks on the Angular sources: imports resolve, template and style paths exist, braces balance | After editing the frontend |
