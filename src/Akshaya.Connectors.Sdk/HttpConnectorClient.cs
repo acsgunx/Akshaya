@@ -191,26 +191,28 @@ public sealed class HttpConnectorClient
         {
             return typeof(T) == typeof(string)
                 ? Result<T>.Success((T)(object)string.Empty)
-                : Failure(
+                : Result<T>.Failure(BuildError(
                     ConnectorErrorCodes.Unknown,
                     "The broker returned an empty body where data was expected.",
                     null,
                     null,
                     null,
-                    path);
+                    path,
+                    null));
         }
 
         try
         {
             var value = JsonSerializer.Deserialize<T>(body, _options.Json);
             return value is null
-                ? Failure(
+                ? Result<T>.Failure(BuildError(
                     ConnectorErrorCodes.Unknown,
                     "The broker returned a null payload where data was expected.",
                     null,
                     null,
                     null,
-                    path)
+                    path,
+                    null))
                 : Result<T>.Success(value);
         }
         catch (JsonException ex)
@@ -224,13 +226,14 @@ public sealed class HttpConnectorClient
                 path,
                 typeof(T).Name);
 
-            return Failure(
+            return Result<T>.Failure(BuildError(
                 ConnectorErrorCodes.Unknown,
                 "The broker's response could not be understood.",
                 null,
                 Truncate(body),
                 null,
-                path);
+                path,
+                null));
         }
     }
 

@@ -28,15 +28,15 @@
             [attr.aria-expanded]="isExpanded(pos.groupKey)"
             [attr.aria-label]="'Toggle legs for ' + pos.instrument"
             (click)="toggle(pos.groupKey)"
-            [disabled]="!pos.isSplitAcrossBrokers"
+            [disabled]="pos.legs.length <= 1"
           >
-            @if (pos.isSplitAcrossBrokers) {
+            @if (pos.legs.length > 1) {
               <mat-icon aria-hidden="true">{{ isExpanded(pos.groupKey) ? 'expand_more' : 'chevron_right' }}</mat-icon>
             }
           </button>
           <span class="ak-position-instrument">
             {{ pos.instrument }}
-            @if (pos.isSplitAcrossBrokers) {
+            @if (pos.legs.length > 1) {
               <span class="ak-split-badge">{{ pos.legs.length }} brokers</span>
             }
           </span>

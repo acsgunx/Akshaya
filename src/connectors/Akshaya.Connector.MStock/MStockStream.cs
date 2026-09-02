@@ -194,14 +194,14 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
                 _desired[token] = mode;
             }
 
-            if (_desired.Count > _options.MaxStreamSubscriptionsOrDefault)
+            if (_desired.Count > _options.MaxStreamSubscriptionsOrDefault())
             {
                 // Overshooting mStock's cap does not fail loudly at the broker — it silently
                 // stops delivering, which is the worst possible failure mode for a price feed.
                 return Result.Failure(new Error(
                     ConnectorErrorCodes.InvalidRequest,
                     $"That would take the mStock subscription set to {_desired.Count}, past the "
-                    + $"{_options.MaxStreamSubscriptionsOrDefault} the broker allows on one socket. "
+                    + $"{_options.MaxStreamSubscriptionsOrDefault()} the broker allows on one socket. "
                     + "The fan-out layer must open another connection or drop a subscription."));
             }
         }

@@ -76,8 +76,10 @@ public sealed class DefaultVendorErrorMapper : IVendorErrorMapper
         ("insufficient margin", ConnectorErrorCodes.InsufficientFunds),
 
         // --- gateway daemons ---
+        // Only the generic word. A specific daemon's name ("OpenD" and the like) is
+        // broker-specific vocabulary and belongs in that connector's own mapper, not here —
+        // the architecture tests enforce that the core names no broker.
         ("gateway", ConnectorErrorCodes.GatewayUnavailable),
-        ("opend", ConnectorErrorCodes.GatewayUnavailable),
     ];
 
     private readonly IReadOnlyDictionary<string, string> _byVendorCode;

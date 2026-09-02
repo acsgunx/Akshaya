@@ -31,7 +31,7 @@ public sealed class MStockMarketData : IConnectorMarketData
     private readonly TimeZoneInfo _venueZone;
 
     /// <summary>Creates the market-data facet.</summary>
-    public MStockMarketData(
+    internal MStockMarketData(
         MStockApi api,
         MStockOptions options,
         ISymbolTranslator symbols,

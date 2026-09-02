@@ -34,7 +34,7 @@ const initialState: State = {
 export const OrdersStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
-  withMethods((store, api = inject(ApiService), marketData = inject(MarketDataService)) => ({
+  withMethods((store, api = inject(ApiService)) => ({
     refresh: rxMethod<void>(
       pipe(
         tap(() => patchState(store, { loading: true, error: undefined })),
@@ -49,10 +49,12 @@ export const OrdersStore = signalStore(
         ),
       ),
     ),
-
+  })),
+  // A second withMethods so these can call refresh() off the store the first one added.
+  withMethods((store, api = inject(ApiService)) => ({
     setOpenOnly(openOnly: boolean): void {
       patchState(store, { openOnly });
-      this.refresh();
+      store.refresh();
     },
 
     cancel: rxMethod<string>(
@@ -65,7 +67,7 @@ export const OrdersStore = signalStore(
                 const remaining = new Set(store.cancellingIds());
                 remaining.delete(orderId);
                 patchState(store, { cancellingIds: remaining });
-                this.refresh();
+                store.refresh();
               },
               error: () => {
                 const remaining = new Set(store.cancellingIds());
@@ -80,6 +82,7 @@ export const OrdersStore = signalStore(
   })),
   withHooks({
     onInit(store) {
+      const marketData = inject(MarketDataService);
       store.refresh();
       // Any push over the socket is a cue to re-pull the source of truth —
       // see the class doc for why we never trust the pushed payload alone.

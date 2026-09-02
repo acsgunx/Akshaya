@@ -1,5 +1,6 @@
 using Akshaya.Modules.Trading.Domain;
 using FluentAssertions;
+using Xunit;
 
 namespace Akshaya.Trading.Tests;
 

@@ -113,4 +113,11 @@ public sealed record MStockOptions
 
     /// <summary>Zero means reconnect forever, which is what a trading session wants.</summary>
     public int MaxReconnectAttempts { get; init; }
+
+    /// <summary>
+    /// Per-socket subscription cap. Zero (the default) means "use mStock's documented limit"
+    /// (<see cref="MStockStreamOptionExtensions.DefaultMaxStreamSubscriptions"/>); set it only to
+    /// pull the ceiling in for a deployment that fans out across more sockets deliberately.
+    /// </summary>
+    public int MaxStreamSubscriptions { get; init; }
 }

@@ -44,6 +44,63 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
     private const string DataException = "DataException";
     private const string GeneralException = "GeneralException";
 
+    /// <inheritdoc />
+    public string? MapToCanonicalCode(VendorErrorContext context)
+    {
+        // A recognised Kite-lineage exception type is the strongest signal there is.
+        if (!string.IsNullOrWhiteSpace(context.VendorCode))
+        {
+            var status = context.HttpStatus ?? 0;
+            var typed = context.VendorCode switch
+            {
+                TokenException => status is 401 or 403
+                    ? ConnectorErrorCodes.SessionExpired
+                    : ConnectorErrorCodes.ReauthRequired,
+                UserException => ConnectorErrorCodes.InvalidCredentials,
+                TwoFactorException => ConnectorErrorCodes.ChallengeFailed,
+                InputException => ConnectorErrorCodes.InvalidRequest,
+                MarginException => ConnectorErrorCodes.InsufficientFunds,
+                HoldingException => ConnectorErrorCodes.OrderRejected,
+                OrderException => ClassifyOrderException(context.VendorMessage),
+                PermissionException => ConnectorErrorCodes.NotSupported,
+                NetworkException or GeneralException => ConnectorErrorCodes.BrokerUnavailable,
+                DataException => ConnectorErrorCodes.Unknown,
+                _ => null,
+            };
+
+            if (typed is not null)
+            {
+                return typed;
+            }
+        }
+
+        // No typed error, or one this mapper does not recognise: try the free text. Returning
+        // null here is deliberate — it tells the caller to fall back to the transport mapping
+        // rather than have this mapper guess.
+        return ClassifyFromMessage(context.VendorMessage);
+    }
+
+    /// <inheritdoc />
+    public string DescribeCanonicalCode(string canonicalCode, VendorErrorContext context) => canonicalCode switch
+    {
+        ConnectorErrorCodes.SessionExpired => "The mStock session has expired; sign in again.",
+        ConnectorErrorCodes.ReauthRequired => "mStock needs you to sign in again.",
+        ConnectorErrorCodes.InvalidCredentials => "mStock did not accept the username or password.",
+        ConnectorErrorCodes.ChallengeFailed => "mStock did not accept the one-time code.",
+        ConnectorErrorCodes.InsufficientFunds => "The mStock account does not have enough funds for this order.",
+        ConnectorErrorCodes.OrderRejected => "mStock rejected the order.",
+        ConnectorErrorCodes.OrderNotFound => "mStock has no record of that order.",
+        ConnectorErrorCodes.MarketClosed => "The market is closed for this instrument.",
+        ConnectorErrorCodes.RiskRejected => "mStock's risk checks blocked this order.",
+        ConnectorErrorCodes.InstrumentNotFound => "mStock does not recognise that instrument.",
+        ConnectorErrorCodes.RateLimited => "Too many requests to mStock; wait and retry.",
+        ConnectorErrorCodes.Timeout => "mStock did not respond in time.",
+        ConnectorErrorCodes.BrokerUnavailable => "mStock is currently unavailable.",
+        ConnectorErrorCodes.NotSupported => "mStock does not permit this action on this account.",
+        ConnectorErrorCodes.InvalidRequest => "mStock rejected the request as invalid.",
+        _ => "mStock reported an error.",
+    };
+
     /// <summary>Maps a non-success HTTP response.</summary>
     public Error MapHttp(int statusCode, string? responseBody)
     {

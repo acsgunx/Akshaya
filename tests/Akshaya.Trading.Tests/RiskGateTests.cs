@@ -7,6 +7,7 @@ using Akshaya.Trading.Tests.TestSupport;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Xunit;
 
 namespace Akshaya.Trading.Tests;
 
@@ -845,6 +846,14 @@ public sealed class RiskGateTests
             throw new InvalidOperationException("Simulated failure inside a risk rule.");
     }
 
+    /// <summary>
+    /// A context whose policy enables exactly the rules under test. The gate only runs rules
+    /// the tenant's policy lists, so these mechanics tests must opt their synthetic rules in.
+    /// </summary>
+    private static RiskEvaluationContext ContextEnabling(params IRiskRule[] rules) =>
+        RiskFixtures.Context(policy: RiskFixtures.Policy(
+            enabledRules: new HashSet<string>(rules.Select(r => r.Name), StringComparer.Ordinal)));
+
     [Fact]
     public async Task Allows_the_order_when_every_enabled_rule_allows_it()
     {
@@ -852,7 +861,7 @@ public sealed class RiskGateTests
         var second = new ScriptedRule("Second", 20, RiskDecision.Allow);
         var gate = new RiskGate([first, second], NullLogger<RiskGate>.Instance);
 
-        var decision = await gate.EvaluateAsync(RiskFixtures.Context());
+        var decision = await gate.EvaluateAsync(ContextEnabling(first, second));
 
         decision.IsAllowed.Should().BeTrue();
         first.CallCount.Should().Be(1);
@@ -866,7 +875,7 @@ public sealed class RiskGateTests
         var neverCalled = new ScriptedRule("NeverCalled", 20, RiskDecision.Allow);
         var gate = new RiskGate([denier, neverCalled], NullLogger<RiskGate>.Instance);
 
-        var decision = await gate.EvaluateAsync(RiskFixtures.Context());
+        var decision = await gate.EvaluateAsync(ContextEnabling(denier, neverCalled));
 
         decision.IsAllowed.Should().BeFalse();
         decision.RuleName.Should().Be("Denier");
@@ -892,7 +901,7 @@ public sealed class RiskGateTests
         // (lowest Order) first regardless of registration order.
         var gate = new RiskGate([late, early], NullLogger<RiskGate>.Instance);
 
-        await gate.EvaluateAsync(RiskFixtures.Context());
+        await gate.EvaluateAsync(ContextEnabling(late, early));
 
         callSequence.Should().Equal("Early", "Late");
     }
@@ -904,7 +913,7 @@ public sealed class RiskGateTests
         var neverCalled = new ScriptedRule("NeverCalled", 20, RiskDecision.Allow);
         var gate = new RiskGate([thrower, neverCalled], NullLogger<RiskGate>.Instance);
 
-        var decision = await gate.EvaluateAsync(RiskFixtures.Context());
+        var decision = await gate.EvaluateAsync(ContextEnabling(thrower, neverCalled));
 
         decision.IsAllowed.Should().BeFalse();
         decision.RuleName.Should().Be("Thrower");
@@ -932,11 +941,11 @@ public sealed class RiskGateTests
         rule.Name.Returns("Cancellable");
         rule.Order.Returns(10);
         rule.EvaluateAsync(Arg.Any<RiskEvaluationContext>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw new OperationCanceledException());
+            .Returns<RiskDecision>(_ => throw new OperationCanceledException());
 
         var gate = new RiskGate([rule], NullLogger<RiskGate>.Instance);
 
-        var act = async () => await gate.EvaluateAsync(RiskFixtures.Context());
+        var act = async () => await gate.EvaluateAsync(ContextEnabling(rule));
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }

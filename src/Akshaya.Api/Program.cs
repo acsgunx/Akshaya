@@ -11,6 +11,7 @@
 // ============================================================================================
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Akshaya.Api.Contracts;
@@ -39,7 +40,7 @@ using Serilog;
 // ── Serilog bootstrap: a logger exists before the host does, so startup failures are logged
 // rather than lost to a crashed console. ──────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
+    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
     .CreateBootstrapLogger();
 
 try
@@ -87,6 +88,19 @@ try
         // would register any other first-party, compiled-in connector — see AddInProcess's own
         // doc comment. This is the ONLY connector this file may name.
         options.AddInProcess(paperManifest, context => CreatePaperConnector(context, paperConnectors));
+
+        // Every other compiled-in connector is discovered by its IConnectorPlugin entry point —
+        // the same contract a dropped-in plugin implements — so this file never names one. Paper
+        // is the exception above only because its lifetime is special (one instance per account).
+        foreach (var plugin in DiscoverInProcessPlugins())
+        {
+            var alreadyRegistered = options.InProcess.Any(
+                r => string.Equals(r.Manifest.Id, plugin.Manifest.Id, StringComparison.OrdinalIgnoreCase));
+            if (!alreadyRegistered)
+            {
+                options.AddInProcess(plugin.Manifest, plugin.Create);
+            }
+        }
     });
 
     builder.Services.AddSingleton<ConnectorCatalog>();
@@ -294,6 +308,44 @@ static ConnectorManifest LoadEmbeddedManifest(Assembly assembly, string label)
 }
 
 /// <summary>
+/// Finds every <see cref="IConnectorPlugin"/> compiled into this deployment by loading the
+/// connector assemblies that sit next to the API and scanning them for the entry-point
+/// interface. This is the same shape the on-disk plugin loader uses; it names no broker.
+/// </summary>
+static IReadOnlyList<IConnectorPlugin> DiscoverInProcessPlugins()
+{
+    var plugins = new List<IConnectorPlugin>();
+    var baseDir = AppContext.BaseDirectory;
+
+    foreach (var dll in Directory.EnumerateFiles(baseDir, "Akshaya.Connector.*.dll"))
+    {
+        Assembly assembly;
+        try
+        {
+            assembly = Assembly.LoadFrom(dll);
+        }
+        catch (Exception ex) when (ex is BadImageFormatException or FileLoadException or FileNotFoundException)
+        {
+            continue;
+        }
+
+        foreach (var type in assembly.GetExportedTypes())
+        {
+            if (!typeof(IConnectorPlugin).IsAssignableFrom(type)
+                || type is { IsAbstract: true } or { IsInterface: true }
+                || type.GetConstructor(Type.EmptyTypes) is null)
+            {
+                continue;
+            }
+
+            plugins.Add((IConnectorPlugin)Activator.CreateInstance(type)!);
+        }
+    }
+
+    return plugins;
+}
+
+/// <summary>
 /// Activates (or reuses) the Paper connector for one account.
 ///
 /// THE REUSE IS LOAD-BEARING, NOT AN OPTIMISATION. <see cref="Akshaya.Modules.Trading.Application.BrokerLinkResolver"/>
@@ -321,7 +373,7 @@ static Result<IBrokerConnector> CreatePaperConnector(
     }
 
     var accountId = context.Session.AccountId;
-    var connector = cache.GetOrAdd(accountId, _ =>
+    var connector = cache.GetOrAdd(accountId, _key =>
     {
         var logger = context.LoggerFactory.CreateLogger<PaperConnector>();
         var source = new DevPaperMarketDataSource(context.Clock);
@@ -336,7 +388,10 @@ static Result<IBrokerConnector> CreatePaperConnector(
     return Result<IBrokerConnector>.Success(new NonDisposingConnectorProxy(connector));
 }
 
-static async Task RunPaperTapeAsync(PaperConnector connector, string accountId, ILogger logger)
+static async Task RunPaperTapeAsync(
+    PaperConnector connector,
+    string accountId,
+    Microsoft.Extensions.Logging.ILogger logger)
 {
     try
     {

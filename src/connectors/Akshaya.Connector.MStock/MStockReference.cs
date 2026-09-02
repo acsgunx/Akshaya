@@ -27,7 +27,7 @@ public sealed class MStockReference : IConnectorReference
     private readonly MStockInstrumentCache _cache;
 
     /// <summary>Creates the reference-data facet.</summary>
-    public MStockReference(MStockApi api, MStockOptions options, MStockInstrumentCache cache)
+    internal MStockReference(MStockApi api, MStockOptions options, MStockInstrumentCache cache)
     {
         _api = api;
         _options = options;

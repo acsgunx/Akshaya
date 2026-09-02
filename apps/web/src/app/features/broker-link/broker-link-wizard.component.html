@@ -57,13 +57,14 @@
         </button>
       </form>
     } @else {
-      @switch (store.step()!.type) {
+      @let step = store.step()!;
+      @switch (step.type) {
         @case ('completed') {
           <div class="ak-wizard-result ak-wizard-result--ok">
             <mat-icon aria-hidden="true">check_circle</mat-icon>
             <h3>{{ manifest()!.displayName }} linked</h3>
-            <p>Account: <span class="ak-num">{{ store.step()!.accountId }}</span></p>
-            @if (store.step()!.expiresAt; as expiresAt) {
+            <p>Account: <span class="ak-num">{{ step.accountId }}</span></p>
+            @if (step.expiresAt; as expiresAt) {
               <p class="ak-wizard-note">Session valid until {{ expiresAt | date: 'medium' }}.</p>
             }
             <button mat-flat-button color="primary" type="button" (click)="goToConnectors()">Done</button>
@@ -99,9 +100,9 @@
 
         @case ('challenge') {
           <div class="ak-wizard-challenge">
-            <h3>{{ challengeKindLabel(store.step()!.challengeKind) }}</h3>
-            <p>{{ store.step()!.prompt }}</p>
-            @if (store.step()!.maskedDestination; as dest) {
+            <h3>{{ challengeKindLabel(step.challengeKind) }}</h3>
+            <p>{{ step.prompt }}</p>
+            @if (step.maskedDestination; as dest) {
               <p class="ak-wizard-note">Sent to {{ dest }}</p>
             }
             @if (challengeCountdown() !== undefined) {
@@ -110,7 +111,7 @@
               </p>
             }
             <mat-form-field appearance="outline">
-              <mat-label>{{ challengeKindLabel(store.step()!.challengeKind) }}</mat-label>
+              <mat-label>{{ challengeKindLabel(step.challengeKind) }}</mat-label>
               <input matInput inputmode="numeric" [formControl]="challengeResponseControl" autocomplete="one-time-code" />
             </mat-form-field>
             @if (store.error(); as err) {
@@ -136,8 +137,8 @@
           <div class="ak-wizard-gateway">
             <mat-icon aria-hidden="true">dns</mat-icon>
             <h3>A local gateway is required</h3>
-            <p>{{ store.step()!.instructions }}</p>
-            <p class="ak-wizard-note">Gateway: <span class="ak-num">{{ store.step()!.gatewayId }}</span></p>
+            <p>{{ step.instructions }}</p>
+            <p class="ak-wizard-note">Gateway: <span class="ak-num">{{ step.gatewayId }}</span></p>
             @if (store.error(); as err) {
               <p class="ak-wizard-error" role="alert">{{ err.detail }}</p>
             }

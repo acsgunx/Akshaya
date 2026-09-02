@@ -19,7 +19,7 @@ public sealed class MStockPortfolio : IConnectorPortfolio
     private readonly ISymbolTranslator _symbols;
 
     /// <summary>Creates the portfolio facet.</summary>
-    public MStockPortfolio(MStockApi api, MStockOptions options, ISymbolTranslator symbols)
+    internal MStockPortfolio(MStockApi api, MStockOptions options, ISymbolTranslator symbols)
     {
         _api = api;
         _options = options;
