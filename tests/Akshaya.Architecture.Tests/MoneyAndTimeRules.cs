@@ -137,6 +137,13 @@ public sealed class MoneyAndTimeRules
         {
             foreach (var method in facet.GetMethods())
             {
+                // Property getters (IConnectorStream.State) and other synthesised accessors are
+                // not operations that can fail; the rule is about the methods that call a broker.
+                if (method.IsSpecialName)
+                {
+                    continue;
+                }
+
                 var returnType = method.ReturnType;
                 var name = returnType.IsGenericType
                     ? returnType.GetGenericTypeDefinition().Name
