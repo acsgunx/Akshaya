@@ -54,6 +54,11 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
       align-items: center;
       gap: 6px;
       font-weight: 600;
+      white-space: nowrap;
+    }
+    .ak-kill-btn mat-icon {
+      flex: none;
+      margin: 0;
     }
     .ak-kill-btn--engaged {
       background: var(--ak-danger) !important;
