@@ -53,6 +53,15 @@ export class BrokerLinkWizardComponent {
 
   protected readonly manifest = computed(() => this.connectorStore.manifestFor(this.connectorId()));
 
+  /** Up-to-two-letter monogram for the header avatar, from the broker's display name. */
+  protected readonly monogram = computed(() => {
+    const name = this.manifest()?.displayName ?? '';
+    const words = name.split(/[\s.]+/).filter(Boolean);
+    const letters =
+      words.length > 1 ? `${words[0]!.charAt(0)}${words[1]!.charAt(0)}` : name.trim().slice(0, 2);
+    return letters.toUpperCase() || '?';
+  });
+
   /** Built fresh from the manifest's credential fields — see class doc, point 1. */
   protected credentialForm = new FormGroup<Record<string, FormControl<string>>>({});
   protected readonly nicknameControl = new FormControl<string>('', { nonNullable: true });
@@ -106,6 +115,25 @@ export class BrokerLinkWizardComponent {
         this.expirySeconds.set(s - 1);
       }
     }, 1000);
+  }
+
+  /** The single validation message shown under a credential field, or null while it is fine. */
+  protected errorFor(key: string, label: string): string | null {
+    const control = this.credentialForm.get(key);
+    if (!control || control.valid || !(control.touched || control.dirty)) {
+      return null;
+    }
+    if (control.hasError('required')) {
+      return `${label} is required.`;
+    }
+    if (control.hasError('pattern')) {
+      return `That does not look like a valid ${label.toLowerCase()}.`;
+    }
+    return 'Please check this value.';
+  }
+
+  protected cancel(): void {
+    void this.router.navigate(['/connectors']);
   }
 
   protected submitCredentials(): void {

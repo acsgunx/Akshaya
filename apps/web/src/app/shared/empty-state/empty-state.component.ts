@@ -11,6 +11,7 @@ import { MatIconModule } from '@angular/material/icon';
   standalone: true,
   imports: [MatIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class.ak-empty--compact]': 'compact()' },
   template: `
     <div class="ak-empty" role="status">
       <mat-icon aria-hidden="true">{{ icon() }}</mat-icon>
@@ -31,6 +32,15 @@ import { MatIconModule } from '@angular/material/icon';
       padding: 48px 24px;
       text-align: center;
       color: var(--ak-text-secondary);
+    }
+    :host(.ak-empty--compact) .ak-empty {
+      padding: 20px 16px;
+      gap: 6px;
+    }
+    :host(.ak-empty--compact) mat-icon {
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
     }
     mat-icon {
       font-size: 32px;
@@ -53,4 +63,6 @@ export class EmptyStateComponent {
   readonly icon = input<string>('inbox');
   readonly title = input.required<string>();
   readonly description = input<string | undefined>(undefined);
+  /** Tighter padding for use inside a dashboard card rather than a full page. */
+  readonly compact = input(false);
 }

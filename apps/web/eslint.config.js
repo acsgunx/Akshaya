@@ -5,6 +5,11 @@ const angular = require("angular-eslint");
 
 module.exports = tseslint.config(
   {
+    // Never lint build output or caches — they contain vendored, minified code with
+    // inline eslint-disable directives for rules this config does not load.
+    ignores: ["dist/**", ".angular/**", "coverage/**", "node_modules/**"],
+  },
+  {
     files: ["**/*.ts"],
     extends: [
       eslint.configs.recommended,

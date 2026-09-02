@@ -1,111 +1,290 @@
 :host {
   display: block;
-  max-width: 440px;
+  padding: 24px 16px 48px;
 }
 
-.ak-wizard {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+// ---- Card --------------------------------------------------------------------
+.ak-card {
+  width: 100%;
+  max-width: 460px;
+  margin-inline: auto;
   background: var(--ak-surface-1);
   border: 1px solid var(--ak-border);
   border-radius: var(--ak-radius-lg);
-  padding: 24px;
+  box-shadow: var(--ak-shadow-2);
+  overflow: hidden;
 }
 
-.ak-wizard-loading {
+.ak-card--loading {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 24px;
+  gap: 12px;
+  padding: 28px 24px;
   color: var(--ak-text-secondary);
+  font-size: 14px;
 }
 
-.ak-wizard-header h2 {
-  font-size: 18px;
+.ak-card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--ak-border);
+}
+
+.ak-card-head-text {
+  min-width: 0;
+}
+
+.ak-card-head h1 {
+  font-size: 17px;
   font-weight: 700;
+  line-height: 1.25;
+  color: var(--ak-text-primary);
 }
 
-.ak-wizard-sub {
+.ak-card-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 3px;
   font-size: 12px;
-  color: var(--ak-text-secondary);
+  color: var(--ak-text-tertiary);
 }
 
-.ak-wizard-form,
-.ak-wizard-redirect,
-.ak-wizard-challenge,
-.ak-wizard-gateway {
+.ak-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--ak-radius-md);
+  background: var(--ak-surface-3);
+  color: var(--ak-brand);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.ak-tag {
+  padding: 1px 7px;
+  border-radius: var(--ak-radius-full);
+  background: var(--ak-surface-3);
+  color: var(--ak-text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+// ---- Body ------------------------------------------------------------------
+.ak-card-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
+  padding: 22px 24px 24px;
 }
 
-mat-form-field {
+.ak-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ak-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ak-field mat-form-field {
   width: 100%;
 }
 
-.ak-wizard-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ak-text-secondary);
+.ak-field-msg {
   margin: 0;
+  padding-inline: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ak-text-tertiary);
 }
 
-.ak-wizard-note mat-icon {
-  font-size: 16px;
-  width: 16px;
-  height: 16px;
+.ak-field-msg--error {
+  color: var(--ak-danger);
+}
+
+.ak-label-opt {
+  color: var(--ak-text-tertiary);
+  font-weight: 400;
+}
+
+// ---- Banners (info / error) ----------------------------------------------
+.ak-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--ak-radius-md);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.ak-banner mat-icon {
+  flex: none;
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
   margin-top: 1px;
 }
 
-.ak-wizard-error {
-  color: var(--ak-danger);
-  font-size: 12px;
-  margin: 0;
+.ak-banner--info {
+  background: var(--ak-surface-2);
+  border: 1px solid var(--ak-border);
+  color: var(--ak-text-secondary);
 }
 
-.ak-wizard-countdown {
+.ak-banner--info mat-icon {
+  color: var(--ak-info);
+}
+
+.ak-banner--error {
+  background: color-mix(in srgb, var(--ak-danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ak-danger) 40%, transparent);
+  color: var(--ak-text-primary);
+}
+
+.ak-banner--error mat-icon {
+  color: var(--ak-danger);
+}
+
+// ---- Actions ------------------------------------------------------------
+.ak-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ak-btn-block {
+  width: 100%;
+}
+
+.ak-btn-block ::ng-deep .mat-mdc-button-touch-target {
+  width: 100%;
+}
+
+button[mat-flat-button],
+button[mat-stroked-button] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+button[mat-flat-button] mat-spinner,
+button[mat-stroked-button] mat-spinner {
+  --mdc-circular-progress-active-indicator-color: currentColor;
+}
+
+.ak-fineprint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-fineprint mat-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+// ---- Sub-state panels (completed / challenge / redirect / gateway) ------
+.ak-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ak-panel > h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ak-text-primary);
+}
+
+.ak-panel-icon {
+  font-size: 34px;
+  width: 34px;
+  height: 34px;
+  color: var(--ak-info);
+}
+
+.ak-panel--ok {
+  align-items: center;
+  text-align: center;
+}
+
+.ak-panel--ok .ak-panel-icon {
+  color: var(--ak-success);
+}
+
+.ak-panel-line {
+  margin: 0;
   font-size: 13px;
   color: var(--ak-text-secondary);
 }
 
-.ak-wizard-countdown--urgent {
+.ak-panel-muted {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-panel .ak-actions {
+  margin-top: 4px;
+}
+
+// ---- Countdown --------------------------------------------------------
+.ak-countdown {
+  font-weight: 500;
+}
+
+.ak-countdown--urgent {
   color: var(--ak-danger);
   font-weight: 600;
 }
 
-.ak-wizard-result {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  text-align: center;
-  padding: 16px 0;
-}
+// ---- Material form-field: keep the outline calm in the dark theme -----
+:host ::ng-deep {
+  .mat-mdc-form-field-subscript-wrapper {
+    display: none; // we render help/errors ourselves, outside the field
+  }
 
-.ak-wizard-result--ok mat-icon {
-  color: var(--ak-success);
-  font-size: 36px;
-  width: 36px;
-  height: 36px;
-}
+  .mat-mdc-text-field-wrapper {
+    background: var(--ak-surface-2);
+  }
 
-.ak-wizard-gateway {
-  align-items: center;
-  text-align: center;
-}
+  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
+    .mdc-notched-outline__leading,
+  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
+    .mdc-notched-outline__notch,
+  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
+    .mdc-notched-outline__trailing {
+    border-color: var(--ak-border-strong);
+  }
 
-.ak-wizard-gateway mat-icon {
-  font-size: 32px;
-  width: 32px;
-  height: 32px;
-  color: var(--ak-info);
-}
+  .mat-mdc-form-field-required-marker {
+    margin-left: 3px;
+    color: var(--ak-text-tertiary);
+  }
 
-button[mat-flat-button] {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  .mat-mdc-form-field-icon-suffix mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: var(--ak-text-tertiary);
+  }
 }

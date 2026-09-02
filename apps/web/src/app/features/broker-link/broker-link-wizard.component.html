@@ -1,10 +1,21 @@
 @if (!manifest()) {
-  <div class="ak-wizard-loading"><mat-spinner diameter="28" /> Loading broker details…</div>
+  <div class="ak-card ak-card--loading">
+    <mat-spinner diameter="24" />
+    <span>Loading broker details…</span>
+  </div>
 } @else {
-  <section class="ak-wizard" aria-label="Link a broker account">
-    <header class="ak-wizard-header">
-      <h2>Link {{ manifest()!.displayName }}</h2>
-      <p class="ak-wizard-sub">{{ manifest()!.vendor }} · {{ manifest()!.jurisdictions.join(', ') }}</p>
+  <section class="ak-card" aria-label="Link a broker account">
+    <header class="ak-card-head">
+      <span class="ak-avatar" aria-hidden="true">{{ monogram() }}</span>
+      <div class="ak-card-head-text">
+        <h1>Link {{ manifest()!.displayName }}</h1>
+        <p class="ak-card-sub">
+          {{ manifest()!.vendor }}
+          @for (j of manifest()!.jurisdictions; track j) {
+            <span class="ak-tag">{{ j }}</span>
+          }
+        </p>
+      </div>
     </header>
 
     <!--
@@ -13,145 +24,221 @@
       why that distinction is the entire point of this component.
     -->
     @if (!store.step()) {
-      <!-- Step 0: credential form, built entirely from manifest.auth.credentialFields -->
-      <form [formGroup]="credentialForm" class="ak-wizard-form" (ngSubmit)="submitCredentials()">
-        <mat-form-field appearance="outline">
-          <mat-label>Nickname (optional)</mat-label>
-          <input matInput [formControl]="nicknameControl" placeholder="e.g. My {{ manifest()!.displayName }} account" />
-        </mat-form-field>
-
-        @for (field of manifest()!.auth.credentialFields; track field.key) {
-          <mat-form-field appearance="outline">
-            <mat-label>{{ field.label }}@if (field.optional) { (optional) }</mat-label>
-            <input
-              matInput
-              [type]="field.secret ? 'password' : 'text'"
-              [formControlName]="field.key"
-              [placeholder]="field.placeholder ?? ''"
-              [attr.aria-describedby]="field.help ? field.key + '-help' : null"
-            />
-            @if (field.help) {
-              <mat-hint [id]="field.key + '-help'">{{ field.help }}</mat-hint>
-            }
-          </mat-form-field>
-        }
-
+      <form [formGroup]="credentialForm" class="ak-card-body" (ngSubmit)="submitCredentials()">
         @if (manifest()!.auth.expiresAtVenueMidnight) {
-          <p class="ak-wizard-note">
+          <p class="ak-banner ak-banner--info">
             <mat-icon aria-hidden="true">schedule</mat-icon>
-            This session expires at midnight{{ manifest()!.auth.venueMidnightTimeZone ? ' (' + manifest()!.auth.venueMidnightTimeZone + ')' : '' }},
-            regardless of when you sign in — you'll need to relink daily.
+            <span>
+              This link expires at venue midnight{{ manifest()!.auth.venueMidnightTimeZone ? ' (' + manifest()!.auth.venueMidnightTimeZone + ')' : '' }}
+              regardless of when you sign in, so you'll need to reconnect daily.
+            </span>
           </p>
         }
 
+        <div class="ak-fields">
+          <div class="ak-field">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Nickname</mat-label>
+              <input matInput [formControl]="nicknameControl" placeholder="e.g. My {{ manifest()!.displayName }} account" />
+            </mat-form-field>
+            <p class="ak-field-msg">Optional. Helps you tell this link apart if you connect the same broker twice.</p>
+          </div>
+
+          @for (field of manifest()!.auth.credentialFields; track field.key) {
+            <div class="ak-field">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>
+                  {{ field.label }}@if (field.optional) {<span class="ak-label-opt"> · optional</span>}
+                </mat-label>
+                <input
+                  matInput
+                  [type]="field.secret ? 'password' : 'text'"
+                  [formControlName]="field.key"
+                  [placeholder]="field.placeholder ?? ''"
+                  [autocomplete]="field.secret ? 'off' : 'on'"
+                  [attr.aria-describedby]="field.key + '-msg'"
+                />
+                @if (field.secret) {
+                  <mat-icon matSuffix aria-hidden="true">lock</mat-icon>
+                }
+              </mat-form-field>
+              @if (errorFor(field.key, field.label); as err) {
+                <p class="ak-field-msg ak-field-msg--error" [id]="field.key + '-msg'" role="alert">{{ err }}</p>
+              } @else if (field.help) {
+                <p class="ak-field-msg" [id]="field.key + '-msg'">{{ field.help }}</p>
+              }
+            </div>
+          }
+        </div>
+
         @if (store.error(); as err) {
-          <p class="ak-wizard-error" role="alert">{{ err.detail ?? 'Could not start the login.' }}</p>
+          <p class="ak-banner ak-banner--error" role="alert">
+            <mat-icon aria-hidden="true">error_outline</mat-icon>
+            <span>{{ err.detail ?? 'We could not start the login. Check your details and try again.' }}</span>
+          </p>
         }
 
-        <button mat-flat-button color="primary" type="submit" [disabled]="store.loading()">
-          @if (store.loading()) {
-            <mat-spinner diameter="18" />
-          } @else {
-            Continue
-          }
-        </button>
+        <div class="ak-actions">
+          <button mat-flat-button color="primary" type="submit" class="ak-btn-block" [disabled]="store.loading()">
+            @if (store.loading()) {
+              <mat-spinner diameter="18" />
+              <span>Connecting…</span>
+            } @else {
+              <span>Continue</span>
+            }
+          </button>
+          <button mat-button type="button" class="ak-btn-block" (click)="cancel()">Cancel</button>
+        </div>
+
+        <p class="ak-fineprint">
+          <mat-icon aria-hidden="true">shield</mat-icon>
+          <span>Sent once to link the account. Credentials are never stored in this browser.</span>
+        </p>
       </form>
     } @else {
       @let step = store.step()!;
-      @switch (step.type) {
-        @case ('completed') {
-          <div class="ak-wizard-result ak-wizard-result--ok">
-            <mat-icon aria-hidden="true">check_circle</mat-icon>
-            <h3>{{ manifest()!.displayName }} linked</h3>
-            <p>Account: <span class="ak-num">{{ step.accountId }}</span></p>
-            @if (step.expiresAt; as expiresAt) {
-              <p class="ak-wizard-note">Session valid until {{ expiresAt | date: 'medium' }}.</p>
-            }
-            <button mat-flat-button color="primary" type="button" (click)="goToConnectors()">Done</button>
-          </div>
-        }
-
-        @case ('redirect') {
-          <div class="ak-wizard-redirect">
-            <p>{{ manifest()!.displayName }} needs you to sign in on its own site.</p>
-            <button mat-flat-button color="primary" type="button" (click)="openRedirect()">
-              <mat-icon aria-hidden="true">open_in_new</mat-icon>
-              Continue with {{ manifest()!.displayName }}
-            </button>
-            <p class="ak-wizard-note">
-              After approving access, paste the code it gives you (or the full redirect URL) below.
-            </p>
-            <mat-form-field appearance="outline">
-              <mat-label>Authorisation code</mat-label>
-              <input matInput [formControl]="redirectCodeControl" />
-            </mat-form-field>
-            @if (store.error(); as err) {
-              <p class="ak-wizard-error" role="alert">{{ err.detail }}</p>
-            }
-            <button mat-flat-button color="primary" type="button" [disabled]="store.loading()" (click)="submitRedirectCode()">
-              @if (store.loading()) {
-                <mat-spinner diameter="18" />
-              } @else {
-                Finish linking
+      <div class="ak-card-body">
+        @switch (step.type) {
+          @case ('completed') {
+            <div class="ak-panel ak-panel--ok">
+              <mat-icon class="ak-panel-icon" aria-hidden="true">check_circle</mat-icon>
+              <h2>{{ manifest()!.displayName }} linked</h2>
+              <p class="ak-panel-line">Account <span class="ak-num">{{ step.accountId }}</span></p>
+              @if (step.expiresAt; as expiresAt) {
+                <p class="ak-panel-muted">Session valid until {{ expiresAt | date: 'medium' }}</p>
               }
-            </button>
-          </div>
-        }
+              <div class="ak-actions">
+                <button mat-flat-button color="primary" type="button" class="ak-btn-block" (click)="goToConnectors()">Done</button>
+              </div>
+            </div>
+          }
 
-        @case ('challenge') {
-          <div class="ak-wizard-challenge">
-            <h3>{{ challengeKindLabel(step.challengeKind) }}</h3>
-            <p>{{ step.prompt }}</p>
-            @if (step.maskedDestination; as dest) {
-              <p class="ak-wizard-note">Sent to {{ dest }}</p>
-            }
-            @if (challengeCountdown() !== undefined) {
-              <p class="ak-wizard-countdown ak-num" [class.ak-wizard-countdown--urgent]="challengeCountdown()! < 30">
-                Expires in {{ challengeCountdown() }}s
+          @case ('redirect') {
+            <div class="ak-panel">
+              <mat-icon class="ak-panel-icon" aria-hidden="true">open_in_new</mat-icon>
+              <h2>Approve access on {{ manifest()!.displayName }}</h2>
+              <p class="ak-panel-muted">
+                Sign in on the broker's own site, then paste the code (or the full redirect URL) it gives you back here.
               </p>
-            }
-            <mat-form-field appearance="outline">
-              <mat-label>{{ challengeKindLabel(step.challengeKind) }}</mat-label>
-              <input matInput inputmode="numeric" [formControl]="challengeResponseControl" autocomplete="one-time-code" />
-            </mat-form-field>
-            @if (store.error(); as err) {
-              <p class="ak-wizard-error" role="alert">{{ err.detail ?? 'That code was not accepted.' }}</p>
-            }
-            <button
-              mat-flat-button
-              color="primary"
-              type="button"
-              [disabled]="store.loading() || challengeResponseControl.invalid"
-              (click)="submitChallenge()"
-            >
-              @if (store.loading()) {
-                <mat-spinner diameter="18" />
-              } @else {
-                Verify
+              <button mat-stroked-button type="button" class="ak-btn-block" (click)="openRedirect()">
+                <mat-icon aria-hidden="true">open_in_new</mat-icon>
+                <span>Open {{ manifest()!.displayName }}</span>
+              </button>
+              <div class="ak-field">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Authorisation code</mat-label>
+                  <input matInput [formControl]="redirectCodeControl" autocomplete="off" />
+                </mat-form-field>
+              </div>
+              @if (store.error(); as err) {
+                <p class="ak-banner ak-banner--error" role="alert">
+                  <mat-icon aria-hidden="true">error_outline</mat-icon>
+                  <span>{{ err.detail ?? 'That code was not accepted.' }}</span>
+                </p>
               }
-            </button>
-          </div>
-        }
+              <div class="ak-actions">
+                <button
+                  mat-flat-button
+                  color="primary"
+                  type="button"
+                  class="ak-btn-block"
+                  [disabled]="store.loading() || redirectCodeControl.invalid"
+                  (click)="submitRedirectCode()"
+                >
+                  @if (store.loading()) {
+                    <mat-spinner diameter="18" /><span>Finishing…</span>
+                  } @else {
+                    <span>Finish linking</span>
+                  }
+                </button>
+              </div>
+            </div>
+          }
 
-        @case ('gateway') {
-          <div class="ak-wizard-gateway">
-            <mat-icon aria-hidden="true">dns</mat-icon>
-            <h3>A local gateway is required</h3>
-            <p>{{ step.instructions }}</p>
-            <p class="ak-wizard-note">Gateway: <span class="ak-num">{{ step.gatewayId }}</span></p>
-            @if (store.error(); as err) {
-              <p class="ak-wizard-error" role="alert">{{ err.detail }}</p>
-            }
-            <button mat-flat-button color="primary" type="button" [disabled]="store.loading()" (click)="recheckGateway()">
-              @if (store.loading()) {
-                <mat-spinner diameter="18" />
-              } @else {
-                I've started the gateway — check again
+          @case ('challenge') {
+            <div class="ak-panel">
+              <mat-icon class="ak-panel-icon" aria-hidden="true">sms</mat-icon>
+              <h2>{{ challengeKindLabel(step.challengeKind) }}</h2>
+              <p class="ak-panel-muted">{{ step.prompt }}</p>
+              @if (step.maskedDestination; as dest) {
+                <p class="ak-panel-line">Sent to <strong>{{ dest }}</strong></p>
               }
-            </button>
-          </div>
+
+              <div class="ak-field">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>{{ challengeKindLabel(step.challengeKind) }}</mat-label>
+                  <input
+                    matInput
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    [formControl]="challengeResponseControl"
+                  />
+                </mat-form-field>
+                @if (challengeCountdown() !== undefined) {
+                  <p
+                    class="ak-field-msg ak-countdown"
+                    [class.ak-countdown--urgent]="challengeCountdown()! < 30"
+                  >
+                    @if (challengeCountdown()! > 0) {
+                      Code expires in <span class="ak-num">{{ challengeCountdown() }}s</span>
+                    } @else {
+                      This code has expired — request a new one.
+                    }
+                  </p>
+                }
+              </div>
+
+              @if (store.error(); as err) {
+                <p class="ak-banner ak-banner--error" role="alert">
+                  <mat-icon aria-hidden="true">error_outline</mat-icon>
+                  <span>{{ err.detail ?? 'That code was not accepted.' }}</span>
+                </p>
+              }
+
+              <div class="ak-actions">
+                <button
+                  mat-flat-button
+                  color="primary"
+                  type="button"
+                  class="ak-btn-block"
+                  [disabled]="store.loading() || challengeResponseControl.invalid"
+                  (click)="submitChallenge()"
+                >
+                  @if (store.loading()) {
+                    <mat-spinner diameter="18" /><span>Verifying…</span>
+                  } @else {
+                    <span>Verify</span>
+                  }
+                </button>
+              </div>
+            </div>
+          }
+
+          @case ('gateway') {
+            <div class="ak-panel">
+              <mat-icon class="ak-panel-icon" aria-hidden="true">dns</mat-icon>
+              <h2>A local gateway is required</h2>
+              <p class="ak-panel-muted">{{ step.instructions }}</p>
+              <p class="ak-panel-line">Gateway <span class="ak-num">{{ step.gatewayId }}</span></p>
+              @if (store.error(); as err) {
+                <p class="ak-banner ak-banner--error" role="alert">
+                  <mat-icon aria-hidden="true">error_outline</mat-icon>
+                  <span>{{ err.detail ?? 'The gateway is not reachable yet.' }}</span>
+                </p>
+              }
+              <div class="ak-actions">
+                <button mat-flat-button color="primary" type="button" class="ak-btn-block" [disabled]="store.loading()" (click)="recheckGateway()">
+                  @if (store.loading()) {
+                    <mat-spinner diameter="18" /><span>Checking…</span>
+                  } @else {
+                    <span>I've started it — check again</span>
+                  }
+                </button>
+              </div>
+            </div>
+          }
         }
-      }
+      </div>
     }
   </section>
 }

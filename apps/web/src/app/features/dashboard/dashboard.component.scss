@@ -97,6 +97,11 @@
   color: var(--ak-sell);
 }
 
+.ak-pnl-empty {
+  color: var(--ak-text-tertiary);
+  font-weight: 400;
+}
+
 .ak-pnl-converted {
   margin-top: 8px;
   font-size: 13px;
