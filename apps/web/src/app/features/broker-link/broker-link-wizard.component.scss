@@ -1,0 +1,111 @@
+:host {
+  display: block;
+  max-width: 440px;
+}
+
+.ak-wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius-lg);
+  padding: 24px;
+}
+
+.ak-wizard-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--ak-text-secondary);
+}
+
+.ak-wizard-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.ak-wizard-sub {
+  font-size: 12px;
+  color: var(--ak-text-secondary);
+}
+
+.ak-wizard-form,
+.ak-wizard-redirect,
+.ak-wizard-challenge,
+.ak-wizard-gateway {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.ak-wizard-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ak-text-secondary);
+  margin: 0;
+}
+
+.ak-wizard-note mat-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.ak-wizard-error {
+  color: var(--ak-danger);
+  font-size: 12px;
+  margin: 0;
+}
+
+.ak-wizard-countdown {
+  font-size: 13px;
+  color: var(--ak-text-secondary);
+}
+
+.ak-wizard-countdown--urgent {
+  color: var(--ak-danger);
+  font-weight: 600;
+}
+
+.ak-wizard-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.ak-wizard-result--ok mat-icon {
+  color: var(--ak-success);
+  font-size: 36px;
+  width: 36px;
+  height: 36px;
+}
+
+.ak-wizard-gateway {
+  align-items: center;
+  text-align: center;
+}
+
+.ak-wizard-gateway mat-icon {
+  font-size: 32px;
+  width: 32px;
+  height: 32px;
+  color: var(--ak-info);
+}
+
+button[mat-flat-button] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

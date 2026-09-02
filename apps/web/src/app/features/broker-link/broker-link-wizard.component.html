@@ -1,0 +1,156 @@
+@if (!manifest()) {
+  <div class="ak-wizard-loading"><mat-spinner diameter="28" /> Loading broker details…</div>
+} @else {
+  <section class="ak-wizard" aria-label="Link a broker account">
+    <header class="ak-wizard-header">
+      <h2>Link {{ manifest()!.displayName }}</h2>
+      <p class="ak-wizard-sub">{{ manifest()!.vendor }} · {{ manifest()!.jurisdictions.join(', ') }}</p>
+    </header>
+
+    <!--
+      The whole flow below switches on FOUR wire-level cases from
+      `AuthStepView` — never on `connectorId`. See the class doc comment for
+      why that distinction is the entire point of this component.
+    -->
+    @if (!store.step()) {
+      <!-- Step 0: credential form, built entirely from manifest.auth.credentialFields -->
+      <form [formGroup]="credentialForm" class="ak-wizard-form" (ngSubmit)="submitCredentials()">
+        <mat-form-field appearance="outline">
+          <mat-label>Nickname (optional)</mat-label>
+          <input matInput [formControl]="nicknameControl" placeholder="e.g. My {{ manifest()!.displayName }} account" />
+        </mat-form-field>
+
+        @for (field of manifest()!.auth.credentialFields; track field.key) {
+          <mat-form-field appearance="outline">
+            <mat-label>{{ field.label }}@if (field.optional) { (optional) }</mat-label>
+            <input
+              matInput
+              [type]="field.secret ? 'password' : 'text'"
+              [formControlName]="field.key"
+              [placeholder]="field.placeholder ?? ''"
+              [attr.aria-describedby]="field.help ? field.key + '-help' : null"
+            />
+            @if (field.help) {
+              <mat-hint [id]="field.key + '-help'">{{ field.help }}</mat-hint>
+            }
+          </mat-form-field>
+        }
+
+        @if (manifest()!.auth.expiresAtVenueMidnight) {
+          <p class="ak-wizard-note">
+            <mat-icon aria-hidden="true">schedule</mat-icon>
+            This session expires at midnight{{ manifest()!.auth.venueMidnightTimeZone ? ' (' + manifest()!.auth.venueMidnightTimeZone + ')' : '' }},
+            regardless of when you sign in — you'll need to relink daily.
+          </p>
+        }
+
+        @if (store.error(); as err) {
+          <p class="ak-wizard-error" role="alert">{{ err.detail ?? 'Could not start the login.' }}</p>
+        }
+
+        <button mat-flat-button color="primary" type="submit" [disabled]="store.loading()">
+          @if (store.loading()) {
+            <mat-spinner diameter="18" />
+          } @else {
+            Continue
+          }
+        </button>
+      </form>
+    } @else {
+      @switch (store.step()!.type) {
+        @case ('completed') {
+          <div class="ak-wizard-result ak-wizard-result--ok">
+            <mat-icon aria-hidden="true">check_circle</mat-icon>
+            <h3>{{ manifest()!.displayName }} linked</h3>
+            <p>Account: <span class="ak-num">{{ store.step()!.accountId }}</span></p>
+            @if (store.step()!.expiresAt; as expiresAt) {
+              <p class="ak-wizard-note">Session valid until {{ expiresAt | date: 'medium' }}.</p>
+            }
+            <button mat-flat-button color="primary" type="button" (click)="goToConnectors()">Done</button>
+          </div>
+        }
+
+        @case ('redirect') {
+          <div class="ak-wizard-redirect">
+            <p>{{ manifest()!.displayName }} needs you to sign in on its own site.</p>
+            <button mat-flat-button color="primary" type="button" (click)="openRedirect()">
+              <mat-icon aria-hidden="true">open_in_new</mat-icon>
+              Continue with {{ manifest()!.displayName }}
+            </button>
+            <p class="ak-wizard-note">
+              After approving access, paste the code it gives you (or the full redirect URL) below.
+            </p>
+            <mat-form-field appearance="outline">
+              <mat-label>Authorisation code</mat-label>
+              <input matInput [formControl]="redirectCodeControl" />
+            </mat-form-field>
+            @if (store.error(); as err) {
+              <p class="ak-wizard-error" role="alert">{{ err.detail }}</p>
+            }
+            <button mat-flat-button color="primary" type="button" [disabled]="store.loading()" (click)="submitRedirectCode()">
+              @if (store.loading()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                Finish linking
+              }
+            </button>
+          </div>
+        }
+
+        @case ('challenge') {
+          <div class="ak-wizard-challenge">
+            <h3>{{ challengeKindLabel(store.step()!.challengeKind) }}</h3>
+            <p>{{ store.step()!.prompt }}</p>
+            @if (store.step()!.maskedDestination; as dest) {
+              <p class="ak-wizard-note">Sent to {{ dest }}</p>
+            }
+            @if (challengeCountdown() !== undefined) {
+              <p class="ak-wizard-countdown ak-num" [class.ak-wizard-countdown--urgent]="challengeCountdown()! < 30">
+                Expires in {{ challengeCountdown() }}s
+              </p>
+            }
+            <mat-form-field appearance="outline">
+              <mat-label>{{ challengeKindLabel(store.step()!.challengeKind) }}</mat-label>
+              <input matInput inputmode="numeric" [formControl]="challengeResponseControl" autocomplete="one-time-code" />
+            </mat-form-field>
+            @if (store.error(); as err) {
+              <p class="ak-wizard-error" role="alert">{{ err.detail ?? 'That code was not accepted.' }}</p>
+            }
+            <button
+              mat-flat-button
+              color="primary"
+              type="button"
+              [disabled]="store.loading() || challengeResponseControl.invalid"
+              (click)="submitChallenge()"
+            >
+              @if (store.loading()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                Verify
+              }
+            </button>
+          </div>
+        }
+
+        @case ('gateway') {
+          <div class="ak-wizard-gateway">
+            <mat-icon aria-hidden="true">dns</mat-icon>
+            <h3>A local gateway is required</h3>
+            <p>{{ store.step()!.instructions }}</p>
+            <p class="ak-wizard-note">Gateway: <span class="ak-num">{{ store.step()!.gatewayId }}</span></p>
+            @if (store.error(); as err) {
+              <p class="ak-wizard-error" role="alert">{{ err.detail }}</p>
+            }
+            <button mat-flat-button color="primary" type="button" [disabled]="store.loading()" (click)="recheckGateway()">
+              @if (store.loading()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                I've started the gateway — check again
+              }
+            </button>
+          </div>
+        }
+      }
+    }
+  </section>
+}

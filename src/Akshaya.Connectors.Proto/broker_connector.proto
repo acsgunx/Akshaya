@@ -1,0 +1,562 @@
+syntax = "proto3";
+
+package akshaya.connectors.v1;
+
+option csharp_namespace = "Akshaya.Connectors.Proto";
+
+// =================================================================================================
+// The wire contract for an out-of-process connector.
+//
+// This mirrors Akshaya.Connectors.Abstractions exactly. A connector implementing this service in
+// ANY language — Python for a vendor with a Python-only SDK, Go, Java — is indistinguishable to
+// the platform from a C# connector loaded in-process: the host wraps both in the same decorator
+// chain and hands both to the core as an IBrokerConnector.
+//
+// That property is the entire reason this file exists. See
+// docs/adr/0006-three-hosting-models.md.
+//
+// Rules for anyone implementing this service:
+//
+//   * NEVER fail with a gRPC error status for an ordinary broker outcome. A rejected order, an
+//     expired session, a closed market are all Results — set the `error` field. gRPC statuses are
+//     for transport failures only.
+//   * ALWAYS preserve the broker's own error code and message in `vendor_code` / `vendor_message`.
+//     Support cannot help a trader with a canonical code alone.
+//   * Money always carries its currency. There is no implicit currency anywhere in this contract.
+//   * Quantities are decimal strings, not doubles. Fractional shares are real and binary floating
+//     point is not an acceptable representation of a position size.
+// =================================================================================================
+
+service BrokerConnector {
+  rpc GetManifest       (Empty)                  returns (Manifest);
+  rpc Health            (Empty)                  returns (HealthResponse);
+
+  // --- authentication ---
+  rpc BeginAuth         (AuthRequest)            returns (AuthStepResponse);
+  rpc ContinueAuth      (ChallengeRequest)       returns (AuthStepResponse);
+  rpc RefreshSession    (SessionRequest)         returns (SessionResponse);
+  rpc RevokeSession     (SessionRequest)         returns (AckResponse);
+  rpc KeepAlive         (SessionRequest)         returns (AckResponse);
+
+  // --- orders ---
+  rpc PlaceOrder        (PlaceOrderRequest)      returns (OrderAckResponse);
+  rpc ModifyOrder       (ModifyOrderRequest)     returns (OrderAckResponse);
+  rpc CancelOrder       (CancelOrderRequest)     returns (OrderAckResponse);
+  rpc CancelAllOrders   (Empty)                  returns (CancelAllResponse);
+  rpc PlaceBasket       (BasketRequest)          returns (BasketResponse);
+  rpc GetOrders         (OrderQuery)             returns (OrderListResponse);
+  rpc GetOrder          (OrderIdRequest)         returns (OrderResponse);
+  rpc GetTrades         (OrderQuery)             returns (TradeListResponse);
+  rpc EstimateMargin    (PlaceOrderRequest)      returns (MarginResponse);
+  rpc EstimateCharges   (PlaceOrderRequest)      returns (ChargesResponse);
+
+  // --- portfolio ---
+  rpc GetPositions      (Empty)                  returns (PositionListResponse);
+  rpc GetHoldings       (Empty)                  returns (HoldingListResponse);
+  rpc GetBalances       (Empty)                  returns (BalanceListResponse);
+
+  // --- market data ---
+  rpc GetQuote          (InstrumentRequest)      returns (QuoteResponse);
+  rpc GetLtp            (InstrumentsRequest)     returns (LtpResponse);
+  rpc GetHistorical     (HistoryRequest)         returns (CandleSeriesResponse);
+  rpc GetDepth          (InstrumentRequest)      returns (DepthResponse);
+  rpc GetOptionChain    (OptionChainRequest)     returns (OptionChainResponse);
+
+  // --- reference data ---
+  // Streamed because an instrument master runs to hundreds of thousands of rows and must never
+  // be materialised whole on either side.
+  rpc GetInstruments    (InstrumentQuery)        returns (stream InstrumentDefinition);
+  rpc ResolveInstrument (InstrumentRequest)      returns (InstrumentResponse);
+  rpc SearchInstruments (SearchRequest)          returns (InstrumentListResponse);
+
+  // --- streaming ---
+  // Bidirectional: the client sends subscribe/unsubscribe messages, the server sends ticks,
+  // depth, order updates and connection-state changes on the same channel — because most brokers
+  // deliver fills on the same socket as prices, and splitting them would mean two connections or
+  // a leaky abstraction.
+  rpc Subscribe         (stream SubscriptionRequest) returns (stream StreamEvent);
+}
+
+message Empty {}
+
+// -------------------------------------------------------------------------------------------------
+// Errors
+// -------------------------------------------------------------------------------------------------
+
+message Error {
+  // One of the canonical ConnectorErrorCodes values, e.g. "connector.session_expired".
+  string code = 1;
+  string message = 2;
+  string vendor_code = 3;      // the broker's own code, preserved verbatim
+  string vendor_message = 4;   // the broker's own message, preserved verbatim
+  map<string, string> context = 5;
+}
+
+// -------------------------------------------------------------------------------------------------
+// Value types
+// -------------------------------------------------------------------------------------------------
+
+// Decimal as a string. Never a double: 0.1 + 0.2 is not 0.3, and that is not acceptable in a
+// price or a position size.
+message Money {
+  string amount = 1;
+  string currency = 2;   // ISO 4217
+}
+
+message InstrumentKey {
+  string venue = 1;         // ISO 10383 MIC
+  string symbol = 2;
+  AssetClass asset_class = 3;
+  string expiry = 4;        // ISO date, derivatives only
+  string strike = 5;        // decimal string, options only
+  OptionRight right = 6;
+}
+
+enum AssetClass {
+  ASSET_CLASS_UNSPECIFIED = 0;
+  EQUITY = 1; ETF = 2; FUTURE = 3; OPTION = 4; INDEX = 5;
+  CURRENCY = 6; COMMODITY = 7; BOND = 8; FUND = 9; CRYPTO = 10;
+}
+
+enum OptionRight { OPTION_RIGHT_UNSPECIFIED = 0; CALL = 1; PUT = 2; }
+enum Side { SIDE_UNSPECIFIED = 0; BUY = 1; SELL = 2; }
+
+enum OrderType {
+  ORDER_TYPE_UNSPECIFIED = 0;
+  MARKET = 1; LIMIT = 2; STOP = 3; STOP_LIMIT = 4;
+  MARKET_IF_TOUCHED = 5; TRAILING_STOP = 6;
+}
+
+enum TimeInForce {
+  TIME_IN_FORCE_UNSPECIFIED = 0;
+  DAY = 1; GTC = 2; IOC = 3; FOK = 4; GTD = 5; AT_THE_OPEN = 6; AT_THE_CLOSE = 7;
+}
+
+// Bit flags, matching [Flags] PositionEffect: Intraday=1, Delivery=2, Margin=4,
+// CarryForward=8, ShortSell=16. A single enum cannot express the combinations that different
+// markets need.
+message PositionEffect { uint32 flags = 1; }
+
+enum OrderVariety {
+  ORDER_VARIETY_UNSPECIFIED = 0;
+  REGULAR = 1; AFTER_MARKET = 2; COVER = 3; BRACKET = 4; ICEBERG = 5; GOOD_TILL_TRIGGERED = 6;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  PENDING_SUBMIT = 1; SUBMITTED = 2; OPEN = 3; PARTIALLY_FILLED = 4;
+  FILLED = 5; CANCELLED = 6; REJECTED = 7; EXPIRED = 8;
+  // Deliberately present. A connector that has never seen a status must say so rather than
+  // guessing: reporting an unknown state as OPEN tells a trader their order is live when it
+  // may not be.
+  UNKNOWN = 9;
+}
+
+enum StreamMode { STREAM_MODE_UNSPECIFIED = 0; LTP = 1; QUOTE = 2; FULL = 3; }
+
+enum StreamState {
+  STREAM_STATE_UNSPECIFIED = 0;
+  DISCONNECTED = 1; CONNECTING = 2; CONNECTED = 3; DEGRADED = 4; RECONNECTING = 5;
+}
+
+enum TimeFrame {
+  TIME_FRAME_UNSPECIFIED = 0;
+  ONE_MINUTE = 1; THREE_MINUTES = 2; FIVE_MINUTES = 3; FIFTEEN_MINUTES = 4;
+  THIRTY_MINUTES = 5; ONE_HOUR = 6; ONE_DAY = 7; ONE_WEEK = 8; ONE_MONTH = 9;
+}
+
+// -------------------------------------------------------------------------------------------------
+// Manifest — the JSON manifest, mirrored. The canonical form remains connector.manifest.json;
+// this lets a remote connector serve its own manifest at startup.
+// -------------------------------------------------------------------------------------------------
+
+message Manifest {
+  string id = 1;
+  string display_name = 2;
+  string vendor = 3;
+  string contract_version = 4;
+  string connector_version = 5;
+  string hosting = 6;
+  repeated string jurisdictions = 7;
+  repeated string venues = 8;
+  repeated string currencies = 9;
+  repeated AssetClass asset_classes = 10;
+  AuthSpec auth = 11;
+  OrderSpec orders = 12;
+  MarketDataSpec market_data = 13;
+  repeated RateLimit rate_limits = 14;
+  ComplianceSpec compliance = 15;
+}
+
+message AuthSpec {
+  string model = 1;
+  repeated string challenges = 2;
+  string session_lifetime = 3;          // ISO 8601 duration
+  bool expires_at_venue_midnight = 4;
+  string venue_midnight_time_zone = 5;  // IANA zone
+  bool refresh_supported = 6;
+  string keep_alive_interval = 7;       // ISO 8601 duration
+  repeated CredentialField credential_fields = 8;
+}
+
+message CredentialField {
+  string key = 1; string label = 2; bool secret = 3; bool optional = 4;
+  string placeholder = 5; string help = 6; string pattern = 7;
+}
+
+message OrderSpec {
+  repeated OrderType types = 1;
+  repeated TimeInForce time_in_force = 2;
+  repeated uint32 position_effects = 3;
+  repeated OrderVariety varieties = 4;
+  repeated string modifiable = 5;
+  bool fractional_quantity = 6;
+  bool short_sell_equity = 7;
+  bool basket_supported = 8;
+  int32 basket_max_legs = 9;
+  bool basket_atomic = 10;
+  bool bracket = 11; bool cover = 12; bool gtt = 13;
+  bool margin_estimate = 14; bool charges_estimate = 15; bool cancel_all = 16;
+}
+
+message MarketDataSpec {
+  bool streaming = 1;
+  repeated StreamMode stream_modes = 2;
+  int32 depth_levels = 3;
+  bool historical = 4;
+  repeated TimeFrame historical_time_frames = 5;
+  bool option_chain = 6;
+  int32 max_stream_subscriptions = 7;
+  int32 history_days = 8;
+}
+
+message RateLimit {
+  string scope = 1;        // orders | data | quotes | global
+  int32 per_second = 2; int32 per_minute = 3; int32 per_day = 4;
+}
+
+message ComplianceSpec {
+  bool algo_approval_required = 1;
+  string regulator = 2;
+  bool algo_id_required = 3;
+  string notes = 4;
+}
+
+// -------------------------------------------------------------------------------------------------
+// Authentication
+// -------------------------------------------------------------------------------------------------
+
+message BrokerSession {
+  string connector_id = 1;
+  string account_id = 2;
+  string access_token = 3;
+  string refresh_token = 4;
+  string expires_at = 5;              // RFC 3339, UTC
+  map<string, string> extras = 6;     // broker-specific tokens, kept out of the shared contract
+}
+
+message AuthRequest {
+  map<string, string> credentials = 1;
+  string redirect_uri = 2;
+  string callback_code = 3;
+  map<string, string> state = 4;
+}
+
+message ChallengeRequest {
+  AuthRequest context = 1;
+  string response = 2;   // the OTP, TOTP or OAuth code
+}
+
+// The authentication state machine. Every broker's login — OAuth redirect, SMS OTP, authenticator
+// code, RSA signing, a local gateway handshake — is a walk through these cases.
+message AuthStepResponse {
+  Error error = 1;
+  oneof step {
+    SessionResponse completed = 2;
+    RedirectRequired redirect = 3;
+    ChallengeRequired challenge = 4;
+    GatewayRequired gateway = 5;
+  }
+}
+
+message RedirectRequired { string url = 1; string state = 2; }
+
+message ChallengeRequired {
+  string kind = 1;                 // SmsOtp | EmailOtp | Totp | SecurityQuestion | DeviceApproval
+  string prompt = 2;
+  string masked_destination = 3;
+  string expires_in = 4;           // ISO 8601 duration
+}
+
+message GatewayRequired { string gateway_id = 1; string instructions = 2; }
+
+message SessionRequest  { BrokerSession session = 1; }
+message SessionResponse { Error error = 1; BrokerSession session = 2; }
+message AckResponse     { Error error = 1; bool ok = 2; }
+
+// -------------------------------------------------------------------------------------------------
+// Orders
+// -------------------------------------------------------------------------------------------------
+
+message PlaceOrderRequest {
+  // Caller-generated and persisted before the call. On a timeout the platform re-reads the order
+  // book and matches on this rather than retrying — which is the difference between a recovered
+  // order and a duplicate one.
+  string client_order_id = 1;
+  InstrumentKey instrument = 2;
+  Side side = 3;
+  string quantity = 4;             // decimal string
+  OrderType order_type = 5;
+  PositionEffect position_effect = 6;
+  TimeInForce time_in_force = 7;
+  OrderVariety variety = 8;
+  Money limit_price = 9;
+  Money trigger_price = 10;
+  string disclosed_quantity = 11;
+  string good_till_date = 12;      // ISO date
+  string algo_id = 13;             // set for automated orders; several jurisdictions require it
+  string tag = 14;
+}
+
+message ModifyOrderRequest {
+  string broker_order_id = 1;
+  string quantity = 2;
+  Money limit_price = 3;
+  Money trigger_price = 4;
+  OrderType order_type = 5;
+  TimeInForce time_in_force = 6;
+  string disclosed_quantity = 7;
+}
+
+message CancelOrderRequest { string broker_order_id = 1; }
+message OrderIdRequest     { string broker_order_id = 1; }
+
+message OrderQuery {
+  string from = 1; string to = 2;         // ISO dates
+  InstrumentKey instrument = 3;
+  bool open_only = 4;
+}
+
+message OrderAck {
+  string broker_order_id = 1;
+  OrderStatus status = 2;
+  string client_order_id = 3;
+  string message = 4;
+  string acknowledged_at = 5;   // RFC 3339
+}
+
+message BrokerOrder {
+  string broker_order_id = 1;
+  string client_order_id = 2;
+  InstrumentKey instrument = 3;
+  Side side = 4;
+  string quantity = 5;
+  string filled_quantity = 6;
+  OrderStatus status = 7;
+  OrderType order_type = 8;
+  PositionEffect position_effect = 9;
+  TimeInForce time_in_force = 10;
+  OrderVariety variety = 11;
+  Money limit_price = 12;
+  Money trigger_price = 13;
+  Money average_price = 14;
+  string placed_at = 15;
+  string updated_at = 16;
+  // The broker's own rejection text. Always shown to the trader verbatim: "RMS: margin shortfall"
+  // is the answer to their question; a canonical code is not.
+  string status_message = 17;
+}
+
+message BrokerTrade {
+  string trade_id = 1;
+  string broker_order_id = 2;
+  InstrumentKey instrument = 3;
+  Side side = 4;
+  string quantity = 5;
+  Money price = 6;
+  string executed_at = 7;
+  Money charges = 8;
+}
+
+message BasketRequest  { repeated PlaceOrderRequest orders = 1; }
+message BasketResponse { Error error = 1; repeated OrderAck acks = 2; }
+
+message OrderAckResponse  { Error error = 1; OrderAck ack = 2; }
+message OrderResponse     { Error error = 1; BrokerOrder order = 2; }
+message OrderListResponse { Error error = 1; repeated BrokerOrder orders = 2; }
+message TradeListResponse { Error error = 1; repeated BrokerTrade trades = 2; }
+message CancelAllResponse { Error error = 1; int32 cancelled = 2; }
+
+message MarginResponse  { Error error = 1; Money required = 2; Money available = 3; }
+message ChargeLine      { string name = 1; Money amount = 2; string note = 3; }
+message ChargesResponse { Error error = 1; repeated ChargeLine lines = 2; Money total = 3; }
+
+// -------------------------------------------------------------------------------------------------
+// Portfolio
+// -------------------------------------------------------------------------------------------------
+
+message BrokerPosition {
+  InstrumentKey instrument = 1;
+  string net_quantity = 2;         // signed; negative is short
+  PositionEffect position_effect = 3;
+  Money average_price = 4;
+  Money last_price = 5;
+  Money unrealised_pnl = 6;
+  Money realised_pnl = 7;
+  string buy_quantity = 8;
+  string sell_quantity = 9;
+}
+
+message BrokerHolding {
+  InstrumentKey instrument = 1;
+  string quantity = 2;
+  Money average_price = 3;
+  Money last_price = 4;
+  Money unrealised_pnl = 5;
+  string pledged_quantity = 6;
+  string isin = 7;
+}
+
+// One balance per currency. Never collapsed into a single figure: a cross-border account holds
+// several currencies at once and summing them here would destroy information the UI needs.
+message BrokerBalance {
+  string currency = 1;
+  Money available_to_trade = 2;
+  Money cash_balance = 3;
+  Money used_margin = 4;
+  Money available_margin = 5;
+  Money collateral = 6;
+  Money realised_pnl = 7;
+  Money unrealised_pnl = 8;
+}
+
+message PositionListResponse { Error error = 1; repeated BrokerPosition positions = 2; }
+message HoldingListResponse  { Error error = 1; repeated BrokerHolding holdings = 2; }
+message BalanceListResponse  { Error error = 1; repeated BrokerBalance balances = 2; }
+
+// -------------------------------------------------------------------------------------------------
+// Market data
+// -------------------------------------------------------------------------------------------------
+
+message Quote {
+  InstrumentKey instrument = 1;
+  Money last_price = 2;
+  Money open = 3; Money high = 4; Money low = 5; Money previous_close = 6;
+  Money bid_price = 7; Money ask_price = 8;
+  string bid_quantity = 9; string ask_quantity = 10;
+  int64 volume = 11; int64 open_interest = 12;
+  string timestamp = 13;
+}
+
+message Candle {
+  string open_time = 1;
+  string open = 2; string high = 3; string low = 4; string close = 5;
+  int64 volume = 6; int64 open_interest = 7;
+}
+
+message DepthLevel { Money price = 1; string quantity = 2; int32 orders = 3; }
+
+message MarketDepth {
+  InstrumentKey instrument = 1;
+  repeated DepthLevel bids = 2;
+  repeated DepthLevel asks = 3;
+  string timestamp = 4;
+}
+
+message OptionChainRow {
+  string strike = 1;
+  Quote call = 2; Quote put = 3;
+  int64 call_open_interest = 4; int64 put_open_interest = 5;
+}
+
+message InstrumentDefinition {
+  InstrumentKey key = 1;
+  string name = 2;
+  string currency = 3;
+  string isin = 4;
+  string figi = 5;
+  string lot_size = 6;
+  string tick_size = 7;
+  string multiplier = 8;
+  string trading_hours_id = 9;
+  int32 settlement_days = 10;
+  bool is_tradable = 11;
+}
+
+message InstrumentRequest   { InstrumentKey instrument = 1; }
+message InstrumentsRequest  { repeated InstrumentKey instruments = 1; }
+message InstrumentQuery     { string venue = 1; AssetClass asset_class = 2; }
+message SearchRequest       { string query = 1; int32 limit = 2; }
+message HistoryRequest {
+  InstrumentKey instrument = 1;
+  TimeFrame time_frame = 2;
+  string from = 3; string to = 4;   // RFC 3339
+}
+message OptionChainRequest  { InstrumentKey underlying = 1; string expiry = 2; }
+
+message QuoteResponse        { Error error = 1; Quote quote = 2; }
+message LtpResponse          { Error error = 1; map<string, Money> prices = 2; } // key: InstrumentKey.ToString()
+message DepthResponse        { Error error = 1; MarketDepth depth = 2; }
+message CandleSeriesResponse {
+  Error error = 1;
+  InstrumentKey instrument = 2;
+  TimeFrame time_frame = 3;
+  string currency = 4;
+  repeated Candle candles = 5;
+}
+message OptionChainResponse {
+  Error error = 1;
+  InstrumentKey underlying = 2;
+  string expiry = 3;
+  repeated OptionChainRow rows = 4;
+  Money underlying_price = 5;
+}
+message InstrumentResponse     { Error error = 1; InstrumentDefinition instrument = 2; }
+message InstrumentListResponse { Error error = 1; repeated InstrumentDefinition instruments = 2; }
+message HealthResponse {
+  Error error = 1;
+  bool is_healthy = 2;
+  StreamState stream_state = 3;
+  bool session_valid = 4;
+  string session_expires_at = 5;
+  bool gateway_running = 6;
+  string detail = 7;
+}
+
+// -------------------------------------------------------------------------------------------------
+// Streaming
+// -------------------------------------------------------------------------------------------------
+
+message SubscriptionRequest {
+  enum Action { ACTION_UNSPECIFIED = 0; SUBSCRIBE = 1; UNSUBSCRIBE = 2; DISCONNECT = 3; }
+  Action action = 1;
+  repeated InstrumentKey instruments = 2;
+  StreamMode mode = 3;
+  BrokerSession session = 4;
+}
+
+message Tick {
+  InstrumentKey instrument = 1;
+  Money last_price = 2;
+  string last_quantity = 3;
+  int64 volume = 4;
+  Money bid_price = 5; Money ask_price = 6;
+  Money open = 7; Money high = 8; Money low = 9; Money previous_close = 10;
+  int64 open_interest = 11;
+  string timestamp = 12;
+}
+
+// Order and execution updates share this channel on purpose: most brokers push fills on the same
+// socket as prices, and modelling them separately would mean two connections or a leaky
+// abstraction.
+message StreamEvent {
+  oneof event {
+    Tick tick = 1;
+    MarketDepth depth = 2;
+    BrokerOrder order = 3;
+    BrokerTrade trade = 4;
+    ConnectionChanged connection = 5;
+  }
+}
+
+message ConnectionChanged { StreamState state = 1; string reason = 2; }

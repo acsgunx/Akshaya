@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE TRADING CORE.
+
+    This assembly owns the platform's own order aggregate, its state machine, its pre-trade
+    risk gate and the handlers that sit on the critical path between a user pressing "buy"
+    and a broker receiving the order.
+
+    IT CONTAINS NO BROKER NAMES. Not in a type, not in a string, not in a comment. Everything
+    broker-specific is either behind IBrokerConnector or declared in a ConnectorManifest.
+    tests/Akshaya.Architecture.Tests scans this project for vendor names and fails the build
+    if one appears — because the first `if (connectorId == "…")` is the moment plug-and-play
+    stops being true.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Modules.Trading</RootNamespace>
+    <AssemblyName>Akshaya.Modules.Trading</AssemblyName>
+    <!--
+      CA1848: LoggerMessage source-gen delegates. Not worth it outside the tick hot path.
+      CA2007: ConfigureAwait(false). No sync context in ASP.NET Core; adding it hides bugs.
+      CA1031: catching Exception is correct at exactly one boundary — turning an arbitrary
+              connector throw into a Result so one broker cannot take down a request.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Akshaya.Connectors.Host\Akshaya.Connectors.Host.csproj" />
+    <ProjectReference Include="..\..\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="FluentValidation" Version="11.11.0" />
+    <!--
+      Only for AddValidatorsFromAssemblyContaining in the composition root. The validators
+      themselves depend on FluentValidation alone, so they stay testable without a container.
+    -->
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+  </ItemGroup>
+
+</Project>

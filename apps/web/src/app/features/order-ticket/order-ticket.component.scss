@@ -1,0 +1,272 @@
+:host {
+  display: block;
+  max-width: 420px;
+}
+
+.ak-ticket {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius-lg);
+  padding: 20px;
+}
+
+.ak-ticket-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--ak-text-secondary);
+}
+
+.ak-ticket-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ak-ticket-heading h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.ak-ticket-broker {
+  font-size: 12px;
+  color: var(--ak-text-secondary);
+}
+
+.ak-ticket-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--ak-radius-sm);
+}
+
+.ak-ticket-price .ak-col-price {
+  font-size: 24px;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.ak-ticket-price-label {
+  font-size: 11px;
+  color: var(--ak-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ak-ticket-price-placeholder {
+  font-size: 12px;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-ticket-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ak-side-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ak-side-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--ak-radius-md);
+  border: 2px solid var(--ak-border);
+  background: var(--ak-surface-2);
+  color: var(--ak-text-secondary);
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color var(--ak-motion-base) var(--ak-ease-standard),
+    background var(--ak-motion-base) var(--ak-ease-standard),
+    color var(--ak-motion-base) var(--ak-ease-standard);
+}
+
+.ak-side-btn--buy.selected {
+  border-color: var(--ak-buy);
+  background: var(--ak-buy-surface);
+  color: var(--ak-buy);
+}
+
+.ak-side-btn--sell.selected {
+  border-color: var(--ak-sell);
+  background: var(--ak-sell-surface);
+  color: var(--ak-sell);
+}
+
+.ak-kbd {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: var(--ak-radius-xs);
+  background: var(--ak-surface-3);
+  font-family: var(--ak-font-mono);
+  font-size: 10px;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.ak-ticket-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ak-text-secondary);
+  margin: 0;
+}
+
+.ak-ticket-note mat-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 1px;
+}
+
+.ak-ticket-note--warning {
+  color: var(--ak-warning);
+}
+
+.ak-ticket-note--danger {
+  color: var(--ak-danger);
+}
+
+.ak-ticket-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ak-btn-buy {
+  background: var(--ak-buy) !important;
+  color: white !important;
+}
+
+.ak-btn-sell {
+  background: var(--ak-sell) !important;
+  color: #1a1200 !important;
+}
+
+.ak-ticket-review h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.ak-review-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 13px;
+}
+
+.ak-review-grid dt {
+  color: var(--ak-text-tertiary);
+}
+
+.ak-review-grid dd {
+  text-align: right;
+  margin: 0;
+  font-weight: 500;
+}
+
+.ak-buy-text {
+  color: var(--ak-buy);
+}
+
+.ak-sell-text {
+  color: var(--ak-sell);
+}
+
+.ak-estimate {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ak-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ak-estimate-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ak-text-secondary);
+  margin-top: 12px;
+}
+
+.ak-estimate-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.ak-estimate-row--muted {
+  color: var(--ak-text-secondary);
+}
+
+.ak-estimate-row--total {
+  font-weight: 700;
+  border-top: 1px dashed var(--ak-border);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
+.ak-ticket-submitting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 0;
+  color: var(--ak-text-secondary);
+}
+
+.ak-ticket-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+.ak-ticket-result--ok mat-icon {
+  color: var(--ak-success);
+  font-size: 36px;
+  width: 36px;
+  height: 36px;
+}
+
+.ak-ticket-result--error mat-icon {
+  color: var(--ak-danger);
+  font-size: 36px;
+  width: 36px;
+  height: 36px;
+}
+
+.ak-ticket-broker-text {
+  font-style: italic;
+  color: var(--ak-text-secondary);
+  font-size: 12px;
+}
+
+.ak-kbd-hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--ak-text-tertiary);
+  margin: 0;
+}

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The SharedKernel has NO package references and no project references, on purpose.
+    It is the vocabulary every other assembly shares; if it grows a dependency, that
+    dependency becomes mandatory for every connector author. Keep it empty.
+    Enforced by tests/Akshaya.Architecture.Tests/DependencyRules.cs.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.SharedKernel</RootNamespace>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE ONLY ASSEMBLY THAT KNOWS CONNECTORS EXIST AS A PLURALITY.
+
+    It discovers them, validates their manifests, isolates their dependencies, wraps them in
+    the decorator chain and supervises their gateways. Everything above it — the API, the
+    Trading module, the UI — sees IBrokerConnector and a manifest, and cannot tell whether a
+    connector is C# in this process, Python behind gRPC, or a vendor daemon.
+
+    This is also the one place, alongside src/connectors/**, where a broker's name may appear
+    in source (in a comment or a plugin folder name). The architecture tests enforce that
+    everywhere else.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Connectors.Host</RootNamespace>
+    <!-- See the SDK csproj for the reasoning behind each of these. -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />
+    <ProjectReference Include="..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+
+    <!--
+      gRPC, for the out-of-process connector proxy. Not in the original dependency list but
+      unavoidable: OutOfProcess/GrpcConnectorProxy.cs speaks the contract in
+      ../Akshaya.Connectors.Proto/broker_connector.proto, and the generated client comes from
+      Grpc.Tools at build time. Grpc.Tools is a build-only dependency and does not ship.
+    -->
+    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.71.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Client-side stubs only. The host never SERVES this contract; an out-of-process connector
+      implements the server side in whatever language it is written in.
+    -->
+    <Protobuf Include="..\Akshaya.Connectors.Proto\broker_connector.proto"
+              GrpcServices="Client"
+              ProtoRoot="..\Akshaya.Connectors.Proto"
+              Link="Proto\broker_connector.proto" />
+  </ItemGroup>
+
+</Project>

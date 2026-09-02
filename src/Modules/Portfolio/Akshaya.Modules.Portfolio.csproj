@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE BLENDED PORTFOLIO.
+
+    Its job is to make five broker accounts in four currencies look like one portfolio without
+    lying about any of them. Two invariants drive every design decision in here:
+
+      * Nothing is ever summed across currencies without an explicit, timestamped rate.
+      * One broker being down degrades the view; it never blanks it.
+
+    Like the Trading module, this assembly contains NO BROKER NAMES. Brokers are connector ids
+    and manifests; the aggregation logic cannot tell them apart and must not try.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Modules.Portfolio</RootNamespace>
+    <AssemblyName>Akshaya.Modules.Portfolio</AssemblyName>
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Akshaya.Connectors.Host\Akshaya.Connectors.Host.csproj" />
+    <ProjectReference Include="..\..\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

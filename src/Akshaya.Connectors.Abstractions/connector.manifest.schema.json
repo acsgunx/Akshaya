@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://akshaya.trade/schemas/connector.manifest.schema.json",
+  "title": "Akshaya connector manifest",
+  "description": "The declarative description of what a broker can do. The platform's order ticket, link wizard, risk gate and conformance suite all read this file — it is the only place broker differences may be expressed. If the core needs to know something about a broker, it becomes a field here, never an 'if (connectorId == ...)'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "displayName", "vendor", "contractVersion", "connectorVersion",
+    "jurisdictions", "venues", "currencies", "assetClasses", "auth", "orders", "marketData"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$",
+      "description": "Stable lowercase identifier. Used in API routes and as a Redis key segment, so it never changes once shipped."
+    },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "vendor": { "type": "string", "minLength": 1 },
+    "contractVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "Which version of the connector contract this was built against. The host accepts the current major and one behind, so a third-party connector does not break on our deploy."
+    },
+    "connectorVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "hosting": {
+      "enum": ["InProcess", "OutOfProcess", "Gateway"],
+      "default": "InProcess",
+      "description": "InProcess: loaded into the API in its own AssemblyLoadContext. OutOfProcess: a separate process speaking gRPC, in any language. Gateway: needs a supervised vendor daemon."
+    },
+    "gateway": { "$ref": "#/$defs/gateway" },
+    "jurisdictions": {
+      "type": "array", "minItems": 1,
+      "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+      "description": "ISO 3166 country codes. Drives which compliance rules apply."
+    },
+    "venues": {
+      "type": "array", "minItems": 1,
+      "items": { "type": "string", "pattern": "^[A-Z0-9]{4}$" },
+      "description": "ISO 10383 MIC codes. Not an enum anywhere in the system — adding a venue is reference data, not a recompile."
+    },
+    "currencies": {
+      "type": "array", "minItems": 1,
+      "items": { "type": "string", "pattern": "^[A-Z]{3}$" },
+      "description": "ISO 4217. Every Money the connector returns must be in one of these."
+    },
+    "assetClasses": {
+      "type": "array", "minItems": 1,
+      "items": { "$ref": "#/$defs/assetClass" }
+    },
+    "auth": { "$ref": "#/$defs/auth" },
+    "orders": { "$ref": "#/$defs/orders" },
+    "marketData": { "$ref": "#/$defs/marketData" },
+    "rateLimits": { "type": "array", "items": { "$ref": "#/$defs/rateLimit" } },
+    "sandbox": { "$ref": "#/$defs/sandbox" },
+    "compliance": { "$ref": "#/$defs/compliance" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "hosting": { "const": "Gateway" } }, "required": ["hosting"] },
+      "then": {
+        "required": ["gateway"],
+        "description": "A gateway-hosted connector without a gateway block cannot be supervised, and its failures would surface as unexplained timeouts."
+      }
+    },
+    {
+      "if": {
+        "properties": { "auth": { "properties": { "expiresAtVenueMidnight": { "const": true } }, "required": ["expiresAtVenueMidnight"] } }
+      },
+      "then": {
+        "properties": { "auth": { "required": ["venueMidnightTimeZone"] } },
+        "description": "Without the timezone the session monitor cannot compute the real expiry, and the re-auth prompt fires hours after the token died."
+      }
+    }
+  ],
+  "$defs": {
+    "assetClass": {
+      "enum": ["Equity", "Etf", "Future", "Option", "Index", "Currency", "Commodity", "Bond", "Fund", "Crypto"]
+    },
+    "orderType": {
+      "enum": ["Market", "Limit", "Stop", "StopLimit", "MarketIfTouched", "TrailingStop"]
+    },
+    "timeInForce": {
+      "enum": ["Day", "Gtc", "Ioc", "Fok", "Gtd", "AtTheOpen", "AtTheClose"]
+    },
+    "positionEffect": {
+      "enum": ["Intraday", "Delivery", "Margin", "CarryForward", "ShortSell"],
+      "description": "Canonical names. A connector maps these to its broker's vocabulary (CNC/MIS/MTF/NRML and so on) inside its own mapping file."
+    },
+    "orderVariety": {
+      "enum": ["Regular", "AfterMarket", "Cover", "Bracket", "Iceberg", "GoodTillTriggered"]
+    },
+    "streamMode": { "enum": ["Ltp", "Quote", "Full"] },
+    "timeFrame": {
+      "enum": ["OneMinute", "ThreeMinutes", "FiveMinutes", "FifteenMinutes", "ThirtyMinutes", "OneHour", "OneDay", "OneWeek", "OneMonth"]
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "image": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "perCredential": {
+          "type": "boolean", "default": true,
+          "description": "True when every user needs their own gateway process. This is a real per-user infrastructure cost and the pricing model must account for it."
+        },
+        "healthEndpoint": { "type": "string" },
+        "setupInstructionsUrl": { "type": "string", "format": "uri" }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "credentialFields"],
+      "properties": {
+        "model": {
+          "enum": ["OAuth2", "OAuth1a", "PasswordOtp", "PasswordTotp", "StaticToken", "RsaSigned", "GatewaySession"],
+          "description": "Drives which shape the generic link wizard renders. The flow itself runs through the AuthStep state machine."
+        },
+        "challenges": {
+          "type": "array",
+          "items": { "enum": ["SmsOtp", "EmailOtp", "Totp", "SecurityQuestion", "DeviceApproval"] }
+        },
+        "sessionLifetime": { "type": ["string", "null"], "description": "ISO 8601 duration, e.g. PT12H." },
+        "expiresAtVenueMidnight": {
+          "type": "boolean", "default": false,
+          "description": "True for most Indian brokers: the token dies at venue midnight regardless of issue time."
+        },
+        "venueMidnightTimeZone": { "type": "string", "description": "IANA zone, e.g. Asia/Kolkata." },
+        "refreshSupported": { "type": "boolean", "default": false },
+        "keepAliveInterval": {
+          "type": ["string", "null"],
+          "description": "ISO 8601 duration. Non-null for brokers that drop idle sessions."
+        },
+        "credentialFields": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "label"],
+            "properties": {
+              "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "label": { "type": "string", "minLength": 1 },
+              "secret": { "type": "boolean", "default": false },
+              "optional": { "type": "boolean", "default": false },
+              "placeholder": { "type": "string" },
+              "help": { "type": "string" },
+              "pattern": { "type": "string", "description": "Client-side hint only; server-side validation is never skipped." }
+            }
+          }
+        }
+      }
+    },
+    "orders": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["types", "timeInForce", "positionEffects"],
+      "properties": {
+        "types": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/orderType" } },
+        "timeInForce": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/timeInForce" } },
+        "positionEffects": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/positionEffect" } },
+        "varieties": { "type": "array", "items": { "$ref": "#/$defs/orderVariety" } },
+        "modifiable": {
+          "type": "array",
+          "items": { "enum": ["Quantity", "LimitPrice", "TriggerPrice", "OrderType", "TimeInForce", "DisclosedQuantity"] },
+          "description": "Which fields a modify may change, named exactly as the properties on ModifyOrderRequest so the UI can disable the rest by name rather than by a parallel vocabulary that can drift."
+        },
+        "fractionalQuantity": { "type": "boolean", "default": false },
+        "shortSellEquity": { "type": "boolean", "default": false },
+        "basket": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "supported": { "type": "boolean", "default": false },
+            "maxLegs": { "type": "integer", "minimum": 0 },
+            "atomic": {
+              "type": "boolean", "default": false,
+              "description": "False when the connector fakes a basket by looping. The UI must then warn about partial execution — a trader assuming atomicity can end up half-hedged."
+            }
+          },
+          "if": { "properties": { "supported": { "const": true } }, "required": ["supported"] },
+          "then": { "properties": { "maxLegs": { "minimum": 1 } }, "required": ["maxLegs"] }
+        },
+        "bracket": { "type": "boolean", "default": false },
+        "cover": { "type": "boolean", "default": false },
+        "gtt": { "type": "boolean", "default": false },
+        "marginEstimate": { "type": "boolean", "default": false },
+        "chargesEstimate": { "type": "boolean", "default": false },
+        "cancelAll": { "type": "boolean", "default": false }
+      }
+    },
+    "marketData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "streaming": { "type": "boolean", "default": false },
+        "streamModes": { "type": "array", "items": { "$ref": "#/$defs/streamMode" } },
+        "depthLevels": { "type": "integer", "minimum": 0 },
+        "historical": { "type": "boolean", "default": false },
+        "historicalTimeFrames": { "type": "array", "items": { "$ref": "#/$defs/timeFrame" } },
+        "optionChain": { "type": "boolean", "default": false },
+        "maxStreamSubscriptions": {
+          "type": "integer", "minimum": 1,
+          "description": "Hard cap the fan-out layer must respect, or the broker drops the connection."
+        },
+        "historyDays": {
+          "type": "integer", "minimum": 1,
+          "description": "How far back the broker serves. Beyond this we answer from our own store."
+        }
+      },
+      "if": { "properties": { "streaming": { "const": true } }, "required": ["streaming"] },
+      "then": {
+        "required": ["streamModes"],
+        "properties": { "streamModes": { "minItems": 1 } }
+      }
+    },
+    "rateLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope"],
+      "properties": {
+        "scope": {
+          "enum": ["orders", "data", "quotes", "global"],
+          "description": "Buckets are enforced per credential, not per application instance."
+        },
+        "perSecond": { "type": "integer", "minimum": 1 },
+        "perMinute": { "type": "integer", "minimum": 1 },
+        "perDay": { "type": "integer", "minimum": 1 }
+      },
+      "anyOf": [
+        { "required": ["perSecond"] },
+        { "required": ["perMinute"] },
+        { "required": ["perDay"] }
+      ]
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "available": { "type": "boolean" },
+        "baseUrl": { "type": ["string", "null"], "format": "uri" },
+        "notes": { "type": ["string", "null"] }
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "algoApprovalRequired": {
+          "type": "boolean", "default": false,
+          "description": "True where automated order flow needs the broker's or exchange's approval before it may run. When true, live automation stays behind a per-tenant flag an operator must deliberately enable."
+        },
+        "regulator": { "type": ["string", "null"] },
+        "algoIdRequired": { "type": "boolean", "default": false },
+        "notes": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

@@ -1,0 +1,162 @@
+// =============================================================================
+// AKSHAYA DESIGN TOKENS
+// =============================================================================
+// Single source of truth for colour, type, spacing, radius and elevation.
+// Angular Material's theme (_theme.scss) is built FROM these, never the other
+// way round — a designer changing a token here should never have to also
+// touch a component's SCSS.
+//
+// See DESIGN.md for the rationale behind the choices marked "DECISION:".
+// =============================================================================
+
+// ---- Base palette -----------------------------------------------------------
+// DECISION: dark-first, deep neutral GREYS rather than near-black. Pure black
+// (#000) next to bright price digits causes halation/glow on OLED screens and
+// reads as "off" rather than "calm"; a lifted neutral (~8-14% luminance) is
+// what every serious trading terminal (Bloomberg, TradingView dark) actually
+// ships, because it holds contrast for red/green/blue accents without them
+// blooming.
+$grey-950: #0e1013;
+$grey-900: #14161a;
+$grey-850: #1a1d22;
+$grey-800: #20242b;
+$grey-700: #2a2f38;
+$grey-600: #383f4b;
+$grey-500: #4d5566;
+$grey-400: #6b7385;
+$grey-300: #98a1b3;
+$grey-200: #c2c9d6;
+$grey-100: #e2e6ee;
+$grey-50: #f4f6fa;
+$grey-0: #ffffff;
+
+// ---- Brand -------------------------------------------------------------------
+$brand-500: #6366f1; // indigo — chrome accents, links, focus (paired w/ AA text)
+$brand-400: #818cf8;
+$brand-600: #4f46e5;
+
+// ---- Buy / Sell --------------------------------------------------------------
+// DECISION: NOT red/green. ~8% of men are red-green colour-blind (deuteranopia
+// /protanopia), and red-on-dark-grey vs green-on-dark-grey is one of the worst
+// pairs for them — both desaturate toward a similar dull olive. We use a
+// blue/amber pair instead: blue and amber/orange sit far apart on every axis
+// a colour-blind eye still resolves (short vs long wavelength, and amber
+// additionally carries a luminance difference no red/green pair does at
+// equal chroma). Verified against Deuteranopia/Protanopia/Tritanopia
+// simulation — the two remain distinguishable in all three.
+// A colour-blind-SAFE ALTERNATE mode (settings > accessibility) swaps these
+// for a luminance-separated pair (light cyan vs dark violet) plus mandatory
+// +/− glyphs, for the rare viewer who still finds blue/amber close.
+$buy-500: #3b82f6; // blue — "buy / long"
+$buy-400: #60a5fa;
+$buy-700: #1d4ed8;
+$buy-surface: rgba(59, 130, 246, 0.12);
+
+$sell-500: #f59e0b; // amber — "sell / short"
+$sell-400: #fbbf24;
+$sell-700: #b45309;
+$sell-surface: rgba(245, 158, 11, 0.14);
+
+// Colour-blind-safe ALTERNATE pair (opt-in via data-cvd-safe="true" on :root).
+$buy-500-cvd: #56c2ff; // light cyan
+$sell-500-cvd: #7c3aed; // dark violet
+
+// ---- Semantic status -----------------------------------------------------
+$success-500: #22c55e; // used ONLY for non-directional success (order acked, link ok)
+$warning-500: #eab308;
+$danger-500: #ef4444; // reserved for destructive/error, never for "sell"
+$info-500: #38bdf8;
+
+// Connection / session state
+$state-live: $success-500;
+$state-degraded: $warning-500;
+$state-stale: $grey-400;
+$state-disconnected: $danger-500;
+
+// ---- Elevation (dark-mode: lighter surface = higher, not shadow-only) -------
+$elevation-0: $grey-900; // page background
+$elevation-1: $grey-850; // cards, panels
+$elevation-2: $grey-800; // raised panels, popovers
+$elevation-3: $grey-700; // dialogs, menus
+$elevation-4: $grey-600; // topmost (toasts, kill-switch confirm)
+
+$shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+$shadow-2: 0 2px 8px rgba(0, 0, 0, 0.45);
+$shadow-3: 0 8px 24px rgba(0, 0, 0, 0.5);
+$shadow-4: 0 16px 40px rgba(0, 0, 0, 0.55);
+
+// ---- Radius ------------------------------------------------------------------
+$radius-xs: 4px;
+$radius-sm: 6px;
+$radius-md: 10px;
+$radius-lg: 16px;
+$radius-full: 999px;
+
+// ---- Spacing scale (4px base) -------------------------------------------------
+$space-1: 4px;
+$space-2: 8px;
+$space-3: 12px;
+$space-4: 16px;
+$space-5: 20px;
+$space-6: 24px;
+$space-8: 32px;
+$space-10: 40px;
+$space-12: 48px;
+$space-16: 64px;
+
+// ---- Type ----------------------------------------------------------------
+// Two families: Inter for UI text, Roboto Mono for anything numeric that
+// benefits from fixed glyph width beyond what tabular-nums alone gives
+// (order ids, timestamps). Prices themselves use Inter + tabular-nums so
+// they keep the UI's voice while still not jittering.
+$font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+$font-mono: 'Roboto Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+// Type scale. Numeric contexts (prices, quantities, P&L, countdowns) must set
+// `font-variant-numeric: tabular-nums` — enforced globally in styles.scss on
+// table cells, and available as a utility class `.ak-num` everywhere else.
+$fs-xs: 11px;
+$fs-sm: 12px;
+$fs-base: 13px;
+$fs-md: 14px;
+$fs-lg: 16px;
+$fs-xl: 20px;
+$fs-2xl: 28px;
+$fs-3xl: 36px;
+
+$lh-tight: 1.2;
+$lh-normal: 1.45;
+$lh-loose: 1.6;
+
+$fw-regular: 400;
+$fw-medium: 500;
+$fw-semibold: 600;
+$fw-bold: 700;
+
+// ---- Motion --------------------------------------------------------------
+// DECISION: flashes (watchlist LTP changes) fade over 900ms — long enough to
+// register peripherally, short enough not to still be flashing when the next
+// tick arrives on a liquid instrument. Everything else is snappy (150ms) so
+// the UI never feels like it is standing between the trader and the broker.
+$motion-fast: 120ms;
+$motion-base: 180ms;
+$motion-flash: 900ms;
+$ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+// ---- Fixed-width numeric columns ------------------------------------------
+// DECISION: every price/qty/P&L column in a table has a declared min-width in
+// `ch` units (monospace-safe even on a proportional numeral font because of
+// tabular-nums) so an incoming tick can NEVER change column width and shove
+// adjacent columns — see DESIGN.md "price cells must never jitter".
+$col-price-width: 11ch;
+$col-qty-width: 9ch;
+$col-pnl-width: 13ch;
+$col-time-width: 9ch;
+
+// ---- Z-index scale ---------------------------------------------------------
+$z-sticky: 10;
+$z-banner: 20;
+$z-dropdown: 30;
+$z-dialog: 40;
+$z-toast: 50;
+$z-kill-switch: 60; // the kill-switch confirmation sits above literally everything

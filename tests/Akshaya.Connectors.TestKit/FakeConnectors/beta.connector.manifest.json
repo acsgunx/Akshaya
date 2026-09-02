@@ -1,0 +1,77 @@
+{
+  "id": "beta",
+  "displayName": "Beta Broking",
+  "vendor": "Beta Broking Private Limited (fictional)",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "InProcess",
+
+  "jurisdictions": [ "IN" ],
+  "venues": [ "XNSE" ],
+  "currencies": [ "INR" ],
+  "assetClasses": [ "Equity", "Future" ],
+
+  "auth": {
+    "model": "PasswordOtp",
+    "challenges": [ "SmsOtp" ],
+    "sessionLifetime": "12:00:00",
+    "expiresAtVenueMidnight": true,
+    "venueMidnightTimeZone": "Asia/Kolkata",
+    "refreshSupported": false,
+    "credentialFields": [
+      {
+        "key": "username",
+        "label": "Client code",
+        "secret": false,
+        "optional": false
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "secret": true,
+        "optional": false
+      }
+    ]
+  },
+
+  "orders": {
+    "types": [ "Market", "Limit" ],
+    "timeInForce": [ "Day", "Ioc" ],
+    "positionEffects": [ "Delivery", "Intraday" ],
+    "varieties": [ "Regular" ],
+    "modifiable": [ "Quantity", "LimitPrice", "TriggerPrice" ],
+    "fractionalQuantity": false,
+    "shortSellEquity": false,
+    "basket": {
+      "supported": false,
+      "maxLegs": 0,
+      "atomic": false
+    },
+    "bracket": false,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": false,
+    "chargesEstimate": false,
+    "cancelAll": false
+  },
+
+  "marketData": {
+    "streaming": false,
+    "streamModes": [],
+    "depthLevels": 5,
+    "historical": false,
+    "historicalTimeFrames": [],
+    "optionChain": false,
+    "maxStreamSubscriptions": 1
+  },
+
+  "rateLimits": [
+    { "scope": "global", "perSecond": 3, "perMinute": 100 }
+  ],
+
+  "compliance": {
+    "algoApprovalRequired": true,
+    "regulator": "SEBI",
+    "algoIdRequired": true
+  }
+}

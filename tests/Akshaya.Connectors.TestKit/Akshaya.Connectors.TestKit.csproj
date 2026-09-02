@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE CONFORMANCE SUITE.
+
+    Every connector's test project inherits ConnectorConformanceTests from here, so a new
+    broker gets the whole suite by writing one subclass. The two fake connectors in this
+    assembly (Alpha and Beta) exist to prove the abstraction actually spans different brokers:
+    they disagree about authentication, currency, symbology, quantity granularity, streaming
+    and refresh, and they pass the identical suite.
+
+    This is both a library (other test projects reference it for the base class) and a test
+    project (it runs the suite against its own fakes). xunit v3 test projects are executables.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Connectors.TestKit</RootNamespace>
+    <AssemblyName>Akshaya.Connectors.TestKit</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!--
+      CA1707: test method names use underscores on purpose; they are read as sentences in
+              CI output, which is the only place most people ever see them.
+      CA2007: no synchronisation context in a test host.
+      CA1848/CA1031: same reasons as the SDK.
+      xUnit1041: fixture arguments are supplied by the derived classes, not by a fixture type.
+    -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1848;CA1031;xUnit1041</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />
+    <!--
+      CONTRACT DEVIATION, DELIBERATE AND FLAGGED.
+
+      The brief specifies this project references Abstractions, SharedKernel and Sdk only, and
+      also asks TestDoubles/ to contain an in-memory IMarketDataSource. IMarketDataSource is
+      defined by the Paper connector — it is the seam between paper trading and backtest
+      replay — so the second requirement cannot be met without this reference.
+
+      The alternative was to duplicate the interface here, which would have produced two
+      IMarketDataSource types that look identical and are not assignable to each other: the
+      single most confusing kind of dependency to debug. Referencing Paper is the lesser evil,
+      and it is one-directional (Paper does not know this project exists).
+    -->
+    <ProjectReference Include="..\..\src\connectors\Akshaya.Connector.Paper\Akshaya.Connector.Paper.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.1.0" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The fakes' manifests ship as files and are loaded through ManifestLoader at run time
+      rather than being built in C#. That is on purpose: it means the suite exercises the real
+      manifest parse-and-validate path, which is where a hand-edited manifest actually breaks.
+    -->
+    <None Update="FakeConnectors\alpha.connector.manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="FakeConnectors\beta.connector.manifest.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

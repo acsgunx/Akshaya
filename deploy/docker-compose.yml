@@ -1,0 +1,76 @@
+# Local development infrastructure.
+#
+# Deliberately NOT a production topology: single instances, no replication, passwords in plain
+# text, ports bound to localhost. It exists so `dotnet run` works on a laptop.
+#
+#   scripts/dev-up.sh     start
+#   scripts/dev-down.sh   stop
+#   scripts/dev-down.sh --clean   stop and delete data
+
+name: akshaya
+
+services:
+  postgres:
+    # TimescaleDB is a Postgres extension, not a separate database — candles and ticks live in
+    # hypertables in the same instance as everything else. One database to back up, one to run.
+    image: timescale/timescaledb:2.17.2-pg17
+    container_name: akshaya-postgres
+    environment:
+      POSTGRES_USER: akshaya
+      POSTGRES_PASSWORD: akshaya
+      POSTGRES_DB: akshaya
+      # Trading data is write-heavy on ingest and read-heavy on aggregation; these are laptop
+      # settings, not production ones.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U akshaya"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    # Quote cache, session store, distributed locks, rate-limit token buckets, and the SignalR
+    # backplane. Everything here is reconstructible, so no persistence is configured.
+    image: redis:7.4-alpine
+    container_name: akshaya-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  seq:
+    # Structured log viewer. Serilog writes here; being able to filter by correlation id and
+    # connector id is what makes a multi-broker failure debuggable.
+    image: datalust/seq:2024.3
+    container_name: akshaya-seq
+    environment:
+      ACCEPT_EULA: "Y"
+    ports:
+      - "127.0.0.1:5341:80"
+    volumes:
+      - ./.data/seq:/data
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    container_name: akshaya-otel
+    command: ["--config=/etc/otel-collector.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otel-collector.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+    depends_on:
+      - seq
+    restart: unless-stopped

@@ -1,0 +1,284 @@
+<!--
+  Every *ngFor / @for below iterates a MANIFEST list (orders.types,
+  orders.timeInForce, orders.positionEffects) — never a hardcoded array.
+  A broker that supports three order types renders three buttons; a broker
+  that supports six renders six. This file has no idea which broker that is.
+-->
+@if (!manifest()) {
+  <div class="ak-ticket-loading">
+    <mat-spinner diameter="28" />
+    <span>Loading broker capabilities…</span>
+  </div>
+} @else {
+  <section class="ak-ticket" aria-label="Order ticket">
+    <header class="ak-ticket-header">
+      <div class="ak-ticket-heading">
+        <h2>{{ instrumentLabel() }}</h2>
+        <span class="ak-ticket-broker">{{ manifest()!.displayName }}</span>
+      </div>
+      <ak-connection-status
+        label="Feed"
+        [streamState]="connectionState()"
+        [isDataStale]="isFeedStale()"
+      />
+    </header>
+
+    @if (quote(); as tick) {
+      <div class="ak-ticket-price" [class.ak-flash-up]="isBuy()" aria-live="polite">
+        <span class="ak-col-price ak-num">{{ tick.lastPrice | akMoney }}</span>
+        <span class="ak-ticket-price-label">last traded price</span>
+      </div>
+    } @else {
+      <p class="ak-ticket-price-placeholder">Waiting for a live price…</p>
+    }
+
+    @switch (store.phase()) {
+      @case ('form') {
+        <form [formGroup]="form" class="ak-ticket-form">
+          <!-- Side: colour + redundant text label per buy/sell decision in DESIGN.md -->
+          <div class="ak-side-toggle" role="radiogroup" aria-label="Side">
+            <button
+              type="button"
+              class="ak-side-btn ak-side-btn--buy"
+              [class.selected]="isBuy()"
+              role="radio"
+              [attr.aria-checked]="isBuy()"
+              (click)="stageSide('buy')"
+            >
+              <span aria-hidden="true">▲</span> Buy
+              <span class="ak-kbd">B</span>
+            </button>
+            <button
+              type="button"
+              class="ak-side-btn ak-side-btn--sell"
+              [class.selected]="!isBuy()"
+              role="radio"
+              [attr.aria-checked]="!isBuy()"
+              (click)="stageSide('sell')"
+            >
+              <span aria-hidden="true">▼</span> Sell
+              <span class="ak-kbd">S</span>
+            </button>
+          </div>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Order type</mat-label>
+            <mat-select formControlName="orderType">
+              @for (type of manifest()!.orders.types; track type) {
+                <mat-option [value]="type">{{ orderTypeLabel(type) }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Product</mat-label>
+            <mat-select formControlName="positionEffect">
+              @for (effect of manifest()!.orders.positionEffects; track effect) {
+                <mat-option [value]="effect">{{ positionEffectLabel(effect) }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Time in force</mat-label>
+            <mat-select formControlName="timeInForce">
+              @for (tif of manifest()!.orders.timeInForce; track tif) {
+                <mat-option [value]="tif">{{ timeInForceLabel(tif) }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          @if (form.controls.timeInForce.value === 'gtd') {
+            <mat-form-field appearance="outline">
+              <mat-label>Good till date</mat-label>
+              <input matInput type="date" formControlName="goodTillDate" />
+            </mat-form-field>
+          }
+
+          @if (manifest()!.orders.varieties.length > 1) {
+            <mat-form-field appearance="outline">
+              <mat-label>Variety</mat-label>
+              <mat-select formControlName="variety">
+                @for (variety of manifest()!.orders.varieties; track variety) {
+                  <mat-option [value]="variety">{{ orderVarietyLabel(variety) }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
+
+          <mat-form-field appearance="outline">
+            <mat-label>
+              Quantity
+              @if (store.instrument()?.lotSize && store.instrument()!.lotSize > 1) {
+                (lot size {{ store.instrument()!.lotSize }})
+              }
+            </mat-label>
+            <input
+              matInput
+              type="number"
+              inputmode="decimal"
+              formControlName="quantity"
+              [step]="manifest()!.orders.fractionalQuantity ? 'any' : store.instrument()?.lotSize ?? 1"
+              min="0"
+            />
+            @if (!manifest()!.orders.fractionalQuantity) {
+              <mat-hint>This broker does not support fractional quantities.</mat-hint>
+            }
+          </mat-form-field>
+
+          @if (showLimitPrice()) {
+            <mat-form-field appearance="outline">
+              <mat-label>Limit price ({{ store.instrument()?.currency }})</mat-label>
+              <input matInput type="number" inputmode="decimal" formControlName="limitPrice" />
+            </mat-form-field>
+          }
+
+          @if (showTriggerPrice()) {
+            <mat-form-field appearance="outline">
+              <mat-label>Trigger price ({{ store.instrument()?.currency }})</mat-label>
+              <input matInput type="number" inputmode="decimal" formControlName="triggerPrice" />
+            </mat-form-field>
+          }
+
+          @if (manifest()!.orders.modifiable.includes('disclosedQuantity')) {
+            <mat-form-field appearance="outline">
+              <mat-label>Disclosed quantity (optional)</mat-label>
+              <input matInput type="number" inputmode="decimal" formControlName="disclosedQuantity" />
+            </mat-form-field>
+          }
+
+          @if (manifest()!.orders.basket.supported && !manifest()!.orders.basket.atomic) {
+            <p class="ak-ticket-note ak-ticket-note--warning">
+              <mat-icon aria-hidden="true">warning</mat-icon>
+              This broker fills basket orders one leg at a time — a partial fill leaving you
+              half-hedged is possible.
+            </p>
+          }
+
+          @if (manifest()!.compliance.algoApprovalRequired) {
+            <p class="ak-ticket-note">
+              <mat-icon aria-hidden="true">info</mat-icon>
+              {{ manifest()!.compliance.regulator ?? 'Your regulator' }} requires algo approval for
+              automated order flow on this broker.
+            </p>
+          }
+
+          <footer class="ak-ticket-actions">
+            <button mat-flat-button type="button" [disabled]="form.invalid" (click)="reviewOrder()" [class]="isBuy() ? 'ak-btn-buy' : 'ak-btn-sell'">
+              Review {{ sideLabel(form.controls.side.value) }} order
+            </button>
+          </footer>
+        </form>
+      }
+
+      @case ('reviewing') {
+        <div class="ak-ticket-review">
+          <h3>Confirm your order</h3>
+          <dl class="ak-review-grid">
+            <dt>Side</dt>
+            <dd [class]="isBuy() ? 'ak-buy-text' : 'ak-sell-text'">{{ sideLabel(form.controls.side.value) }}</dd>
+            <dt>Order type</dt>
+            <dd>{{ orderTypeLabel(form.controls.orderType.value) }}</dd>
+            <dt>Product</dt>
+            <dd>{{ positionEffectLabel(form.controls.positionEffect.value) }}</dd>
+            <dt>Time in force</dt>
+            <dd>{{ timeInForceLabel(form.controls.timeInForce.value) }}</dd>
+            <dt>Quantity</dt>
+            <dd class="ak-num">{{ form.controls.quantity.value }}</dd>
+            @if (showLimitPrice()) {
+              <dt>Limit price</dt>
+              <dd class="ak-num">{{ { amount: form.controls.limitPrice.value, currency: store.instrument()?.currency ?? '' } | akMoney }}</dd>
+            }
+            <dt>Estimated value</dt>
+            <dd class="ak-num">{{ estimatedValue() | akMoney }}</dd>
+          </dl>
+
+          @if (store.estimateLoading()) {
+            <div class="ak-estimate-loading"><mat-spinner diameter="20" /> Estimating margin and charges…</div>
+          } @else if (store.estimate(); as est) {
+            <div class="ak-estimate">
+              @if (est.marginRequired) {
+                <div class="ak-estimate-row">
+                  <span>Margin required</span>
+                  <span class="ak-num">{{ est.marginRequired | akMoney }}</span>
+                </div>
+              }
+              @for (line of est.charges; track line.name) {
+                <div class="ak-estimate-row ak-estimate-row--muted">
+                  <span>{{ line.name }}</span>
+                  <span class="ak-num">{{ line.amount | akMoney }}</span>
+                </div>
+              }
+              @if (est.totalCharges) {
+                <div class="ak-estimate-row ak-estimate-row--total">
+                  <span>Total charges</span>
+                  <span class="ak-num">{{ est.totalCharges | akMoney }}</span>
+                </div>
+              }
+              @if (est.isMarginSufficient === false) {
+                <p class="ak-ticket-note ak-ticket-note--danger">
+                  <mat-icon aria-hidden="true">error</mat-icon>
+                  Available margin may not cover this order.
+                </p>
+              }
+              @for (warning of est.warnings; track warning) {
+                <p class="ak-ticket-note ak-ticket-note--warning">{{ warning }}</p>
+              }
+            </div>
+          } @else {
+            <p class="ak-ticket-note">This broker does not provide a pre-trade cost estimate.</p>
+          }
+
+          <footer class="ak-ticket-actions">
+            <button mat-button type="button" (click)="backToForm()">Back</button>
+            <button mat-flat-button type="button" [class]="isBuy() ? 'ak-btn-buy' : 'ak-btn-sell'" (click)="confirmSubmit()">
+              Confirm {{ sideLabel(form.controls.side.value) }}
+            </button>
+          </footer>
+        </div>
+      }
+
+      @case ('submitting') {
+        <!--
+          NO OPTIMISTIC UI: this is the ONLY thing shown between confirm and
+          an actual broker acknowledgement — never a provisional "order
+          placed" row. See the long comment in order-ticket.store.ts.
+        -->
+        <div class="ak-ticket-submitting" role="status" aria-live="assertive">
+          <mat-spinner diameter="32" />
+          <p>Submitting to {{ manifest()!.displayName }}…</p>
+        </div>
+      }
+
+      @case ('submitted') {
+        <div class="ak-ticket-result ak-ticket-result--ok" role="status">
+          <mat-icon aria-hidden="true">check_circle</mat-icon>
+          <h3>Order {{ store.result()?.status }}</h3>
+          @if (store.result()?.brokerOrderId; as id) {
+            <p class="ak-num">Broker order id: {{ id }}</p>
+          }
+          @if (store.result()?.message; as msg) {
+            <p class="ak-ticket-broker-text">"{{ msg }}"</p>
+          }
+          <button mat-flat-button type="button" (click)="placeAnother()">Place another order</button>
+        </div>
+      }
+
+      @case ('failed') {
+        <div class="ak-ticket-result ak-ticket-result--error" role="alert">
+          <mat-icon aria-hidden="true">error</mat-icon>
+          <h3>{{ store.submitError()?.title ?? 'Order not placed' }}</h3>
+          <p>{{ store.submitError()?.detail }}</p>
+          @if (store.submitError()?.['vendorMessage']; as vendorMessage) {
+            <p class="ak-ticket-broker-text">Broker said: "{{ vendorMessage }}"</p>
+          }
+          <button mat-button type="button" (click)="backToForm()">Back to ticket</button>
+        </div>
+      }
+    }
+
+    <p class="ak-kbd-hint">
+      <span class="ak-kbd">B</span> Buy · <span class="ak-kbd">S</span> Sell · <span class="ak-kbd">Esc</span> Cancel
+    </p>
+  </section>
+}

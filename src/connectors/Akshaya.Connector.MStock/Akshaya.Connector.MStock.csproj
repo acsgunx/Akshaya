@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The mStock (Mirae Asset Capital Markets, India) Type A REST connector.
+
+    It references the CONTRACT (Akshaya.Connectors.Abstractions) and the connector SDK
+    (Akshaya.Connectors.Sdk) and nothing else. In particular it must never reference any
+    Akshaya.Modules.* assembly: a connector that can see the trading core is a connector
+    that will eventually reach into it. Enforced by tests/Akshaya.Architecture.Tests.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Connector.MStock</RootNamespace>
+    <AssemblyName>Akshaya.Connector.MStock</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The manifest ships both as a loose file next to the assembly (so an operator can read
+      and diff it without a decompiler) and as an embedded resource (so ManifestLoader can
+      still find it when the connector is loaded from a single-file bundle).
+    -->
+    <None Update="connector.manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="connector.manifest.json" LogicalName="connector.manifest.json" />
+  </ItemGroup>
+
+</Project>

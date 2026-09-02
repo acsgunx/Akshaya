@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    THE HTTP AND REALTIME SURFACE.
+
+    Minimal APIs, SignalR and the composition root. Like the modules below it, this project
+    contains ZERO BROKER NAMES: the connector projects are referenced so their assemblies land
+    in the output folder for development, and they are discovered by scanning for
+    IConnectorPlugin implementations — never by naming a type. tests/Akshaya.Architecture.Tests
+    fails the build if a vendor name appears here.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Api</RootNamespace>
+    <AssemblyName>Akshaya.Api</AssemblyName>
+    <UserSecretsId>akshaya-api</UserSecretsId>
+    <!--
+      CA1848: LoggerMessage source-gen delegates — not worth it outside the tick path.
+      CA2007: ConfigureAwait(false) — no sync context in ASP.NET Core.
+      CA1031: catching Exception is correct at the connector and stream boundaries.
+      CA1812: endpoint and options classes are instantiated by the framework or by DI.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031;CA1812</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Trading\Akshaya.Modules.Trading.csproj" />
+    <ProjectReference Include="..\Modules\Portfolio\Akshaya.Modules.Portfolio.csproj" />
+    <ProjectReference Include="..\Akshaya.Connectors.Host\Akshaya.Connectors.Host.csproj" />
+    <ProjectReference Include="..\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      DEVELOPMENT-TIME REGISTRATION ONLY.
+
+      These references exist so the connector assemblies are copied into the output folder and
+      can be discovered at startup. No code in this project names a type from either of them —
+      discovery is by scanning the output folder for IConnectorPlugin implementations, which is
+      the same path a third-party plugin takes. In production these references are removed and
+      the connectors are dropped into the plugin directory instead.
+    -->
+    <ProjectReference Include="..\connectors\Akshaya.Connector.MStock\Akshaya.Connector.MStock.csproj" />
+    <ProjectReference Include="..\connectors\Akshaya.Connector.Paper\Akshaya.Connector.Paper.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.0.0" />
+    <PackageReference Include="FluentValidation" Version="11.11.0" />
+    <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
+
+    <!--
+      Not in the original dependency list but required by Program.cs: the brief asks for
+      OpenTelemetry, and tracing an order across the API, the connector decorators and the
+      broker is the only way to answer "where did those 900ms go" after the fact.
+    -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
+  </ItemGroup>
+
+</Project>

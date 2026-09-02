@@ -1,0 +1,38 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+artifacts/
+TestResults/
+coverage/
+*.coverage
+*.trx
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+*.tsbuildinfo
+npm-debug.log*
+
+# Secrets — nothing in this list may ever be committed
+.env
+.env.*
+!.env.example
+secrets.json
+appsettings.Local.json
+*.pfx
+*.p12
+*.key
+connector-credentials/
+
+# Local tooling
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local data volumes created by deploy/docker-compose.yml
+deploy/.data/

@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE CONNECTOR AUTHOR'S TOOLKIT.
+
+    Everything a connector author needs but should never have to write twice: an
+    IBrokerConnector base, ready-made "this broker cannot do that" facets, a JSON HTTP
+    client that turns vendor failures into canonical ConnectorErrorCodes, a token-bucket
+    rate limiter built from the manifest, the cross-cutting decorators the host composes,
+    the manifest loader/validator and the session-expiry maths.
+
+    Dependencies here are deliberate and few. Unlike Abstractions (which must stay
+    dependency-free because every connector — including out-of-process ones in other
+    languages — is defined by it), the SDK is opt-in: a connector may ignore it entirely
+    and implement IBrokerConnector directly.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Connectors.Sdk</RootNamespace>
+    <!--
+      Analyzer suppressions, each with a reason. TreatWarningsAsErrors is on repo-wide,
+      so these are the ones we consciously decline rather than silently tolerate.
+      CA1848: LoggerMessage source-gen delegates — not worth it on cold paths like auth.
+      CA2007: ConfigureAwait(false) — this is library code with no sync context in ASP.NET
+              Core or in the connector host; adding it everywhere buys nothing and hides bugs.
+      CA1031: catching Exception is correct in exactly one place — the boundary that turns
+              an arbitrary connector/vendor throw into a Result. That is the whole point.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.10.0" />
+    <PackageReference Include="System.Text.Json" Version="10.0.0" />
+    <!--
+      Not in the original brief but required by ConnectorRateLimiter: the token-bucket
+      implementation is System.Threading.RateLimiting's, not a hand-rolled one, because
+      getting replenishment and queue fairness right is not where connector effort belongs.
+    -->
+    <PackageReference Include="System.Threading.RateLimiting" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

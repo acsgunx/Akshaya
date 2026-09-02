@@ -1,0 +1,32 @@
+<section class="ak-watchlist">
+  <header class="ak-watchlist-header">
+    <h1>Watchlist</h1>
+    <mat-form-field appearance="outline" class="ak-watchlist-search">
+      <mat-label>Add instrument</mat-label>
+      <input matInput [formControl]="searchControl" [matAutocomplete]="auto" placeholder="Search by symbol or name" />
+      <mat-autocomplete #auto="matAutocomplete" (optionSelected)="addInstrument($event.option.value)">
+        @for (result of store.searchResults(); track result.key) {
+          <mat-option [value]="result">{{ result.name }} · {{ result.key }}</mat-option>
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+  </header>
+
+  @if (store.watched().length === 0) {
+    <ak-empty-state icon="visibility" title="Your watchlist is empty" description="Search above to add an instrument." />
+  } @else {
+    <div class="ak-watchlist-table-head" role="row">
+      <span>Instrument</span>
+      <span>Ccy</span>
+      <span class="ak-col-price">LTP</span>
+      <span>Chg%</span>
+      <span>Feed</span>
+      <span></span>
+    </div>
+    <div role="table" aria-label="Watchlist">
+      @for (instrument of store.watched(); track instrument.key) {
+        <ak-watchlist-row [instrument]="instrument" (remove)="removeInstrument($event)" />
+      }
+    </div>
+  }
+</section>

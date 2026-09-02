@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE TRADING CORE'S TEST SUITE.
+
+    Three things must be true about the platform's own order lifecycle, independent of any
+    broker: the state machine only ever allows what it says it allows, the pre-trade risk
+    gate blocks what it is configured to block (and nothing else), and the critical path in
+    PlaceOrderHandler persists an order before it ever reaches the network so a crash mid-send
+    is always recoverable. These tests exist to keep those three guarantees true through every
+    future change to this assembly.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Trading.Tests</RootNamespace>
+    <AssemblyName>Akshaya.Trading.Tests</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!--
+      CA1707: test method names use underscores on purpose; they are read as sentences in CI.
+      CA2007: no synchronisation context in a test host.
+      CA1848/CA1031: same reasons as the assembly under test.
+      xUnit1041: fixture arguments are supplied by helper builders, not by a fixture type.
+    -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1848;CA1031;xUnit1041</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Trading\Akshaya.Modules.Trading.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.1.0" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,78 @@
+<section class="ak-orders">
+  <header class="ak-orders-header">
+    <h1>Orders</h1>
+    <mat-button-toggle-group [value]="store.openOnly()" (change)="store.setOpenOnly($event.value)" aria-label="Filter">
+      <mat-button-toggle [value]="false">All</mat-button-toggle>
+      <mat-button-toggle [value]="true">Open only</mat-button-toggle>
+    </mat-button-toggle-group>
+  </header>
+
+  @if (store.loading() && store.orders().length === 0) {
+    <div class="ak-orders-loading"><mat-spinner diameter="28" /> Loading orders…</div>
+  } @else if (store.orders().length === 0) {
+    <ak-empty-state icon="receipt_long" title="No orders" description="Orders placed from the order ticket will appear here." />
+  } @else {
+    <div class="ak-orders-table-head" role="row">
+      <span>Instrument</span>
+      <span>Side</span>
+      <span>Type</span>
+      <span class="ak-col-qty">Qty</span>
+      <span class="ak-col-qty">Filled</span>
+      <span class="ak-col-price">Price</span>
+      <span>Status</span>
+      <span>Broker said</span>
+      <span></span>
+    </div>
+
+    <cdk-virtual-scroll-viewport itemSize="48" class="ak-orders-viewport">
+      <div *cdkVirtualFor="let order of store.orders(); trackBy: trackById" class="ak-order-row" role="row">
+        <span class="ak-order-instrument">{{ order.instrument }}</span>
+        <span [class.ak-buy-text]="order.side === 'buy'" [class.ak-sell-text]="order.side === 'sell'">{{ sideLabel(order.side) }}</span>
+        <span>{{ orderTypeLabel(order.orderType) }}</span>
+        <span class="ak-col-qty">{{ order.quantity | akQuantity: { fractional: true } }}</span>
+        <span class="ak-col-qty">{{ order.filledQuantity | akQuantity: { fractional: true } }}</span>
+        <span class="ak-col-price">{{ order.limitPrice ?? order.averagePrice | akMoney }}</span>
+
+        <span class="ak-status">
+          @if (isOrderUnresolved(order)) {
+            <!--
+              `state === 'unknown'` — the platform genuinely does not know
+              whether the broker received this. NEVER show a status here and
+              NEVER offer a resubmit/cancel action: the trader must not act
+              on a guess. See OrderDto.IsUnresolved and OrderState.Unknown
+              on the backend.
+            -->
+            <span class="ak-status-badge ak-status-badge--unknown" matTooltip="Reconciliation is checking with the broker.">
+              Checking with broker…
+            </span>
+          } @else {
+            <span
+              class="ak-status-badge"
+              [class.ak-status-badge--working]="isOrderStateWorking(order.state)"
+              [class.ak-status-badge--terminal-ok]="order.state === 'filled'"
+              [class.ak-status-badge--terminal-bad]="order.state === 'rejected' || order.state === 'expired'"
+            >
+              {{ order.state }}
+            </span>
+          }
+        </span>
+
+        <span class="ak-broker-text" [matTooltip]="order.statusMessage ?? ''">{{ order.statusMessage ?? '—' }}</span>
+
+        <span>
+          @if (!isOrderStateTerminal(order.state) && !isOrderUnresolved(order)) {
+            <button
+              mat-icon-button
+              [disabled]="store.cancellingIds().has(order.id)"
+              (click)="cancel(order)"
+              [attr.aria-label]="'Cancel order for ' + order.instrument"
+              matTooltip="Cancel"
+            >
+              <mat-icon aria-hidden="true">close</mat-icon>
+            </button>
+          }
+        </span>
+      </div>
+    </cdk-virtual-scroll-viewport>
+  }
+</section>

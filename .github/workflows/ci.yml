@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # Runs first and takes seconds. These checks fail on the things a compiler cannot see —
+  # a broker name leaking into the core, a manifest that lies about its capabilities — and
+  # there is no point spending three minutes on a build to then fail on one of those.
+  verify-structure:
+    name: Structure and manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install jsonschema
+      - name: Static structure checks
+        run: python3 scripts/verify-structure.py
+      - name: Validate connector manifests against the schema
+        run: python3 scripts/validate-manifests.py
+
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    needs: verify-structure
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Akshaya.sln
+
+      - name: Build
+        run: dotnet build Akshaya.sln --no-restore --configuration Release
+
+      # Run the architecture rules on their own and before everything else, so a violation is
+      # reported as "you broke the design" rather than buried in a list of 400 passing tests.
+      - name: Architecture rules
+        run: >
+          dotnet test tests/Akshaya.Architecture.Tests
+          --no-build --configuration Release --logger "trx;LogFileName=architecture.trx"
+
+      # The conformance suite runs against two deliberately different fake brokers. Green here
+      # is the standing proof that the connector abstraction spans real differences.
+      - name: Connector conformance
+        run: >
+          dotnet test tests/Akshaya.Connectors.TestKit
+          --no-build --configuration Release --logger "trx;LogFileName=conformance.trx"
+
+      - name: All tests with coverage
+        run: >
+          dotnet test Akshaya.sln --no-build --configuration Release
+          --collect:"XPlat Code Coverage"
+          --logger "trx;LogFileName=tests.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/**'
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    needs: verify-structure
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test -- --run
+      - run: npm run build
+
+  # Not a gate yet — reported so the first vulnerable transitive dependency does not arrive
+  # unannounced. Make it a gate once the dependency set has settled.
+  dependency-scan:
+    name: Vulnerable packages
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore Akshaya.sln
+      - name: List vulnerable and deprecated packages
+        run: |
+          dotnet list Akshaya.sln package --vulnerable --include-transitive
+          dotnet list Akshaya.sln package --deprecated

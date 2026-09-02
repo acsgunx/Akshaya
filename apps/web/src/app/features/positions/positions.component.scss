@@ -1,0 +1,99 @@
+.ak-positions-header {
+  margin-bottom: 12px;
+}
+
+.ak-positions-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.ak-positions-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ak-text-secondary);
+  padding: 32px;
+}
+
+$grid: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-price-width) var(--ak-col-pnl-width) var(--ak-col-pnl-width);
+
+.ak-positions-table-head {
+  display: grid;
+  grid-template-columns: $grid;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ak-text-tertiary);
+  border-bottom: 1px solid var(--ak-border);
+}
+
+.ak-positions-viewport {
+  height: calc(100vh - 240px);
+  min-height: 320px;
+}
+
+.ak-position-row {
+  display: grid;
+  grid-template-columns: $grid;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ak-border);
+  font-size: 13px;
+  height: 44px;
+  box-sizing: border-box;
+}
+
+.ak-expand-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ak-text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.ak-expand-btn:disabled {
+  visibility: hidden;
+}
+
+.ak-position-instrument {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.ak-split-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--ak-radius-full);
+  background: var(--ak-surface-3);
+  color: var(--ak-text-secondary);
+}
+
+.ak-buy-text {
+  color: var(--ak-buy);
+}
+
+.ak-sell-text {
+  color: var(--ak-sell);
+}
+
+.ak-legs {
+  background: var(--ak-surface-2);
+  padding: 4px 12px 4px 44px;
+}
+
+.ak-leg-row {
+  display: grid;
+  grid-template-columns: 1fr 120px var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-pnl-width);
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--ak-text-secondary);
+}

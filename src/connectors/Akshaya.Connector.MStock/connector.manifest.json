@@ -1,0 +1,166 @@
+{
+  "id": "mstock",
+  "displayName": "mStock by Mirae Asset",
+  "vendor": "Mirae Asset Capital Markets (India) Pvt. Ltd.",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "InProcess",
+  "jurisdictions": [
+    "IN"
+  ],
+  "venues": [
+    "XNSE",
+    "XBOM"
+  ],
+  "currencies": [
+    "INR"
+  ],
+  "assetClasses": [
+    "Equity",
+    "Etf",
+    "Future",
+    "Option",
+    "Index"
+  ],
+  "auth": {
+    "model": "PasswordOtp",
+    "challenges": [
+      "SmsOtp",
+      "Totp"
+    ],
+    "sessionLifetime": "12:00:00",
+    "expiresAtVenueMidnight": true,
+    "venueMidnightTimeZone": "Asia/Kolkata",
+    "refreshSupported": true,
+    "keepAliveInterval": null,
+    "credentialFields": [
+      {
+        "key": "api_key",
+        "label": "API key",
+        "secret": false,
+        "optional": false,
+        "placeholder": "Your mStock Type A API key",
+        "help": "Generated in the mStock API portal. Valid for roughly 13 months, then must be regenerated."
+      },
+      {
+        "key": "api_secret",
+        "label": "API secret",
+        "secret": true,
+        "optional": true,
+        "help": "Only issued to some Type A subscriptions. When present it is folded into the session checksum."
+      },
+      {
+        "key": "username",
+        "label": "Client code",
+        "secret": false,
+        "optional": false,
+        "placeholder": "MAxxxxxx",
+        "help": "The client code you use to sign in to mStock."
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "secret": true,
+        "optional": false
+      },
+      {
+        "key": "totp_secret",
+        "label": "Authenticator secret",
+        "secret": true,
+        "optional": true,
+        "help": "Optional. Supply this only if you have enabled an authenticator app on your mStock account; the login then skips the SMS OTP."
+      }
+    ]
+  },
+  "orders": {
+    "types": [
+      "Market",
+      "Limit",
+      "Stop",
+      "StopLimit"
+    ],
+    "timeInForce": [
+      "Day",
+      "Ioc"
+    ],
+    "positionEffects": [
+      "Delivery",
+      "Intraday",
+      "Margin",
+      "CarryForward"
+    ],
+    "varieties": [
+      "Regular",
+      "AfterMarket"
+    ],
+    "modifiable": [
+      "Quantity",
+      "LimitPrice",
+      "TriggerPrice",
+      "OrderType",
+      "TimeInForce",
+      "DisclosedQuantity"
+    ],
+    "fractionalQuantity": false,
+    "shortSellEquity": false,
+    "basket": {
+      "supported": true,
+      "maxLegs": 20,
+      "atomic": false
+    },
+    "bracket": false,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": false,
+    "chargesEstimate": false,
+    "cancelAll": true
+  },
+  "marketData": {
+    "streaming": true,
+    "streamModes": [
+      "Ltp",
+      "Quote",
+      "Full"
+    ],
+    "depthLevels": 5,
+    "historical": true,
+    "historicalTimeFrames": [
+      "OneMinute",
+      "ThreeMinutes",
+      "FiveMinutes",
+      "FifteenMinutes",
+      "ThirtyMinutes",
+      "OneHour",
+      "OneDay"
+    ],
+    "optionChain": true,
+    "maxStreamSubscriptions": 1000,
+    "historyDays": 365
+  },
+  "rateLimits": [
+    {
+      "scope": "orders",
+      "perSecond": 30,
+      "perMinute": 250
+    },
+    {
+      "scope": "data",
+      "perSecond": 1,
+      "perMinute": 1000
+    },
+    {
+      "scope": "quotes",
+      "perSecond": 20
+    }
+  ],
+  "sandbox": {
+    "available": false,
+    "notes": "mStock Type A has no sandbox. Use the Paper connector (id 'paper') for rehearsal; it implements the same contract."
+  },
+  "compliance": {
+    "algoApprovalRequired": true,
+    "regulator": "SEBI",
+    "algoIdRequired": false,
+    "notes": "SEBI's algorithmic-trading framework requires exchange/broker approval and a registered strategy identifier before automated order flow may run on a retail API. Keep live automation behind an operator-enabled per-tenant flag."
+  }
+}

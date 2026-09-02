@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Paper connector: a simulated broker that implements the same IBrokerConnector as a
+    live one.
+
+    It has two jobs and they are the same job:
+
+      * paper trading, where a user rehearses against live prices with no money at risk; and
+      * the execution venue for the backtester, where the same MatchingEngine is driven by a
+        replayed tick source instead of a live one.
+
+    Keeping those two the same code path is the whole point. A backtest that fills through a
+    different code path than paper trading, which in turn differs from live, produces three
+    different answers and no way to tell which one is a bug.
+
+    Like every connector it references only the CONTRACT and the SDK. It must never reference
+    an Akshaya.Modules.* assembly. Enforced by tests/Akshaya.Architecture.Tests.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Connector.Paper</RootNamespace>
+    <AssemblyName>Akshaya.Connector.Paper</AssemblyName>
+    <!--
+      Analyzer suppressions, each with a reason. TreatWarningsAsErrors is on repo-wide, so
+      these are consciously declined rather than silently tolerated.
+      CA1848: LoggerMessage source-gen delegates — this connector logs on cold paths only.
+      CA2007: ConfigureAwait(false) — library code with no synchronisation context.
+      CA1031: catching Exception is correct at the one boundary that turns an arbitrary tick
+              source throw into a Result rather than tearing down the engine.
+      CA5394: System.Random is deliberate. The fill jitter must be REPRODUCIBLE from a seed;
+              a cryptographic RNG would make backtests unrepeatable, which is the exact
+              opposite of what this connector is for. Nothing here is security-sensitive.
+      CA1002/CA1819: internal mutable collections are not exposed; the analyser cannot see
+              that the public surface is all IReadOnlyList.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031;CA5394;CA1002;CA1819</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The manifest ships both as a loose file next to the assembly (so an operator can read
+      and diff it without a decompiler) and as an embedded resource (so ManifestLoader can
+      still find it when the connector is loaded from a single-file bundle).
+    -->
+    <None Update="connector.manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="connector.manifest.json" LogicalName="connector.manifest.json" />
+  </ItemGroup>
+
+</Project>

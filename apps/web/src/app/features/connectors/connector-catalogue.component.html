@@ -1,0 +1,61 @@
+<section class="ak-catalogue">
+  <header class="ak-catalogue-header">
+    <h1>Brokers</h1>
+    <p>Every broker below is rendered from its own connector manifest — capabilities, not code.</p>
+  </header>
+
+  @if (store.loading()) {
+    <div class="ak-catalogue-loading"><mat-spinner diameter="28" /> Loading connectors…</div>
+  } @else if (store.isEmpty()) {
+    <ak-empty-state icon="link_off" title="No connectors available" description="The API reported no connector manifests." />
+  } @else {
+    <div class="ak-catalogue-grid">
+      @for (manifest of store.manifests(); track manifest.id) {
+        <article class="ak-connector-card">
+          <header>
+            <h2>{{ manifest.displayName }}</h2>
+            <span class="ak-connector-vendor">{{ manifest.vendor }}</span>
+          </header>
+
+          <div class="ak-chip-row">
+            @for (venue of manifest.venues; track venue) {
+              <span class="ak-chip">{{ venue }}</span>
+            }
+          </div>
+          <div class="ak-chip-row">
+            @for (currency of manifest.currencies; track currency) {
+              <span class="ak-chip ak-chip--muted">{{ currency }}</span>
+            }
+          </div>
+          <div class="ak-chip-row">
+            @for (assetClass of manifest.assetClasses; track assetClass) {
+              <span class="ak-chip ak-chip--muted">{{ assetClass }}</span>
+            }
+          </div>
+
+          <ul class="ak-capability-list">
+            @if (manifest.marketData.streaming) {
+              <li><mat-icon aria-hidden="true">bolt</mat-icon> Live streaming</li>
+            }
+            @if (manifest.orders.fractionalQuantity) {
+              <li><mat-icon aria-hidden="true">pie_chart</mat-icon> Fractional quantities</li>
+            }
+            @if (manifest.orders.marginEstimate) {
+              <li><mat-icon aria-hidden="true">calculate</mat-icon> Margin estimates</li>
+            }
+            @if (manifest.hosting === 'gateway') {
+              <li><mat-icon aria-hidden="true">dns</mat-icon> Requires local gateway</li>
+            }
+            @if (manifest.compliance.algoApprovalRequired) {
+              <li><mat-icon aria-hidden="true">gavel</mat-icon> Algo approval required</li>
+            }
+          </ul>
+
+          <footer>
+            <a mat-flat-button color="primary" [routerLink]="['/connectors', manifest.id, 'link']">Link account</a>
+          </footer>
+        </article>
+      }
+    </div>
+  }
+</section>

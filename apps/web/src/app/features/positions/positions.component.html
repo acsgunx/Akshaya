@@ -1,0 +1,68 @@
+<section class="ak-positions">
+  <header class="ak-positions-header">
+    <h1>Positions</h1>
+  </header>
+
+  @if (store.loading() && !store.snapshot()) {
+    <div class="ak-positions-loading"><mat-spinner diameter="28" /> Loading positions…</div>
+  } @else if (positions().length === 0) {
+    <ak-empty-state icon="show_chart" title="No open positions" description="Positions across every linked broker will appear here." />
+  } @else {
+    <div class="ak-positions-table-head" role="row">
+      <span></span>
+      <span>Instrument</span>
+      <span class="ak-col-qty">Net qty</span>
+      <span class="ak-col-price">Avg price</span>
+      <span class="ak-col-price">Last</span>
+      <span class="ak-col-pnl">Unrealised</span>
+      <span class="ak-col-pnl">Realised</span>
+    </div>
+
+    <!-- Virtualised: only visible rows are rendered even with thousands of blended positions. -->
+    <cdk-virtual-scroll-viewport itemSize="44" class="ak-positions-viewport">
+      <div *cdkVirtualFor="let pos of positions(); trackBy: trackByGroupKey" class="ak-position-row-wrap">
+        <div class="ak-position-row" role="row">
+          <button
+            type="button"
+            class="ak-expand-btn ak-focus-halo"
+            [attr.aria-expanded]="isExpanded(pos.groupKey)"
+            [attr.aria-label]="'Toggle legs for ' + pos.instrument"
+            (click)="toggle(pos.groupKey)"
+            [disabled]="!pos.isSplitAcrossBrokers"
+          >
+            @if (pos.isSplitAcrossBrokers) {
+              <mat-icon aria-hidden="true">{{ isExpanded(pos.groupKey) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+            }
+          </button>
+          <span class="ak-position-instrument">
+            {{ pos.instrument }}
+            @if (pos.isSplitAcrossBrokers) {
+              <span class="ak-split-badge">{{ pos.legs.length }} brokers</span>
+            }
+          </span>
+          <span class="ak-col-qty" [class.ak-sell-text]="+pos.netQuantity < 0">{{ pos.netQuantity | akQuantity: { fractional: true } }}</span>
+          <span class="ak-col-price">{{ pos.averagePrice | akMoney }}</span>
+          <span class="ak-col-price">{{ pos.lastPrice | akMoney }}</span>
+          <span class="ak-col-pnl" [class.ak-buy-text]="!pos.unrealisedPnl || +pos.unrealisedPnl.amount >= 0" [class.ak-sell-text]="pos.unrealisedPnl && +pos.unrealisedPnl.amount < 0">
+            {{ pos.unrealisedPnl | akMoney }}
+          </span>
+          <span class="ak-col-pnl">{{ pos.realisedPnl | akMoney }}</span>
+        </div>
+
+        @if (isExpanded(pos.groupKey)) {
+          <div class="ak-legs">
+            @for (leg of pos.legs; track leg.brokerLinkId) {
+              <div class="ak-leg-row" role="row">
+                <span class="ak-leg-broker">{{ leg.displayName }}</span>
+                <span class="ak-leg-effect">{{ positionEffectLabel(leg.positionEffect) }}</span>
+                <span class="ak-col-qty">{{ leg.netQuantity | akQuantity: { fractional: true } }}</span>
+                <span class="ak-col-price">{{ leg.averagePrice | akMoney }}</span>
+                <span class="ak-col-pnl">{{ leg.unrealisedPnl | akMoney }}</span>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </cdk-virtual-scroll-viewport>
+  }
+</section>

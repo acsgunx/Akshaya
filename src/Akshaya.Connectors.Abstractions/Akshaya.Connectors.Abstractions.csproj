@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE CONTRACT.
+
+    This project may reference Akshaya.SharedKernel and NOTHING ELSE — no HTTP client, no
+    JSON library beyond what the BCL provides, no DI container, no logging abstraction.
+
+    Why so strict: every connector, including ones written by third parties and ones running
+    out-of-process in another language, is defined by this assembly. Every dependency added
+    here becomes a dependency every connector author inherits and a version conflict waiting
+    to happen inside the plugin load context.
+
+    Enforced by tests/Akshaya.Architecture.Tests/DependencyRules.cs — do not add references.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Connectors.Abstractions</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

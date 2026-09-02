@@ -1,0 +1,96 @@
+.ak-catalogue-header {
+  margin-bottom: 20px;
+}
+
+.ak-catalogue-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.ak-catalogue-header p {
+  color: var(--ak-text-secondary);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.ak-catalogue-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ak-text-secondary);
+  padding: 32px;
+}
+
+.ak-catalogue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.ak-connector-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius-lg);
+  padding: 16px;
+}
+
+.ak-connector-card h2 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ak-connector-vendor {
+  font-size: 11px;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ak-chip {
+  padding: 2px 8px;
+  border-radius: var(--ak-radius-full);
+  background: var(--ak-surface-3);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ak-text-primary);
+}
+
+.ak-chip--muted {
+  background: var(--ak-surface-2);
+  color: var(--ak-text-secondary);
+  font-weight: 500;
+}
+
+.ak-capability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.ak-capability-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ak-text-secondary);
+}
+
+.ak-capability-list mat-icon {
+  font-size: 15px;
+  width: 15px;
+  height: 15px;
+  color: var(--ak-info);
+}
+
+footer {
+  margin-top: auto;
+  padding-top: 8px;
+}

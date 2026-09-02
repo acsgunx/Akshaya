@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    These tests are the enforcement mechanism for the invariants the whole design rests on.
+    They are not "nice to have" — without them, the plug-and-play property degrades silently
+    over months as one small special case at a time gets added to the core.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Akshaya.Architecture.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="1.1.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.Connectors.Host\Akshaya.Connectors.Host.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Trading\Akshaya.Modules.Trading.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Portfolio\Akshaya.Modules.Portfolio.csproj" />
+  </ItemGroup>
+
+</Project>

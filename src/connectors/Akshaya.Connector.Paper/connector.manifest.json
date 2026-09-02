@@ -1,0 +1,88 @@
+{
+  "id": "paper",
+  "displayName": "Paper Trading",
+  "vendor": "Akshaya",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "InProcess",
+
+  "jurisdictions": [ "IN", "SG", "US", "HK" ],
+  "venues": [ "XNSE", "XBOM", "XSES", "XNAS", "XNYS", "XHKG" ],
+  "currencies": [ "INR", "SGD", "USD", "HKD" ],
+  "assetClasses": [ "Equity", "Etf", "Future", "Option", "Index", "Currency", "Commodity" ],
+
+  "auth": {
+    "model": "StaticToken",
+    "challenges": [],
+    "sessionLifetime": null,
+    "expiresAtVenueMidnight": false,
+    "refreshSupported": false,
+    "keepAliveInterval": null,
+    "credentialFields": [
+      {
+        "key": "account_label",
+        "label": "Paper account name",
+        "secret": false,
+        "optional": false,
+        "placeholder": "rehearsal",
+        "help": "Any name you like. It only identifies this simulated account in the UI; there is no real credential because nothing leaves the platform."
+      }
+    ]
+  },
+
+  "orders": {
+    "types": [ "Market", "Limit", "Stop", "StopLimit", "MarketIfTouched", "TrailingStop" ],
+    "timeInForce": [ "Day", "Gtc", "Ioc", "Fok", "Gtd", "AtTheOpen", "AtTheClose" ],
+    "positionEffects": [ "Intraday", "Delivery", "Margin", "CarryForward", "ShortSell" ],
+    "varieties": [ "Regular", "AfterMarket", "Cover", "Bracket", "Iceberg", "GoodTillTriggered" ],
+    "modifiable": [ "Quantity", "LimitPrice", "TriggerPrice", "OrderType", "TimeInForce", "DisclosedQuantity" ],
+    "fractionalQuantity": true,
+    "shortSellEquity": true,
+    "basket": {
+      "supported": true,
+      "maxLegs": 50,
+      "atomic": true
+    },
+    "bracket": true,
+    "cover": true,
+    "gtt": true,
+    "marginEstimate": true,
+    "chargesEstimate": true,
+    "cancelAll": true
+  },
+
+  "marketData": {
+    "streaming": true,
+    "streamModes": [ "Ltp", "Quote", "Full" ],
+    "depthLevels": 1,
+    "historical": true,
+    "historicalTimeFrames": [
+      "OneMinute",
+      "ThreeMinutes",
+      "FiveMinutes",
+      "FifteenMinutes",
+      "ThirtyMinutes",
+      "OneHour",
+      "OneDay",
+      "OneWeek",
+      "OneMonth"
+    ],
+    "optionChain": false,
+    "maxStreamSubscriptions": 100000,
+    "historyDays": 3650
+  },
+
+  "rateLimits": [],
+
+  "sandbox": {
+    "available": false,
+    "notes": "This connector IS the sandbox. It never opens a socket to anyone."
+  },
+
+  "compliance": {
+    "algoApprovalRequired": false,
+    "regulator": null,
+    "algoIdRequired": false,
+    "notes": "No orders leave the platform, so no exchange or broker approval applies. A strategy that has only ever run here has not been approved for live flow: the approval gate lives on the LIVE connector's manifest, and promoting a strategy from paper to live must re-check it."
+  }
+}

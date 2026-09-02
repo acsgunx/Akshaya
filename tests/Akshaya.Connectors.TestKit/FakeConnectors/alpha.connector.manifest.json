@@ -1,0 +1,78 @@
+{
+  "id": "alpha",
+  "displayName": "Alpha Securities",
+  "vendor": "Alpha Securities Pte Ltd (fictional)",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "InProcess",
+
+  "jurisdictions": [ "US", "SG" ],
+  "venues": [ "XNAS", "XSES" ],
+  "currencies": [ "USD", "SGD" ],
+  "assetClasses": [ "Equity", "Etf" ],
+
+  "auth": {
+    "model": "OAuth2",
+    "challenges": [],
+    "sessionLifetime": "08:00:00",
+    "expiresAtVenueMidnight": false,
+    "refreshSupported": true,
+    "credentialFields": [
+      {
+        "key": "client_id",
+        "label": "Client ID",
+        "secret": false,
+        "optional": false
+      },
+      {
+        "key": "client_secret",
+        "label": "Client secret",
+        "secret": true,
+        "optional": false
+      }
+    ]
+  },
+
+  "orders": {
+    "types": [ "Market", "Limit", "Stop", "StopLimit" ],
+    "timeInForce": [ "Day", "Gtc", "Ioc" ],
+    "positionEffects": [ "Delivery", "Margin", "ShortSell" ],
+    "varieties": [ "Regular", "Bracket" ],
+    "modifiable": [ "Quantity", "LimitPrice" ],
+    "fractionalQuantity": true,
+    "shortSellEquity": true,
+    "basket": {
+      "supported": true,
+      "maxLegs": 10,
+      "atomic": false
+    },
+    "bracket": true,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": true,
+    "chargesEstimate": false,
+    "cancelAll": true
+  },
+
+  "marketData": {
+    "streaming": true,
+    "streamModes": [ "Ltp", "Quote" ],
+    "depthLevels": 1,
+    "historical": true,
+    "historicalTimeFrames": [ "OneMinute", "OneDay" ],
+    "optionChain": false,
+    "maxStreamSubscriptions": 500,
+    "historyDays": 730
+  },
+
+  "rateLimits": [
+    { "scope": "orders", "perSecond": 10 },
+    { "scope": "quotes", "perSecond": 50 }
+  ],
+
+  "compliance": {
+    "algoApprovalRequired": false,
+    "regulator": "MAS",
+    "algoIdRequired": false
+  }
+}

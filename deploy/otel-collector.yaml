@@ -1,0 +1,44 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  # Every span in this system should be attributable to a tenant and, where relevant, a
+  # connector. Without those attributes a trace of a failing order is not much use.
+  attributes/required:
+    actions:
+      - key: service.namespace
+        value: akshaya
+        action: upsert
+
+exporters:
+  debug:
+    verbosity: normal
+
+  otlphttp/seq:
+    endpoint: http://seq:80/ingest/otlp
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes/required, batch]
+      exporters: [otlphttp/seq, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/seq]
