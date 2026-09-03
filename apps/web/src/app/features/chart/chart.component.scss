@@ -1,0 +1,32 @@
+// Two rules, both for things a utility class genuinely cannot express.
+@reference '../../../styles/tailwind.css';
+
+:host {
+  display: block;
+}
+
+// The timeframe strip. Not Material's button-toggle: this is a dense row of
+// 2-3 character labels sitting directly above a chart, and the toggle group's
+// stock height and letter-spacing make it about twice as tall as the density
+// this screen wants. Written with `@apply` rather than inline utilities
+// because the active state is a bound class, so the base and the modifier have
+// to be selectors that can compose.
+.ak-tf {
+  @apply cursor-pointer rounded-sm border border-border bg-surface-2 px-2.5 py-1
+    text-xs font-semibold text-text-secondary transition-[border-color,color]
+    duration-(--duration-ak) ease-ak hover:border-border-strong hover:text-text-primary;
+}
+
+.ak-tf--active {
+  @apply border-brand bg-surface-2 text-text-primary;
+
+  // `color-mix` against a token, which Tailwind has no utility for.
+  background-color: color-mix(in srgb, var(--color-brand) 12%, var(--color-surface-2));
+}
+
+// The canvas needs a definite height to measure against; `PriceChartComponent`
+// reads this variable, and the viewport-relative value is what keeps the chart
+// filling the screen without pushing the toolbar off the top.
+.ak-chart-card {
+  --ak-chart-height: clamp(320px, calc(100vh - 260px), 780px);
+}

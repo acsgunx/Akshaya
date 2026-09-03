@@ -1,21 +1,30 @@
 // =============================================================================
-// AKSHAYA — theme
+// AKSHAYA — Angular Material theme
 // =============================================================================
 // One file, one emission. Angular Material 22's CSS-first `mat.theme()` writes
 // the whole design system as `--mat-sys-*` custom properties instead of the
 // ~90kB of per-component rules `mat.all-component-themes()` used to emit for
 // every control in the library, used or not.
 //
-// Light and dark come from ONE set of declarations via the CSS `light-dark()`
-// function, switched by `color-scheme`. There is no second theme block to keep
-// in sync — that is what the old file spent half its length doing.
+// THE PALETTE IS NOT DECLARED HERE. Every colour, radius, shadow and column
+// width lives in `tailwind.css`'s `@theme` block, which is what generates the
+// Tailwind utilities the templates are written in. This file only:
+//
+//   1. seeds Material's own theming API, and
+//   2. ALIASES the legacy `--ak-*` names onto those variables, so the handful
+//      of places that still read a token by that name (the TradingView chart's
+//      candle colours, a few `color-mix()` calls) resolve to the exact same
+//      value a `bg-buy` utility would paint.
+//
+// Adding a colour here instead of in `tailwind.css` creates the second source
+// of truth this split exists to prevent.
 // =============================================================================
 
 @use '@angular/material' as mat;
 
 // Palette seeds. Indigo/violet is the chrome accent (links, focus, checked
-// states); blue/amber below are reserved exclusively for buy/sell so a
-// direction is never confused with "this control is selected".
+// states); blue/amber in `tailwind.css` are reserved exclusively for buy/sell
+// so a direction is never confused with "this control is selected".
 :root {
   @include mat.theme((
     color: (
@@ -36,78 +45,51 @@
 
   // Dark by default. A trading desk left open at 2am should not be a
   // floodlight, and `prefers-color-scheme` alone must not flip a terminal's
-  // chrome mid-session — light is an explicit opt-in below.
+  // chrome mid-session — light is an explicit opt-in below. This is also what
+  // every `light-dark()` token in `tailwind.css` resolves against.
   color-scheme: dark;
 
-  // ---- App tokens ---------------------------------------------------------
-  // Everything our own components read. `light-dark(light, dark)` resolves
-  // against `color-scheme`, so each token is declared exactly once.
-  --ak-bg: light-dark(#f4f6fa, #14161a);
-  --ak-surface-1: light-dark(#ffffff, #1a1d22);
-  --ak-surface-2: light-dark(#e2e6ee, #20242b);
-  --ak-surface-3: light-dark(#c2c9d6, #2a2f38);
-  --ak-border: light-dark(#c2c9d6, #2a2f38);
-  --ak-border-strong: light-dark(#98a1b3, #383f4b);
+  // ---- Aliases onto the Tailwind theme -------------------------------------
+  // Read by the chart component and by the few rules that still need a token
+  // in a `color-mix()`. Each is a reference, never a value.
+  --ak-bg: var(--color-bg);
+  --ak-surface-1: var(--color-surface-1);
+  --ak-surface-2: var(--color-surface-2);
+  --ak-surface-3: var(--color-surface-3);
+  --ak-border: var(--color-border);
+  --ak-border-strong: var(--color-border-strong);
 
-  --ak-text-primary: light-dark(#14161a, #f4f6fa);
-  --ak-text-secondary: light-dark(#383f4b, #98a1b3);
-  --ak-text-tertiary: light-dark(#4d5566, #6b7385);
+  --ak-text-primary: var(--color-text-primary);
+  --ak-text-secondary: var(--color-text-secondary);
+  --ak-text-tertiary: var(--color-text-tertiary);
 
-  // The chrome accent IS Material's primary role, aliased rather than re-picked, so a link,
-  // a focus ring and a filled button can never drift to two different violets.
   --ak-brand: var(--mat-sys-primary);
 
-  // DECISION: buy/sell are NOT red/green. ~8% of men are red-green colour
-  // blind, and red-on-dark vs green-on-dark is the worst pair for them — both
-  // desaturate toward the same dull olive. Blue/amber separate on wavelength
-  // AND luminance, so they survive deuteranopia, protanopia and tritanopia.
-  // They darken on light surfaces because the dark values fail 4.5:1 as text.
-  --ak-buy: light-dark(#1d4ed8, #3b82f6);
-  --ak-sell: light-dark(#b45309, #f59e0b);
-  --ak-buy-surface: color-mix(in srgb, var(--ak-buy) 14%, transparent);
-  --ak-sell-surface: color-mix(in srgb, var(--ak-sell) 14%, transparent);
+  --ak-buy: var(--color-buy);
+  --ak-sell: var(--color-sell);
+  --ak-buy-surface: var(--color-buy-surface);
+  --ak-sell-surface: var(--color-sell-surface);
 
-  // Non-directional status. `--ak-danger` is destructive/error only, never
-  // "sell"; `--ak-success` is "order acked / link ok", never "up".
-  --ak-success: light-dark(#15803d, #22c55e);
-  --ak-warning: light-dark(#a16207, #eab308);
-  --ak-danger: light-dark(#b91c1c, #ef4444);
-  --ak-info: light-dark(#0369a1, #38bdf8);
+  --ak-success: var(--color-success);
+  --ak-warning: var(--color-warning);
+  --ak-danger: var(--color-danger);
+  --ak-info: var(--color-info);
 
-  --ak-shadow-1: 0 1px 2px light-dark(rgb(15 23 42 / 8%), rgb(0 0 0 / 40%));
-  --ak-shadow-2: 0 2px 8px light-dark(rgb(15 23 42 / 10%), rgb(0 0 0 / 45%));
+  // Fixed numeric column widths, still read by the four blotter screens'
+  // `--ak-cols` grid templates. Part of the pending-migration surface — see the
+  // note at the bottom of `styles.scss`.
+  --ak-col-price-width: var(--spacing-price);
+  --ak-col-qty-width: var(--spacing-qty);
+  --ak-col-pnl-width: var(--spacing-pnl);
 
-  --ak-radius-xs: 4px;
-  --ak-radius-sm: 6px;
-  --ak-radius-md: 10px;
-  --ak-radius-lg: 16px;
-  --ak-radius-full: 999px;
-
-  --ak-font-mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
-
-  // Fixed numeric column widths, in `ch`, so an incoming tick can never change
-  // a column's width and shove its neighbours — see DESIGN.md "price cells
-  // must never jitter".
-  --ak-col-price-width: 11ch;
-  --ak-col-qty-width: 9ch;
-  --ak-col-pnl-width: 13ch;
-
-  // Flashes fade over 900ms: long enough to register peripherally, short
-  // enough to have finished before the next tick on a liquid instrument.
-  --ak-motion: 180ms;
-  --ak-motion-flash: 900ms;
-  --ak-ease: cubic-bezier(0.2, 0, 0, 1);
+  --ak-motion: var(--duration-ak);
+  --ak-motion-flash: var(--duration-flash);
+  --ak-ease: var(--ease-ak);
 }
 
-// Explicit light opt-in (a stored user preference, not a media query).
+// Explicit light opt-in (a stored user preference, not a media query). Flipping
+// `color-scheme` is all it takes: every token is a single `light-dark()`
+// declaration, so there is no second theme block to keep in sync.
 :root[data-theme='light'] {
   color-scheme: light;
-}
-
-// Colour-vision-deficiency alternate: a luminance-separated pair for the rare
-// viewer who still finds blue/amber close. A setting, not a media query —
-// there is no platform signal for colour vision.
-:root[data-cvd-safe='true'] {
-  --ak-buy: light-dark(#0e7490, #56c2ff);
-  --ak-sell: light-dark(#5b21b6, #7c3aed);
 }

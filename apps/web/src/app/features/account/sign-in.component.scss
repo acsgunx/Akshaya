@@ -1,48 +1,9 @@
-// The auth screens own the whole viewport and centre themselves; everything inside is a
-// primitive (`.ak-card--centred`, `.ak-field`, `.ak-banner`, `.ak-block`).
+// The auth screens own the whole viewport and centre themselves; that is a
+// :host rule, which has no template element to carry a utility class.
+// Everything inside is utilities — see the template.
 :host {
   display: block;
   min-height: 100vh;
   padding: 48px 16px;
-  background: var(--ak-bg);
-}
-
-.ak-auth {
-  max-width: 400px;
-  padding: 28px 26px 26px;
-}
-
-.ak-auth-head {
-  margin-bottom: 22px;
-}
-
-.ak-auth-head h1 {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.ak-auth-brand {
-  display: block;
-  margin-bottom: 10px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ak-brand);
-}
-
-.ak-auth-switch {
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-auth-switch a {
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.ak-auth-switch a:hover {
-  text-decoration: underline;
+  background: var(--color-bg);
 }

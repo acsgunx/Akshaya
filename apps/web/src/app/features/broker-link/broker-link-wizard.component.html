@@ -1,18 +1,18 @@
 @if (!manifest()) {
-  <div class="ak-card ak-card--centred ak-loading">
+  <div class="mx-auto w-full max-w-115 overflow-hidden rounded-lg border border-border bg-surface-1 shadow-ak-2 flex items-center gap-2.5 p-8 text-text-secondary">
     <mat-spinner diameter="24" />
     <span>Loading broker details…</span>
   </div>
 } @else {
-  <section class="ak-card ak-card--centred" aria-label="Link a broker account">
-    <header class="ak-row ak-card-head">
-      <span class="ak-avatar" aria-hidden="true">{{ monogram() }}</span>
-      <div class="ak-grow">
-        <h1>Link {{ manifest()!.displayName }}</h1>
-        <p class="ak-row ak-card-sub">
+  <section class="mx-auto w-full max-w-115 overflow-hidden rounded-lg border border-border bg-surface-1 shadow-ak-2" aria-label="Link a broker account">
+    <header class="flex items-center gap-3.5 border-b border-border px-6 py-5">
+      <span class="grid size-11 shrink-0 place-items-center rounded-md bg-surface-3 text-[15px] font-bold text-brand" aria-hidden="true">{{ monogram() }}</span>
+      <div class="min-w-0 flex-1">
+        <h1 class="text-[17px]/tight font-bold">Link {{ manifest()!.displayName }}</h1>
+        <p class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-tertiary">
           {{ manifest()!.vendor }}
           @for (j of manifest()!.jurisdictions; track j) {
-            <span class="ak-badge">{{ j }}</span>
+            <span class="inline-flex shrink-0 items-center rounded-full bg-surface-3 px-2 py-0.5 text-[11px]/[1.5] font-semibold whitespace-nowrap text-text-secondary">{{ j }}</span>
           }
         </p>
       </div>
@@ -24,10 +24,10 @@
       why that distinction is the entire point of this component.
     -->
     @if (!store.step()) {
-      <form [formGroup]="credentialForm" class="ak-stack ak-card-body" (ngSubmit)="submitCredentials()">
+      <form [formGroup]="credentialForm" class="flex flex-col gap-4.5 px-6 pt-5.5 pb-6" (ngSubmit)="submitCredentials()">
         @if (manifest()!.auth.expiresAtVenueMidnight) {
-          <p class="ak-banner ak-banner--info">
-            <mat-icon class="ak-i-sm" aria-hidden="true">schedule</mat-icon>
+          <p class="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5 text-[12.5px]/[1.45] text-text-secondary">
+            <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">schedule</mat-icon>
             <span>
               This link expires at venue midnight{{ manifest()!.auth.venueMidnightTimeZone ? ' (' + manifest()!.auth.venueMidnightTimeZone + ')' : '' }}
               regardless of when you sign in, so you'll need to reconnect daily.
@@ -36,52 +36,52 @@
         }
 
         @if (savedLogins().length > 0) {
-          <div class="ak-stack ak-saved-picker" role="group" aria-label="Saved logins">
+          <div class="flex flex-col gap-1.5" role="group" aria-label="Saved logins">
             @for (saved of savedLogins(); track saved.id) {
               <button
                 type="button"
-                class="ak-row ak-saved-option"
+                class="flex w-full cursor-pointer items-center gap-2.5 rounded-md border border-border bg-surface-2 px-3 py-2.5 text-left text-text-secondary hover:border-border-strong hover:text-text-primary"
                 [class.ak-saved-option--active]="selectedSaved()?.id === saved.id"
                 [attr.aria-pressed]="selectedSaved()?.id === saved.id"
                 (click)="useSaved(saved)"
               >
-                <mat-icon class="ak-i-sm" aria-hidden="true">{{ selectedSaved()?.id === saved.id ? 'check_circle' : 'key' }}</mat-icon>
-                <span class="ak-saved-option-text">
-                  <span class="ak-strong">{{ saved.nickname ?? 'Saved login' }}</span>
-                  <span class="ak-caption">{{ saved.rememberedKeys.length }} field(s) remembered</span>
+                <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">{{ selectedSaved()?.id === saved.id ? 'check_circle' : 'key' }}</mat-icon>
+                <span class="flex min-w-0 flex-col text-[13px]">
+                  <span class="font-medium text-text-primary">{{ saved.nickname ?? 'Saved login' }}</span>
+                  <span class="text-[11px] text-text-tertiary">{{ saved.rememberedKeys.length }} field(s) remembered</span>
                 </span>
               </button>
             }
             <button
               type="button"
-              class="ak-row ak-saved-option"
+              class="flex w-full cursor-pointer items-center gap-2.5 rounded-md border border-border bg-surface-2 px-3 py-2.5 text-left text-text-secondary hover:border-border-strong hover:text-text-primary"
               [class.ak-saved-option--active]="!selectedSaved()"
               [attr.aria-pressed]="!selectedSaved()"
               (click)="enterManually()"
             >
-              <mat-icon class="ak-i-sm" aria-hidden="true">edit</mat-icon>
-              <span class="ak-saved-option-text">
-                <span class="ak-strong">Enter details manually</span>
-                <span class="ak-caption">Use a different account</span>
+              <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">edit</mat-icon>
+              <span class="flex min-w-0 flex-col text-[13px]">
+                <span class="font-medium text-text-primary">Enter details manually</span>
+                <span class="text-[11px] text-text-tertiary">Use a different account</span>
               </span>
             </button>
           </div>
         }
 
-        <div class="ak-stack ak-fields">
-          <div class="ak-field">
-            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-1.5">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic" class="w-full">
               <mat-label>Nickname</mat-label>
               <input matInput [formControl]="nicknameControl" placeholder="e.g. My {{ manifest()!.displayName }} account" />
             </mat-form-field>
-            <p class="ak-field-msg">Optional. Helps you tell this link apart if you connect the same broker twice.</p>
+            <p class="px-0.5 text-xs/[1.4] text-text-tertiary">Optional. Helps you tell this link apart if you connect the same broker twice.</p>
           </div>
 
           @for (field of visibleFields(); track field.key) {
-            <div class="ak-field">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <div class="flex flex-col gap-1.5">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="w-full">
                 <mat-label>
-                  {{ field.label }}@if (field.optional) {<span class="ak-label-opt"> · optional</span>}
+                  {{ field.label }}@if (field.optional) {<span class="font-normal text-text-tertiary"> · optional</span>}
                 </mat-label>
                 <input
                   matInput
@@ -92,17 +92,17 @@
                   [attr.aria-describedby]="field.key + '-msg'"
                 />
                 @if (field.secret) {
-                  <mat-icon class="ak-i-sm" matSuffix aria-hidden="true">lock</mat-icon>
+                  <mat-icon class="size-[18px] shrink-0 text-[18px]" matSuffix aria-hidden="true">lock</mat-icon>
                 }
               </mat-form-field>
               @if (errorFor(field.key, field.label); as err) {
-                <p class="ak-field-msg ak-field-msg--error" [id]="field.key + '-msg'" role="alert">{{ err }}</p>
+                <p class="px-0.5 text-xs/[1.4] text-danger" [id]="field.key + '-msg'" role="alert">{{ err }}</p>
               } @else if (field.help) {
-                <p class="ak-field-msg" [id]="field.key + '-msg'">{{ field.help }}</p>
+                <p class="px-0.5 text-xs/[1.4] text-text-tertiary" [id]="field.key + '-msg'">{{ field.help }}</p>
               }
 
               <mat-checkbox
-                class="ak-remember"
+                class="mt-0.5 text-xs"
                 [checked]="isRemembered(field.key)"
                 (change)="toggleRemember(field.key, $event.checked)"
               >
@@ -112,8 +112,8 @@
           }
 
           @if (selectedSaved(); as saved) {
-            <p class="ak-banner ak-banner--info">
-              <mat-icon class="ak-i-sm" aria-hidden="true">key</mat-icon>
+            <p class="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5 text-[12.5px]/[1.45] text-text-secondary">
+              <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">key</mat-icon>
               <span>
                 Using your saved login for {{ saved.rememberedKeys.length }} field(s). They stay on the server and are
                 never sent to this browser.
@@ -123,14 +123,14 @@
         </div>
 
         @if (store.error(); as err) {
-          <p class="ak-banner ak-banner--error" role="alert">
-            <mat-icon class="ak-i-sm" aria-hidden="true">error_outline</mat-icon>
+          <p class="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/12 px-3 py-2.5 text-[12.5px]/[1.45] text-text-primary" role="alert">
+            <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">error_outline</mat-icon>
             <span>{{ err.detail ?? 'We could not start the login. Check your details and try again.' }}</span>
           </p>
         }
 
-        <div class="ak-stack ak-actions">
-          <button mat-flat-button color="primary" type="submit" class="ak-block" [disabled]="store.loading()">
+        <div class="flex flex-col gap-2">
+          <button mat-flat-button color="primary" type="submit" class="w-full" [disabled]="store.loading()">
             @if (store.loading()) {
               <mat-spinner diameter="18" />
               <span>Connecting…</span>
@@ -138,61 +138,61 @@
               <span>Continue</span>
             }
           </button>
-          <button mat-button type="button" class="ak-block" (click)="cancel()">Cancel</button>
+          <button mat-button type="button" class="w-full" (click)="cancel()">Cancel</button>
         </div>
 
-        <p class="ak-note">
-          <mat-icon class="ak-i-sm" aria-hidden="true">shield</mat-icon>
+        <p class="mt-2 flex items-center gap-1.5 text-[11px] text-text-tertiary">
+          <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">shield</mat-icon>
           <span>Sent once to link the account. Credentials are never stored in this browser.</span>
         </p>
       </form>
     } @else {
       @let step = store.step()!;
-      <div class="ak-stack ak-card-body">
+      <div class="flex flex-col gap-4.5 px-6 pt-5.5 pb-6">
         @switch (step.type) {
           @case ('completed') {
-            <div class="ak-stack ak-panel ak-panel--ok">
-              <mat-icon class="ak-i-lg ak-panel-icon" aria-hidden="true">check_circle</mat-icon>
-              <h2>{{ manifest()!.displayName }} linked</h2>
-              <p class="ak-panel-line">Account <span class="ak-num">{{ step.accountId }}</span></p>
+            <div class="flex flex-col gap-2.5 items-center text-center">
+              <mat-icon class="size-[34px] shrink-0 text-[34px] text-success" aria-hidden="true">check_circle</mat-icon>
+              <h2 class="text-base font-bold">{{ manifest()!.displayName }} linked</h2>
+              <p class="text-[13px] text-text-secondary">Account <span class="tabular-nums">{{ step.accountId }}</span></p>
               @if (step.expiresAt; as expiresAt) {
-                <p class="ak-panel-muted">Session valid until {{ expiresAt | date: 'medium' }}</p>
+                <p class="text-[13px]/[1.5] text-text-tertiary">Session valid until {{ expiresAt | date: 'medium' }}</p>
               }
-              <div class="ak-stack ak-actions">
-                <button mat-flat-button color="primary" type="button" class="ak-block" (click)="goToConnectors()">Done</button>
+              <div class="flex flex-col gap-2">
+                <button mat-flat-button color="primary" type="button" class="w-full" (click)="goToConnectors()">Done</button>
               </div>
             </div>
           }
 
           @case ('redirect') {
-            <div class="ak-stack ak-panel">
-              <mat-icon class="ak-i-lg ak-panel-icon" aria-hidden="true">open_in_new</mat-icon>
-              <h2>Approve access on {{ manifest()!.displayName }}</h2>
-              <p class="ak-panel-muted">
+            <div class="flex flex-col gap-2.5">
+              <mat-icon class="size-[34px] shrink-0 text-[34px] text-info" aria-hidden="true">open_in_new</mat-icon>
+              <h2 class="text-base font-bold">Approve access on {{ manifest()!.displayName }}</h2>
+              <p class="text-[13px]/[1.5] text-text-tertiary">
                 Sign in on the broker's own site, then paste the code (or the full redirect URL) it gives you back here.
               </p>
-              <button mat-stroked-button type="button" class="ak-block" (click)="openRedirect()">
-                <mat-icon class="ak-i-sm" aria-hidden="true">open_in_new</mat-icon>
+              <button mat-stroked-button type="button" class="w-full" (click)="openRedirect()">
+                <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">open_in_new</mat-icon>
                 <span>Open {{ manifest()!.displayName }}</span>
               </button>
-              <div class="ak-field">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <div class="flex flex-col gap-1.5">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="w-full">
                   <mat-label>Authorisation code</mat-label>
                   <input matInput [formControl]="redirectCodeControl" autocomplete="off" />
                 </mat-form-field>
               </div>
               @if (store.error(); as err) {
-                <p class="ak-banner ak-banner--error" role="alert">
-                  <mat-icon class="ak-i-sm" aria-hidden="true">error_outline</mat-icon>
+                <p class="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/12 px-3 py-2.5 text-[12.5px]/[1.45] text-text-primary" role="alert">
+                  <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">error_outline</mat-icon>
                   <span>{{ err.detail ?? 'That code was not accepted.' }}</span>
                 </p>
               }
-              <div class="ak-stack ak-actions">
+              <div class="flex flex-col gap-2">
                 <button
                   mat-flat-button
                   color="primary"
                   type="button"
-                  class="ak-block"
+                  class="w-full"
                   [disabled]="store.loading() || redirectCodeControl.invalid"
                   (click)="submitRedirectCode()"
                 >
@@ -207,16 +207,16 @@
           }
 
           @case ('challenge') {
-            <div class="ak-stack ak-panel">
-              <mat-icon class="ak-i-lg ak-panel-icon" aria-hidden="true">sms</mat-icon>
-              <h2>{{ challengeKindLabel(step.challengeKind) }}</h2>
-              <p class="ak-panel-muted">{{ step.prompt }}</p>
+            <div class="flex flex-col gap-2.5">
+              <mat-icon class="size-[34px] shrink-0 text-[34px] text-info" aria-hidden="true">sms</mat-icon>
+              <h2 class="text-base font-bold">{{ challengeKindLabel(step.challengeKind) }}</h2>
+              <p class="text-[13px]/[1.5] text-text-tertiary">{{ step.prompt }}</p>
               @if (step.maskedDestination; as dest) {
-                <p class="ak-panel-line">Sent to <strong>{{ dest }}</strong></p>
+                <p class="text-[13px] text-text-secondary">Sent to <strong>{{ dest }}</strong></p>
               }
 
-              <div class="ak-field">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <div class="flex flex-col gap-1.5">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="w-full">
                   <mat-label>{{ challengeKindLabel(step.challengeKind) }}</mat-label>
                   <input
                     matInput
@@ -226,12 +226,16 @@
                   />
                 </mat-form-field>
                 @if (challengeCountdown() !== undefined) {
+                  <!--
+                    Urgent below 30s: roughly the point past which re-reading a
+                    code off a phone and typing it will not beat the expiry.
+                  -->
                   <p
-                    class="ak-field-msg ak-countdown"
-                    [class.ak-countdown--urgent]="challengeCountdown()! < 30"
+                    class="px-0.5 text-xs/[1.4]"
+                    [class]="challengeCountdown()! < 30 ? 'font-semibold text-danger' : 'text-text-tertiary'"
                   >
                     @if (challengeCountdown()! > 0) {
-                      Code expires in <span class="ak-num">{{ challengeCountdown() }}s</span>
+                      Code expires in <span class="tabular-nums">{{ challengeCountdown() }}s</span>
                     } @else {
                       This code has expired — request a new one.
                     }
@@ -240,18 +244,18 @@
               </div>
 
               @if (store.error(); as err) {
-                <p class="ak-banner ak-banner--error" role="alert">
-                  <mat-icon class="ak-i-sm" aria-hidden="true">error_outline</mat-icon>
+                <p class="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/12 px-3 py-2.5 text-[12.5px]/[1.45] text-text-primary" role="alert">
+                  <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">error_outline</mat-icon>
                   <span>{{ err.detail ?? 'That code was not accepted.' }}</span>
                 </p>
               }
 
-              <div class="ak-stack ak-actions">
+              <div class="flex flex-col gap-2">
                 <button
                   mat-flat-button
                   color="primary"
                   type="button"
-                  class="ak-block"
+                  class="w-full"
                   [disabled]="store.loading() || challengeResponseControl.invalid"
                   (click)="submitChallenge()"
                 >
@@ -266,19 +270,19 @@
           }
 
           @case ('gateway') {
-            <div class="ak-stack ak-panel">
-              <mat-icon class="ak-i-lg ak-panel-icon" aria-hidden="true">dns</mat-icon>
-              <h2>A local gateway is required</h2>
-              <p class="ak-panel-muted">{{ step.instructions }}</p>
-              <p class="ak-panel-line">Gateway <span class="ak-num">{{ step.gatewayId }}</span></p>
+            <div class="flex flex-col gap-2.5">
+              <mat-icon class="size-[34px] shrink-0 text-[34px] text-info" aria-hidden="true">dns</mat-icon>
+              <h2 class="text-base font-bold">A local gateway is required</h2>
+              <p class="text-[13px]/[1.5] text-text-tertiary">{{ step.instructions }}</p>
+              <p class="text-[13px] text-text-secondary">Gateway <span class="tabular-nums">{{ step.gatewayId }}</span></p>
               @if (store.error(); as err) {
-                <p class="ak-banner ak-banner--error" role="alert">
-                  <mat-icon class="ak-i-sm" aria-hidden="true">error_outline</mat-icon>
+                <p class="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/12 px-3 py-2.5 text-[12.5px]/[1.45] text-text-primary" role="alert">
+                  <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">error_outline</mat-icon>
                   <span>{{ err.detail ?? 'The gateway is not reachable yet.' }}</span>
                 </p>
               }
-              <div class="ak-stack ak-actions">
-                <button mat-flat-button color="primary" type="button" class="ak-block" [disabled]="store.loading()" (click)="recheckGateway()">
+              <div class="flex flex-col gap-2">
+                <button mat-flat-button color="primary" type="button" class="w-full" [disabled]="store.loading()" (click)="recheckGateway()">
                   @if (store.loading()) {
                     <mat-spinner diameter="18" /><span>Checking…</span>
                   } @else {

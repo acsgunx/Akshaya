@@ -1,13 +1,17 @@
 <section>
-  <header class="ak-page-head ak-row">
-    <h1>Dashboard</h1>
+  <header class="mb-3.5 flex items-center gap-4">
+    <h1 class="mr-auto text-[22px] font-bold">Dashboard</h1>
     <button mat-icon-button (click)="refresh()" [disabled]="store.loading()" aria-label="Refresh portfolio">
       <mat-icon>refresh</mat-icon>
     </button>
   </header>
 
   @if (venues().length) {
-    <div class="ak-venue-strip" role="list" aria-label="Venue sessions">
+    <div
+      class="mb-4 flex flex-wrap gap-4 rounded-md border border-border bg-surface-1 px-3.5 py-2.5"
+      role="list"
+      aria-label="Venue sessions"
+    >
       @for (venue of venues(); track venue) {
         <ak-venue-clock [mic]="venue" role="listitem" />
       }
@@ -15,11 +19,20 @@
   }
 
   @if (store.loading() && !store.snapshot()) {
-    <div class="ak-loading"><mat-spinner diameter="28" /> Loading portfolio…</div>
+    <div class="flex items-center gap-2.5 p-8 text-text-secondary"><mat-spinner diameter="28" /> Loading portfolio…</div>
   } @else if (store.snapshot(); as snapshot) {
     @if (snapshot.isPartial) {
-      <div class="ak-banner ak-banner--warn" role="alert">
-        <mat-icon aria-hidden="true">error_outline</mat-icon>
+      <!--
+        A partial snapshot states what is MISSING, not a reassuring total. The
+        figures below exclude the failed accounts; saying so is the difference
+        between an incomplete number and a wrong one.
+      -->
+      <div
+        class="mb-4 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/15 px-3 py-2.5
+               text-[12.5px]/[1.45] text-text-primary"
+        role="alert"
+      >
+        <mat-icon class="mt-px size-[18px] shrink-0 text-[18px] text-warning" aria-hidden="true">error_outline</mat-icon>
         <span>
           {{ snapshot.failedSources.length }} of {{ snapshot.sources.length }} broker
           {{ snapshot.sources.length === 1 ? 'account is' : 'accounts are' }} not fully available — figures below
@@ -28,63 +41,74 @@
       </div>
     }
 
-    <div class="ak-dashboard-grid">
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,380px),1fr))] gap-4">
       <!-- Blended, multi-currency P&L -->
-      <section class="ak-card">
-        <h2>P&amp;L</h2>
-        <div class="ak-pnl-row">
-          <span class="ak-muted">Unrealised</span>
-          <div class="ak-pnl-natives">
+      <section class="rounded-lg border border-border bg-surface-1 p-4">
+        <h2 class="text-sm font-bold">P&amp;L</h2>
+        <div class="flex items-baseline justify-between border-b border-border py-1.5">
+          <span class="text-xs text-text-secondary">Unrealised</span>
+          <div class="flex gap-2.5 text-sm font-semibold">
             @for (m of snapshot.pnl.unrealisedNative; track m.currency) {
-              <span class="ak-num" [class.ak-buy-text]="+m.amount >= 0" [class.ak-sell-text]="+m.amount < 0">{{ m | akMoney }}</span>
+              <span class="tabular-nums" [class.text-buy]="+m.amount >= 0" [class.text-sell]="+m.amount < 0">{{
+                m | akMoney
+              }}</span>
             } @empty {
-              <span class="ak-num ak-muted">—</span>
+              <span class="tabular-nums text-text-secondary">—</span>
             }
           </div>
         </div>
-        <div class="ak-pnl-row">
-          <span class="ak-muted">Realised</span>
-          <div class="ak-pnl-natives">
+        <div class="flex items-baseline justify-between border-b border-border py-1.5">
+          <span class="text-xs text-text-secondary">Realised</span>
+          <div class="flex gap-2.5 text-sm font-semibold">
             @for (m of snapshot.pnl.realisedNative; track m.currency) {
-              <span class="ak-num" [class.ak-buy-text]="+m.amount >= 0" [class.ak-sell-text]="+m.amount < 0">{{ m | akMoney }}</span>
+              <span class="tabular-nums" [class.text-buy]="+m.amount >= 0" [class.text-sell]="+m.amount < 0">{{
+                m | akMoney
+              }}</span>
             } @empty {
-              <span class="ak-num ak-muted">—</span>
+              <span class="tabular-nums text-text-secondary">—</span>
             }
           </div>
         </div>
         @if (snapshot.pnl.unrealisedConverted; as converted) {
-          <p class="ak-pnl-converted ak-num">≈ {{ converted | akMoney }} unrealised, converted</p>
+          <p class="mt-2 text-[13px] tabular-nums text-text-secondary">≈ {{ converted | akMoney }} unrealised, converted</p>
         } @else {
-          <p class="ak-note">
-            <mat-icon class="ak-i-xs" aria-hidden="true">info</mat-icon>
+          <p class="mt-2 flex items-center gap-1.5 text-[11px] text-text-tertiary">
+            <mat-icon class="size-3.5 shrink-0 text-[14px]" aria-hidden="true">info</mat-icon>
             No converted total — see conversion notes below.
           </p>
         }
         @for (warning of snapshot.pnl.conversionWarnings; track warning) {
-          <p class="ak-note ak-danger-text">{{ warning }}</p>
+          <p class="mt-2 flex items-center gap-1.5 text-[11px] text-danger">{{ warning }}</p>
         }
       </section>
 
       <!-- Funds by currency -->
-      <section class="ak-card">
-        <h2>Funds</h2>
+      <section class="rounded-lg border border-border bg-surface-1 p-4">
+        <h2 class="text-sm font-bold">Funds</h2>
         @if (snapshot.balances.length === 0) {
           <ak-empty-state icon="account_balance_wallet" title="No balances reported" [compact]="true" />
         } @else {
-          <table>
+          <!--
+            A plain table, not the data grid: these are summary cards of a
+            handful of rows, and importing AG Grid here would put ~900kB on the
+            first screen after sign-in for something with no sorting, no
+            filtering and nothing to virtualise. See the note on lazy grid
+            loading in `ag-grid-theme.ts`.
+          -->
+          <table class="mt-3 w-full border-collapse text-[13px]">
             <thead>
               <tr>
-                <th scope="col">Currency</th>
-                <th scope="col">Available</th>
-                <th scope="col">Used margin</th>
+                <th class="border-b border-border px-2 py-1.5 text-left text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Currency</th>
+                <th class="border-b border-border px-2 py-1.5 text-right text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Available</th>
+                <th class="border-b border-border px-2 py-1.5 text-right text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Used margin</th>
               </tr>
             </thead>
             <tbody>
               @for (bal of snapshot.balances; track bal.currency) {
                 <tr>
-                  <td>{{ bal.currency }}</td>
-                  <td class="ak-col-price">{{ bal.availableToTrade | akMoney }}</td>
-                  <td class="ak-col-price">{{ bal.usedMargin | akMoney }}</td>
+                  <td class="border-b border-border px-2 py-1.5">{{ bal.currency }}</td>
+                  <td class="min-w-price border-b border-border px-2 py-1.5 text-right">{{ bal.availableToTrade | akMoney }}</td>
+                  <td class="min-w-price border-b border-border px-2 py-1.5 text-right">{{ bal.usedMargin | akMoney }}</td>
                 </tr>
               }
             </tbody>
@@ -92,34 +116,40 @@
         }
       </section>
 
-      <!-- Open positions summary -->
-      <section class="ak-card ak-card--wide">
-        <h2>Open positions ({{ snapshot.positions.length }})</h2>
+      <!-- Open positions summary. Full width whatever the column count. -->
+      <section class="col-span-full rounded-lg border border-border bg-surface-1 p-4">
+        <h2 class="text-sm font-bold">Open positions ({{ snapshot.positions.length }})</h2>
         @if (snapshot.positions.length === 0) {
           <ak-empty-state icon="show_chart" title="No open positions" [compact]="true" />
         } @else {
-          <table>
+          <table class="mt-3 w-full border-collapse text-[13px]">
             <thead>
               <tr>
-                <th scope="col">Instrument</th>
-                <th scope="col">Qty</th>
-                <th scope="col">Avg price</th>
-                <th scope="col">Last</th>
-                <th scope="col">Unrealised</th>
-                <th scope="col">Brokers</th>
+                <th class="border-b border-border px-2 py-1.5 text-left text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Instrument</th>
+                <th class="border-b border-border px-2 py-1.5 text-right text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Qty</th>
+                <th class="border-b border-border px-2 py-1.5 text-right text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Avg price</th>
+                <th class="border-b border-border px-2 py-1.5 text-right text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Last</th>
+                <th class="border-b border-border px-2 py-1.5 text-right text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Unrealised</th>
+                <th class="border-b border-border px-2 py-1.5 text-left text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Brokers</th>
               </tr>
             </thead>
             <tbody>
               @for (pos of snapshot.positions; track pos.groupKey) {
                 <tr>
-                  <td>{{ pos.instrument }}</td>
-                  <td class="ak-col-qty">{{ pos.netQuantity | akQuantity }}</td>
-                  <td class="ak-col-price">{{ pos.averagePrice | akMoney }}</td>
-                  <td class="ak-col-price">{{ pos.lastPrice | akMoney }}</td>
-                  <td class="ak-col-pnl" [class.ak-buy-text]="!pos.unrealisedPnl || +pos.unrealisedPnl.amount >= 0" [class.ak-sell-text]="pos.unrealisedPnl && +pos.unrealisedPnl.amount < 0">
+                  <td class="border-b border-border px-2 py-1.5">{{ pos.instrument }}</td>
+                  <td class="min-w-qty border-b border-border px-2 py-1.5 text-right">{{ pos.netQuantity | akQuantity }}</td>
+                  <td class="min-w-price border-b border-border px-2 py-1.5 text-right">{{ pos.averagePrice | akMoney }}</td>
+                  <td class="min-w-price border-b border-border px-2 py-1.5 text-right">{{ pos.lastPrice | akMoney }}</td>
+                  <td
+                    class="min-w-pnl border-b border-border px-2 py-1.5 text-right"
+                    [class.text-buy]="!pos.unrealisedPnl || +pos.unrealisedPnl.amount >= 0"
+                    [class.text-sell]="pos.unrealisedPnl && +pos.unrealisedPnl.amount < 0"
+                  >
                     {{ pos.unrealisedPnl | akMoney }}
                   </td>
-                  <td>{{ pos.legs.length > 1 ? pos.legs.length + ' brokers' : pos.legs[0]?.displayName }}</td>
+                  <td class="border-b border-border px-2 py-1.5">
+                    {{ pos.legs.length > 1 ? pos.legs.length + ' brokers' : pos.legs[0]?.displayName }}
+                  </td>
                 </tr>
               }
             </tbody>
@@ -128,17 +158,17 @@
       </section>
 
       <!-- Per-source status (every link, successful or not — never filtered) -->
-      <section class="ak-card ak-card--wide">
-        <h2>Broker accounts</h2>
-        <ul class="ak-source-list">
+      <section class="col-span-full rounded-lg border border-border bg-surface-1 p-4">
+        <h2 class="text-sm font-bold">Broker accounts</h2>
+        <ul class="mt-3 flex flex-col gap-2.5">
           @for (source of snapshot.sources; track source.brokerLinkId) {
-            <li>
+            <li class="flex items-center gap-2.5">
               <ak-connection-status
                 [label]="source.displayName"
                 [streamState]="source.isComplete ? 'connected' : 'disconnected'"
               />
               @if (!source.isComplete && source.error) {
-                <span class="ak-muted ak-danger-text">{{ source.error.detail }}</span>
+                <span class="text-xs text-danger">{{ source.error.detail }}</span>
               }
             </li>
           }
@@ -146,6 +176,10 @@
       </section>
     </div>
   } @else {
-    <ak-empty-state icon="account_balance" title="No portfolio data" description="Link a broker to see your positions and funds here." />
+    <ak-empty-state
+      icon="account_balance"
+      title="No portfolio data"
+      description="Link a broker to see your positions and funds here."
+    />
   }
 </section>

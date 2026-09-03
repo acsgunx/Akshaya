@@ -11,34 +11,16 @@ import type { VenueMic } from '../../core/models';
   imports: [MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <span class="ak-venue-clock" [matTooltip]="state().timeZone" role="status">
-      <span class="ak-venue-mic">{{ mic() }}</span>
-      <span class="ak-venue-time ak-num">{{ state().localTime }}</span>
-      <span class="ak-badge ak-venue-badge" [class]="badgeClass()">{{ state().label }}</span>
+    <span class="inline-flex items-center gap-1.5 text-xs text-text-secondary" [matTooltip]="state().timeZone" role="status">
+      <span class="font-semibold text-text-primary">{{ mic() }}</span>
+      <span class="font-mono tabular-nums">{{ state().localTime }}</span>
+      <span
+        class="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-semibold
+               uppercase whitespace-nowrap"
+        [class]="badgeClass()"
+        >{{ state().label }}</span
+      >
     </span>
-  `,
-  // The open/closed pill is the shared `.ak-badge` primitive; only the two "live" tints
-  // and the monospace clock are specific to this component.
-  styles: `
-    .ak-venue-clock {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--ak-text-secondary);
-    }
-    .ak-venue-mic {
-      font-weight: 600;
-      color: var(--ak-text-primary);
-    }
-    .ak-venue-time {
-      font-family: var(--ak-font-mono);
-    }
-    .ak-venue-badge {
-      padding: 1px 6px;
-      font-size: 10px;
-      text-transform: uppercase;
-    }
   `,
 })
 export class VenueClockComponent {
@@ -56,11 +38,11 @@ export class VenueClockComponent {
   readonly badgeClass = computed(() => {
     switch (this.state().status) {
       case 'open':
-        return 'ak-badge--ok';
+        return 'bg-success/20 text-success';
       case 'preOpen':
-        return 'ak-badge--warn';
+        return 'bg-warning/20 text-warning';
       default:
-        return '';
+        return 'bg-surface-3 text-text-secondary';
     }
   });
 

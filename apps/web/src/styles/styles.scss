@@ -1,10 +1,26 @@
 // =============================================================================
 // AKSHAYA — global stylesheet
 // =============================================================================
-// Reset, numeric-safety rules, and the small set of PRIMITIVES every screen is
-// built from. Anything that appeared in more than one feature stylesheet lives
-// here exactly once; a feature's own stylesheet should now only ever contain
-// what is genuinely unique to that screen (in practice: its grid columns).
+// What is left after the Tailwind migration. Every screen EXCEPT the four
+// blotters is written in utility classes now — see `tailwind.css` for the
+// tokens those utilities are generated from.
+//
+// Only three kinds of rule survive, and each is here because a utility class
+// genuinely cannot do the job:
+//
+//   1. THE RESET — element defaults, which have no class to hang off.
+//   2. SAFETY NETS — rules that must hold for markup nobody has written yet.
+//      A utility only protects the element someone remembered to put it on;
+//      these protect the ones they forgot. Both are accessibility or
+//      correctness guarantees, not styling.
+//   3. LIBRARY OVERRIDES — Angular Material renders its own DOM, inside
+//      overlays that sit outside any component's style scope.
+//
+// If you are about to add a fourth kind: it is almost certainly a utility
+// class on the element instead.
+//
+// The one exception is the PENDING-MIGRATION block at the bottom: the
+// primitives the four blotter screens still use. See the note there.
 // =============================================================================
 
 @use 'theme';
@@ -23,8 +39,8 @@ body {
 
 body {
   margin: 0;
-  background: var(--ak-bg);
-  color: var(--ak-text-primary);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
   font: 400 14px/1.45 var(--mat-sys-plain-font-family, sans-serif);
   -webkit-font-smoothing: antialiased;
 }
@@ -47,26 +63,144 @@ ol {
 }
 
 a {
-  color: var(--ak-brand);
+  color: var(--color-brand);
 }
 
 button {
   font: inherit;
 }
 
-// ---- Numerics ---------------------------------------------------------------
+// ---- Safety net: numerics ---------------------------------------------------
 // The single rule that keeps a live blotter readable: every digit the same
 // width, so a tick from 1,482.30 to 1,479.85 does not nudge the decimal point.
-// Applied broadly so no new numeric cell can be added without it.
+//
+// Tailwind's `tabular-nums` utility is the right tool on any cell you are
+// actively writing, and the templates use it. This element-level rule stays
+// because it is the net under the next numeric cell somebody adds WITHOUT
+// remembering the utility — a jittering price column is a misclick hazard on a
+// screen where the click places an order. See DESIGN.md.
 td,
-th,
+th {
+  font-variant-numeric: tabular-nums;
+}
+
+// ---- Safety net: focus ------------------------------------------------------
+// WCAG 2.2 AA: a visible, non-colour-only indicator with contrast against BOTH
+// the control and the page. `:focus-visible` so a mouse click never shows the
+// ring — this app is fully keyboard operable and the ring is how a keyboard
+// user tracks position on a screen full of live-updating numbers.
+//
+// Global rather than per-element for the same reason as the rule above: an
+// element that reaches production without a focus style is an accessibility
+// defect, and a default that applies to everything cannot be forgotten.
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+// A ring on a dark control needs a halo to read against a page background of
+// similar value to the ring itself.
+.ak-focus-halo:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-brand);
+}
+
+// ---- Safety net: motion -----------------------------------------------------
+// Honours the OS-level reduced-motion preference across every animation in the
+// app, including the ones Material and AG Grid bring with them — neither of
+// which is reachable from a utility class on our own markup.
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  // Still communicate a price change without motion.
+  .animate-flash-up,
+  .animate-flash-down {
+    animation: none !important;
+    outline: 1px solid var(--color-border-strong);
+  }
+}
+
+// ---- Scrollbars -------------------------------------------------------------
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+// ---- Library overrides ------------------------------------------------------
+// Angular Material owns the DOM inside its components, and CDK overlays render
+// outside the component that opened them — so these cannot be utilities on our
+// markup or styles in a component's own stylesheet. (AG Grid needs none of
+// this: it is themed entirely through `ag-grid-theme.ts`.)
+
+// Help and error text is rendered by us, below the field, rather than in
+// Material's subscript wrapper.
+.mat-mdc-form-field-subscript-wrapper {
+  display: none;
+}
+
+.mat-mdc-text-field-wrapper {
+  background: var(--color-surface-2);
+}
+
+// A destructive filled button (kill switch engaged, confirm-dialog danger
+// action). `!important` because it has to beat Material's own filled-button
+// token, which a utility class loses to.
+.ak-btn-danger {
+  background: var(--color-danger) !important;
+  color: #fff !important;
+}
+
+// Material buttons that carry a spinner while pending.
+.mat-mdc-button-base mat-spinner {
+  --mdc-circular-progress-active-indicator-color: currentcolor;
+}
+
+// The appearance menu carries a wrapped explanation under its checkbox and
+// needs more than a menu's default content width to lay it out. It renders in
+// a CDK overlay, so this cannot live in the component's own styles.
+.ak-appearance-panel {
+  max-width: 280px;
+}
+
+// =============================================================================
+// PENDING MIGRATION — the four blotter screens
+// =============================================================================
+// Watchlist, positions, holdings and orders are still on their original
+// CDK-virtual-scroll + CSS-grid implementation, and these are the primitives
+// they read. Everything below is scheduled for deletion once those four
+// screens move to utility classes; do not reach for any of it from a screen
+// that is already migrated.
+//
+// WHY THEY ARE STILL HERE: two table libraries were tried and both were
+// rejected on their merits, not on effort. PrimeNG 22 turned out to be a
+// commercial PrimeTek product that paints an "Invalid PrimeUI License" badge
+// over the running app without a key. AG Grid Community (MIT) replaced it and
+// its cell renderers proved completely non-functional in this app — no output
+// from an Angular component renderer, a registered-by-name renderer, or a
+// plain JS `ICellRenderer`, on both v35 and v36, with or without a custom
+// theme. Rather than ship four broken blotters, they were left on the
+// implementation that demonstrably works.
+// =============================================================================
+
+// ---- Numeric columns --------------------------------------------------------
 .ak-num,
 [class^='ak-col-'],
 [class*=' ak-col-'] {
   font-variant-numeric: tabular-nums;
 }
 
-// Fixed-width numeric columns — see DESIGN.md "price cells must never jitter".
 .ak-col-price,
 .ak-col-qty,
 .ak-col-pnl,
@@ -75,60 +209,16 @@ th,
   text-align: right;
 }
 
-.ak-col-price { min-width: var(--ak-col-price-width); }
-.ak-col-qty { min-width: var(--ak-col-qty-width); }
-.ak-col-pnl { min-width: var(--ak-col-pnl-width); }
+.ak-col-price { min-width: var(--spacing-price); }
+.ak-col-qty { min-width: var(--spacing-qty); }
+.ak-col-pnl { min-width: var(--spacing-pnl); }
 .ak-col-return { min-width: 5rem; }
 
 // ---- Direction --------------------------------------------------------------
-.ak-buy-text { color: var(--ak-buy); }
-.ak-sell-text { color: var(--ak-sell); }
-
-// ---- Focus ------------------------------------------------------------------
-// WCAG 2.2 AA: a visible, non-colour-only indicator with contrast against BOTH
-// the control and the page. `:focus-visible` so a mouse click never shows the
-// ring — this app is fully keyboard operable and the ring is how a keyboard
-// user tracks position on a screen full of live-updating numbers.
-:focus { outline: none; }
-
-:focus-visible {
-  outline: 2px solid var(--ak-brand);
-  outline-offset: 2px;
-  border-radius: var(--ak-radius-xs);
-}
-
-// A ring on a dark control needs a halo to read against a page background of
-// similar value to the ring itself.
-.ak-focus-halo:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--ak-bg), 0 0 0 4px var(--ak-brand);
-}
-
-// ---- Scrollbars -------------------------------------------------------------
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--ak-border-strong) transparent;
-}
-
-// ---- Screen-reader only -----------------------------------------------------
-.ak-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-// =============================================================================
-// PRIMITIVES
-// =============================================================================
+.ak-buy-text { color: var(--color-buy); }
+.ak-sell-text { color: var(--color-sell); }
 
 // ---- Page header ------------------------------------------------------------
-// Every screen's title block. Was re-declared, near-identically, in seven
-// feature stylesheets.
 .ak-page-head {
   --ak-gap: 16px;
 
@@ -147,59 +237,27 @@ th,
 .ak-sub {
   margin-top: 4px;
   font-size: 13px;
-  color: var(--ak-text-secondary);
+  color: var(--color-text-secondary);
 }
 
 // ---- Surfaces ---------------------------------------------------------------
 .ak-card {
-  background: var(--ak-surface-1);
-  border: 1px solid var(--ak-border);
-  border-radius: var(--ak-radius-lg);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 16px;
-}
-
-.ak-card h2 {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-// A card that owns the middle of the viewport (auth, the link wizard).
-.ak-card--centred {
-  width: 100%;
-  max-width: 460px;
-  margin-inline: auto;
-  box-shadow: var(--ak-shadow-2);
 }
 
 .ak-label {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--ak-text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 .ak-muted {
-  color: var(--ak-text-secondary);
+  color: var(--color-text-secondary);
   font-size: 12px;
-}
-
-// Small print. `.ak-label` is for COLUMN AND FIELD HEADINGS and shouts in caps;
-// `.ak-caption` is for a secondary line of real prose under something, and does not.
-.ak-caption {
-  font-size: 11px;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-danger-text { color: var(--ak-danger); }
-
-// A quiet footnote under a figure: small, tertiary, icon-aligned.
-.ak-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--ak-text-tertiary);
 }
 
 .ak-truncate {
@@ -207,12 +265,6 @@ th,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.ak-stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ak-gap, 12px);
 }
 
 .ak-row {
@@ -223,81 +275,40 @@ th,
 
 .ak-between { justify-content: space-between; }
 .ak-strong { font-weight: 500; }
-.ak-grow { flex: 1; min-width: 0; }
 
-// ---- Loading ----------------------------------------------------------------
 .ak-loading {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 32px;
-  color: var(--ak-text-secondary);
+  color: var(--color-text-secondary);
 }
 
 // ---- Badges -----------------------------------------------------------------
-// One badge, five tints. Replaces the status badges, split badges, capability
-// chips, pledge markers and connector tags each feature used to define itself.
 .ak-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   flex: none;
   padding: 2px 8px;
-  border-radius: var(--ak-radius-full);
-  background: var(--ak-surface-3);
-  color: var(--ak-text-secondary);
+  border-radius: 999px;
+  background: var(--color-surface-3);
+  color: var(--color-text-secondary);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.5;
   white-space: nowrap;
 }
 
-.ak-badge--info { background: color-mix(in srgb, var(--ak-info) 18%, transparent); color: var(--ak-info); }
-.ak-badge--ok { background: color-mix(in srgb, var(--ak-success) 18%, transparent); color: var(--ak-success); }
-.ak-badge--warn { background: color-mix(in srgb, var(--ak-warning) 18%, transparent); color: var(--ak-warning); }
-.ak-badge--bad { background: color-mix(in srgb, var(--ak-danger) 18%, transparent); color: var(--ak-danger); }
-.ak-badge--muted { background: var(--ak-surface-2); color: var(--ak-text-secondary); font-weight: 500; }
-
-// ---- Banners ----------------------------------------------------------------
-.ak-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: var(--ak-radius-md);
-  border: 1px solid var(--ak-border);
-  background: var(--ak-surface-2);
-  color: var(--ak-text-secondary);
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
-.ak-banner mat-icon {
-  flex: none;
-  margin-top: 1px;
-  color: var(--ak-info);
-}
-
-.ak-banner--warn {
-  background: color-mix(in srgb, var(--ak-warning) 14%, var(--ak-surface-1));
-  border-color: color-mix(in srgb, var(--ak-warning) 40%, transparent);
-  color: var(--ak-text-primary);
-}
-
-.ak-banner--warn mat-icon { color: var(--ak-warning); }
-
-.ak-banner--error {
-  background: color-mix(in srgb, var(--ak-danger) 12%, transparent);
-  border-color: color-mix(in srgb, var(--ak-danger) 40%, transparent);
-  color: var(--ak-text-primary);
-}
-
-.ak-banner--error mat-icon { color: var(--ak-danger); }
+.ak-badge--info { background: color-mix(in srgb, var(--color-info) 18%, transparent); color: var(--color-info); }
+.ak-badge--ok { background: color-mix(in srgb, var(--color-success) 18%, transparent); color: var(--color-success); }
+.ak-badge--warn { background: color-mix(in srgb, var(--color-warning) 18%, transparent); color: var(--color-warning); }
+.ak-badge--bad { background: color-mix(in srgb, var(--color-danger) 18%, transparent); color: var(--color-danger); }
 
 // ---- Grid tables ------------------------------------------------------------
-// Positions, orders, holdings and the watchlist are all the same thing: a
-// virtualised list of CSS-grid rows whose columns must line up with a sticky
-// header. A screen now supplies only `--ak-cols` and inherits the rest.
+// A screen supplies only `--ak-cols` — the grid template shared by the header,
+// the rows and the expanded broker legs, which is what keeps a leg's quantity
+// aligned under the heading it belongs to.
 .ak-thead,
 .ak-trow,
 .ak-tleg {
@@ -310,34 +321,30 @@ th,
 
 .ak-thead {
   padding-block: 8px;
-  border-bottom: 1px solid var(--ak-border);
+  border-bottom: 1px solid var(--color-border);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--ak-text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 .ak-trow {
   height: 44px;
-  border-bottom: 1px solid var(--ak-border);
+  border-bottom: 1px solid var(--color-border);
   font-size: 13px;
 }
 
-.ak-trow:hover { background: var(--ak-surface-2); }
+.ak-trow:hover { background: var(--color-surface-2); }
 
-// Expanded broker legs deliberately reuse the PARENT grid: a leg's quantity has
-// to sit directly under the Qty heading and under the blended quantity it
-// contributes to. A sub-table with its own widths makes the reader work out
-// which number is which, which is the opposite of what expanding is for.
 .ak-legs {
-  background: var(--ak-surface-2);
-  border-bottom: 1px solid var(--ak-border);
+  background: var(--color-surface-2);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .ak-tleg {
   height: 36px;
   font-size: 12px;
-  color: var(--ak-text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .ak-viewport {
@@ -345,7 +352,6 @@ th,
   min-height: 280px;
 }
 
-// Row expander chevron.
 .ak-expand {
   display: grid;
   place-items: center;
@@ -353,15 +359,14 @@ th,
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--ak-radius-xs);
+  border-radius: var(--radius-xs);
   background: none;
-  color: var(--ak-text-tertiary);
+  color: var(--color-text-tertiary);
   cursor: pointer;
 }
 
 .ak-expand:disabled { cursor: default; }
 
-// A bare icon button that is not a Material button (row actions, close).
 .ak-iconbtn {
   display: inline-flex;
   align-items: center;
@@ -369,113 +374,39 @@ th,
   padding: 0;
   border: 0;
   background: none;
-  color: var(--ak-text-tertiary);
+  color: var(--color-text-tertiary);
   cursor: pointer;
 }
 
-.ak-iconbtn:hover { color: var(--ak-text-primary); }
+.ak-iconbtn:hover { color: var(--color-text-primary); }
 
 // ---- Icon sizing ------------------------------------------------------------
-// `mat-icon` is 24px; nearly every use here wanted it smaller, and every
-// feature stylesheet repeated the same three-property incantation to say so.
 .ak-i-sm,
-.ak-i-xs,
-.ak-i-lg {
+.ak-i-xs {
   flex: none;
 }
 
 .ak-i-xs { font-size: 14px; width: 14px; height: 14px; }
 .ak-i-sm { font-size: 18px; width: 18px; height: 18px; }
-.ak-i-lg { font-size: 34px; width: 34px; height: 34px; }
 
-// ---- Forms ------------------------------------------------------------------
-// Help and error text is rendered by us, below the field, rather than in
-// Material's subscript wrapper — so the wrapper is hidden once, globally,
-// instead of via an identical `::ng-deep` block in each form screen.
-.ak-field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.ak-field mat-form-field,
-.ak-block {
-  width: 100%;
-}
-
-.ak-field-msg {
-  padding-inline: 2px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-field-msg--error { color: var(--ak-danger); }
-
-.mat-mdc-form-field-subscript-wrapper { display: none; }
-
-.mat-mdc-text-field-wrapper { background: var(--ak-surface-2); }
-
-// A destructive filled button (kill switch engaged, confirm-dialog danger action).
-// `!important` because it has to beat Material's own filled-button token.
-.ak-btn-danger {
-  background: var(--ak-danger) !important;
-  color: #fff !important;
-}
-
-// Material buttons that carry a spinner while pending.
-.mat-mdc-button-base mat-spinner {
-  --mdc-circular-progress-active-indicator-color: currentcolor;
-}
-
-// ---- Overlay panels ----------------------------------------------------------
-// CDK overlays render outside their component, so panel styling has to be global.
-// The appearance menu carries a wrapped explanation under its checkbox and needs more
-// than a menu's default content width to lay it out.
-.ak-appearance-panel {
-  max-width: 280px;
-}
-
-.ak-appearance-panel .ak-menu-section {
-  padding: 4px 14px 10px;
-}
-
-.ak-appearance-panel .ak-menu-help {
-  margin-top: 4px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--ak-text-tertiary);
-  white-space: normal;
-}
-
-// ---- Motion -----------------------------------------------------------------
-// Background-colour flash only — never a size, weight or layout change, so the
-// flash can never cause the jitter the tabular-nums rule above prevents.
+// ---- Flash-on-change --------------------------------------------------------
+// Background colour only — never a size, weight or layout change, so the flash
+// can never cause the jitter the fixed column widths above prevent.
 @keyframes ak-flash-up {
-  from { background-color: var(--ak-buy-surface); }
+  from { background-color: var(--color-buy-surface); }
 }
 
 @keyframes ak-flash-down {
-  from { background-color: var(--ak-sell-surface); }
+  from { background-color: var(--color-sell-surface); }
 }
 
-.ak-flash-up { animation: ak-flash-up var(--ak-motion-flash) var(--ak-ease); }
-.ak-flash-down { animation: ak-flash-down var(--ak-motion-flash) var(--ak-ease); }
+.ak-flash-up { animation: ak-flash-up var(--duration-flash) var(--ease-ak); }
+.ak-flash-down { animation: ak-flash-down var(--duration-flash) var(--ease-ak); }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
-    scroll-behavior: auto !important;
-  }
-
-  // Still communicate the change without motion.
   .ak-flash-up,
   .ak-flash-down {
     animation: none;
-    outline: 1px solid var(--ak-border-strong);
+    outline: 1px solid var(--color-border-strong);
   }
 }

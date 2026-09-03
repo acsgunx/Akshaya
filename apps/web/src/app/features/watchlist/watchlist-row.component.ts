@@ -2,6 +2,7 @@ import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { RouterLink } from '@angular/router';
 
 import { MarketDataService } from '../../core/market-data.service';
 import { MoneyPipe } from '../../core/money.pipe';
@@ -28,7 +29,7 @@ type FlashDirection = 'up' | 'down' | undefined;
 @Component({
   selector: 'ak-watchlist-row',
   standalone: true,
-  imports: [DecimalPipe, MatIconModule, MatTooltipModule, MoneyPipe, ConnectionStatusComponent],
+  imports: [DecimalPipe, MatIconModule, MatTooltipModule, RouterLink, MoneyPipe, ConnectionStatusComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="ak-trow ak-wl-row" role="row">
@@ -46,6 +47,15 @@ type FlashDirection = 'up' | 'down' | undefined;
       </span>
 
       <ak-connection-status label="" [streamState]="connectionState()" [isDataStale]="isStale()" />
+
+      <a
+        class="ak-iconbtn ak-focus-halo"
+        [routerLink]="['/chart', brokerLinkId(), instrument().key]"
+        [attr.aria-label]="'Open chart for ' + instrument().key"
+        matTooltip="Chart"
+      >
+        <mat-icon class="ak-i-sm" aria-hidden="true">candlestick_chart</mat-icon>
+      </a>
 
       <button
         type="button"

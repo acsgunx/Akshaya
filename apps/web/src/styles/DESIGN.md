@@ -1,35 +1,104 @@
 # Akshaya design rationale
 
-This document is the "why" behind `_theme.scss` and `styles.scss`, and behind
-a handful of interaction rules that apply across every feature. Read it before
-adding a component — most "why does this look different from the rest of the
-app" questions are answered here.
+This document is the "why" behind `tailwind.css`, `_theme.scss` and
+`styles.scss`, and behind a handful of interaction rules that apply across
+every feature. Read it before adding a component — most "why does this look
+different from the rest of the app" questions are answered here.
 
 ## Where the styling lives
 
-Two files, and then almost nothing per screen:
+Screens are written in **Tailwind utility classes**, in the template. Three
+global files carry everything that is not a class on an element.
 
-- **`_theme.scss`** — one `mat.theme()` call plus the `--ak-*` custom
-  properties. Light and dark come from a single set of `light-dark()`
-  declarations switched by `color-scheme`, so there is no second theme block to
-  keep in step. Dark is the default; light and the colour-blind-safe buy/sell
-  pair are stored preferences, applied by `AppearanceStore` as `[data-theme]`
-  and `[data-cvd-safe]` on `<html>`.
-- **`styles.scss`** — the reset and the PRIMITIVES every screen is built from:
-  `.ak-page-head`, `.ak-card`, `.ak-badge` (+ `--info`/`--ok`/`--warn`/`--bad`/
-  `--muted`), `.ak-banner`, `.ak-loading`, `.ak-field`, the `.ak-thead` /
-  `.ak-trow` / `.ak-tleg` grid-table set, and the small layout utilities
-  (`.ak-row`, `.ak-stack`, `.ak-truncate`, `.ak-caption`, `.ak-i-sm`).
+(The four blotter screens are the exception — see "Two table libraries were
+tried" below. They still use the primitives quarantined at the bottom of
+`styles.scss`.)
 
-**A feature stylesheet should contain only what is unique to that screen.** For
-the four table screens that is literally one declaration — `--ak-cols`, the
-grid template that the header, the rows and the expanded broker legs all share.
-If you find yourself writing a page header, a card, a status pill or a spinner
-row in a feature file, it already exists above; add a modifier there instead of
-a seventh near-copy.
+- **`tailwind.css`** — the Tailwind entry AND the single source of truth for
+  the design tokens. Every colour, radius, shadow and numeric column width is
+  declared once, in its `@theme static` block, which does double duty: Tailwind
+  generates the utilities from it (`--color-buy` → `bg-buy`, `text-buy`,
+  `border-buy`), and the same custom property is readable at runtime, which is
+  how the TradingView chart paints its candles in the app's own colours. Light
+  and dark come from a single set of `light-dark()` declarations switched by
+  `color-scheme`, so there is no second theme block to keep in step.
 
-`.ak-label` is for column and field headings and renders in caps; `.ak-caption`
-is for a secondary line of prose and does not. They are not interchangeable.
+  The `static` matters: without it Tailwind emits only the variables some
+  generated utility happens to reference, and anything read at runtime or from
+  plain CSS silently resolves to nothing.
+
+- **`_theme.scss`** — one `mat.theme()` call, plus `--ak-*` aliases pointing at
+  the variables above. It declares no colours of its own. Dark is the default;
+  light and the colour-blind-safe buy/sell pair are stored preferences, applied
+  by `AppearanceStore` as `[data-theme]` and `[data-cvd-safe]` on `<html>`.
+
+- **`styles.scss`** — the reset, plus two categories that a utility class
+  genuinely cannot cover:
+  - **Safety nets.** `tabular-nums` on every `td`/`th`, and a `:focus-visible`
+    ring on everything. A utility only protects the element somebody remembered
+    to put it on; these protect the ones they forgot, and both are correctness
+    guarantees rather than styling.
+  - **Library overrides.** Angular Material renders its own DOM, and CDK
+    overlays render outside the component that opened them. (AG Grid needs
+    none: it is themed entirely through its own theme object.)
+
+**A component stylesheet should be empty.** The migrated screens' are nearly
+so, and each non-empty one says at the top which of these three cases it is:
+
+1. a `:host` rule, which has no template element to carry a class;
+2. a state driven by a **bound** class — `routerLinkActive`'s `active`, the
+   order ticket's `.selected`, the wizard's `.ak-saved-option--active` — where
+   base and modifier have to be composable selectors, written with `@apply` so
+   they stay in Tailwind's vocabulary; or
+3. a `color-mix()` against a token, which has no utility equivalent.
+
+If you are writing a card, a page header, a status pill or a spinner row in a
+component stylesheet, it is a utility string in the template instead.
+
+## Which component library owns what
+
+**Angular Material owns every control**: buttons, dialogs, menus, form fields,
+tabs, snackbars, tooltips, checkboxes. There is no second component library.
+
+### Two table libraries were tried and both were rejected
+
+The four blotter screens (watchlist, positions, holdings, orders) are still on
+their original CDK-virtual-scroll + CSS-grid implementation. That is not for
+lack of trying:
+
+- **PrimeNG 22** is no longer open source. It is a commercial PrimeTek product
+  requiring a license key, and without one it paints an "Invalid PrimeUI
+  License" badge over the running application. Free "Community License"
+  eligibility is capped at <$1M revenue, <5 developers, <10 employees.
+- **AG Grid Community** (MIT, no key) replaced it, and its **cell renderers
+  proved completely non-functional in this app**. No output from an Angular
+  component renderer, from a renderer registered by name in the `components`
+  map, or from a plain JS `ICellRenderer` with a `getGui()` — on both v35.1 and
+  v36.1, with and without a custom theme, with and without
+  `suppressAnimationFrame`. `valueGetter` text rendered fine; the moment a
+  `cellRenderer` was present the cell rendered empty, silently, with no
+  console error. Root cause not established; the most likely suspect is this
+  app's zoneless change detection, which AG Grid's NgZone-based Angular adapter
+  may not support.
+
+Rather than ship four broken blotters, they were left on the implementation
+that demonstrably works. The primitives they still need are quarantined in a
+clearly marked PENDING MIGRATION block at the bottom of `styles.scss`; nothing
+already migrated should reach for them.
+
+### Expanded broker legs
+
+Whatever replaces the current implementation must preserve one property: a
+leg's quantity has to sit directly under the Qty heading and under the blended
+quantity it contributes to. Today that is structural — the header, the rows and
+the legs share one `--ak-cols` grid template. A sub-table with its own widths
+makes the reader work out which number is which, which is the opposite of what
+expanding a row is for.
+
+Note that both candidate libraries put this behind a paywall or a rewrite: AG
+Grid's master/detail is an Enterprise feature. The workaround that was built
+and does work is to flatten legs into peer rows of the same height, which keeps
+the alignment structural *and* keeps the list virtualisable.
 
 ## Why dark by default
 
@@ -45,7 +114,7 @@ We do **not** go pure black. Pure black (`#000`) next to saturated accent
 colours (our buy/sell blue and amber, red for danger) causes visible halation
 on OLED/AMOLED panels and reads as "broken" rather than "calm" — colour blooms
 outward from bright glyphs against a truly black field. Our darkest surface
-(`$grey-900`, `#14161a`) sits at roughly 8% luminance: dark enough for the
+(`#14161a`) sits at roughly 8% luminance: dark enough for the
 above, lifted enough that accent colours stay crisp.
 
 Light mode exists (`[data-theme="light"]`) for daytime use or personal
@@ -78,7 +147,7 @@ sell/short**. This pair was chosen because:
   achromatopsia (total colour blindness, very rare but real) still separates
   them by lightness alone.
 - Neither is "red", so neither is visually confused with the app's actual
-  danger/error colour (`$danger-500`, reserved exclusively for destructive
+  danger/error colour (`--color-danger`, reserved exclusively for destructive
   actions and hard failures — never for "sell").
 
 **Colour is never the only signal.** Every buy/sell indicator — order-ticket
@@ -100,18 +169,26 @@ widths differ — is disorienting at best and, at the moment someone is about
 to click a row, a misclick hazard at worst. Three rules eliminate it:
 
 1. **`font-variant-numeric: tabular-nums` everywhere a number can change.**
-   Set globally on `td`/`th` and via the `.ak-num` utility class for numbers
-   outside tables (the order ticket's estimated value, the dashboard's P&L
-   tiles). Every digit then occupies an identical advance width.
-2. **Fixed `min-width` on numeric columns**, in `ch` units
-   (`--ak-col-price-width`, `--ak-col-qty-width`, `--ak-col-pnl-width`),
+   Set globally on `td`/`th` in `styles.scss` and via Tailwind's `tabular-nums`
+   utility for numbers outside tables (the order ticket's estimated value, the
+   dashboard's P&L tiles). Every digit then occupies an identical advance width.
+2. **Fixed `min-width` on numeric columns**, in `ch` units, as the
+   `min-w-price` / `min-w-qty` / `min-w-pnl` utilities generated from
+   `--spacing-price` / `--spacing-qty` / `--spacing-pnl`,
    sized for the longest realistic value (a 6-figure
    INR price with grouping, a signed 6-figure P&L). A column can only ever
    get *emptier* padding on a short number, never narrower.
-3. **Flash-on-change is a background-colour animation only** (`.ak-flash-up`
-   / `.ak-flash-down`), never a font-weight, size or transform change — those
-   are exactly the properties that alter a glyph's advance width and would
-   reintroduce the jitter the first two rules just eliminated.
+3. **Flash-on-change is a background-colour animation only**
+   (`animate-flash-up` / `animate-flash-down`, defined in the `@theme` block),
+   never a font-weight, size or transform change — those are exactly the
+   properties that alter a glyph's advance width and would reintroduce the
+   jitter the first two rules just eliminated.
+
+One level up, the same hazard applies to whole rows: **the live blotters do not
+sort on live columns.** LTP, change% and order status are deliberately not
+sortable, and the order blotter is not sortable at all. A table that reorders
+itself while fills are arriving moves the row a trader is reaching for out from
+under them, which is the misclick hazard above at row scale.
 
 ## Showing degraded and stale state
 
@@ -125,7 +202,7 @@ anything in ten seconds on a liquid instrument is itself a symptom.
 
 - **`connection-status`** (shared component) renders one of `live` / `degraded`
   / `stale` / `disconnected` per connector — mapped straight onto the semantic
-  tokens they mean (`--ak-success`, `--ak-warning`, `--ak-danger`), with no
+  tokens they mean (`--color-success`, `--color-warning`, `--color-danger`), with no
   intermediate alias layer to fall out of step — and is present everywhere that connector's data appears — the watchlist row, the
   order ticket header, the dashboard's per-venue strip. It never collapses to
   a binary "connected" dot; `degraded` (connected but behind or partially

@@ -27,7 +27,7 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
     @if (store.state().isEngaged) {
       <button
         mat-flat-button
-        class="ak-kill-btn ak-btn-danger"
+        class="ak-btn-danger inline-flex items-center gap-1.5 font-semibold whitespace-nowrap"
         [disabled]="store.busy()"
         matTooltip="All trading is halted. Click to resume."
         (click)="disengage()"
@@ -38,7 +38,7 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
     } @else {
       <button
         mat-stroked-button
-        class="ak-kill-btn"
+        class="inline-flex items-center gap-1.5 font-semibold whitespace-nowrap"
         [disabled]="store.busy()"
         matTooltip="Immediately stop all new orders across every linked broker."
         (click)="engage()"
@@ -48,16 +48,14 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
       </button>
     }
   `,
-  // The engaged state is the shared `.ak-btn-danger` primitive.
   styles: `
-    .ak-kill-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .ak-kill-btn mat-icon {
+    /*
+      Material's button gives its leading icon a negative margin sized for its
+      own label spacing; the flex gap above already does that job, so the two
+      compound into a cramped glyph. Not expressible as a utility: the icon is
+      inside Material's own DOM.
+    */
+    mat-icon {
       flex: none;
       margin: 0;
     }

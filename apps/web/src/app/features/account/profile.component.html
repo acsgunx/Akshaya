@@ -1,32 +1,34 @@
-<section class="ak-stack ak-profile">
-  <header class="ak-page-head">
+<section class="flex max-w-180 flex-col gap-3">
+  <header class="mb-3.5 flex items-start justify-between gap-4">
     <div>
-      <h1>Account</h1>
-      <p class="ak-sub">Your profile, and the broker logins this platform is holding for you.</p>
+      <h1 class="text-[22px] font-bold">Account</h1>
+      <p class="mt-1 text-[13px] text-text-secondary">
+        Your profile, and the broker logins this platform is holding for you.
+      </p>
     </div>
   </header>
 
   @if (auth.user(); as user) {
-    <section class="ak-card">
-      <h2>Profile</h2>
-      <dl class="ak-detail-list">
-        <div>
-          <dt>Email</dt>
+    <section class="rounded-lg border border-border bg-surface-1 p-4">
+      <h2 class="text-sm font-bold">Profile</h2>
+      <dl class="mt-3 flex flex-col gap-2 text-[13px]">
+        <div class="flex gap-3">
+          <dt class="min-w-27.5 text-text-tertiary">Email</dt>
           <dd>{{ user.email }}</dd>
         </div>
         @if (user.displayName) {
-          <div>
-            <dt>Name</dt>
+          <div class="flex gap-3">
+            <dt class="min-w-27.5 text-text-tertiary">Name</dt>
             <dd>{{ user.displayName }}</dd>
           </div>
         }
-        <div>
-          <dt>Member since</dt>
+        <div class="flex gap-3">
+          <dt class="min-w-27.5 text-text-tertiary">Member since</dt>
           <dd>{{ user.createdAt | date: 'mediumDate' }}</dd>
         </div>
       </dl>
-      <div class="ak-row ak-card-actions">
-        <button mat-stroked-button type="button" (click)="signOut()">
+      <div class="mt-3.5 flex items-center gap-2">
+        <button mat-stroked-button type="button" class="inline-flex items-center gap-1.5" (click)="signOut()">
           <mat-icon aria-hidden="true">logout</mat-icon>
           <span>Sign out</span>
         </button>
@@ -34,9 +36,9 @@
     </section>
   }
 
-  <section class="ak-card">
-    <h2>Saved broker logins</h2>
-    <p class="ak-sub ak-card-sub">
+  <section class="rounded-lg border border-border bg-surface-1 p-4">
+    <h2 class="text-sm font-bold">Saved broker logins</h2>
+    <p class="mt-1 mb-3.5 max-w-[62ch] text-[13px] text-text-secondary">
       Encrypted on the server and used only to sign in to a broker on your behalf. They are never sent back to this
       browser, so no page — including this one — can show you the values.
     </p>
@@ -48,25 +50,32 @@
         description="Tick “Remember this” on a field when you link a broker, and it will appear here."
         [compact]="true"
       />
-      <div class="ak-row ak-card-actions">
+      <div class="mt-3.5 flex items-center gap-2">
         <a mat-flat-button color="primary" routerLink="/connectors">Link a broker</a>
       </div>
     } @else {
-      <ul class="ak-saved-list ak-stack">
+      <ul class="flex flex-col gap-2">
         @for (credential of auth.savedCredentials(); track credential.id) {
-          <li class="ak-saved">
-            <div class="ak-grow">
-              <p class="ak-saved-title">
+          <li class="flex items-start gap-3 rounded-md border border-border bg-surface-2 px-3.5 py-3">
+            <div class="min-w-0 flex-1">
+              <p class="flex flex-wrap items-baseline gap-2 text-[13.5px] font-semibold">
                 {{ credential.nickname ?? connectorName(credential.connectorId) }}
                 @if (credential.nickname) {
-                  <span class="ak-caption">{{ connectorName(credential.connectorId) }}</span>
+                  <span class="text-[11px] font-normal text-text-tertiary">{{
+                    connectorName(credential.connectorId)
+                  }}</span>
                 }
               </p>
-              <p class="ak-row ak-muted ak-saved-fields">
-                <mat-icon class="ak-i-xs" aria-hidden="true">lock</mat-icon>
+              <!--
+                Which FIELDS were saved, never their values — there is no
+                endpoint that returns one, so this page could not show them
+                even if it wanted to. See the README's note on the vault.
+              -->
+              <p class="mt-1.5 flex items-center gap-2 text-xs text-text-secondary">
+                <mat-icon class="size-3.5 shrink-0 text-[14px] text-success" aria-hidden="true">lock</mat-icon>
                 <span>Saved: {{ fieldLabels(credential) }}</span>
               </p>
-              <p class="ak-caption ak-saved-meta">
+              <p class="mt-1 text-[11px] text-text-tertiary">
                 Updated {{ credential.updatedAt | date: 'medium' }}
                 @if (credential.lastUsedAt) {
                   · last used {{ credential.lastUsedAt | date: 'medium' }}
@@ -78,8 +87,10 @@
             <button
               mat-icon-button
               type="button"
-              class="ak-saved-forget"
-              [attr.aria-label]="'Forget the saved login for ' + (credential.nickname ?? connectorName(credential.connectorId))"
+              class="hover:text-danger"
+              [attr.aria-label]="
+                'Forget the saved login for ' + (credential.nickname ?? connectorName(credential.connectorId))
+              "
               (click)="forget(credential)"
             >
               <mat-icon aria-hidden="true">delete_outline</mat-icon>

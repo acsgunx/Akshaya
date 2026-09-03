@@ -80,6 +80,18 @@ export const routes: Routes = [
       import('./features/broker-link/broker-link-wizard.component').then((m) => m.BrokerLinkWizardComponent),
   },
   {
+    // Deep-linkable chart: /chart/<brokerLinkId>/XNSE:INFY:Equity — same
+    // param contract as the trade route below, so a screen holding a link and
+    // an instrument can send the user to either without extra lookups.
+    // Lazy on purpose and load-bearing: this is the only route that pulls in
+    // `lightweight-charts` (~50kB gzipped), which must stay out of the
+    // initial bundle — see the `budgets` block in angular.json.
+    path: 'chart/:brokerLinkId/:instrument',
+    title: 'Chart · Akshaya',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/chart/chart.component').then((m) => m.ChartComponent),
+  },
+  {
     // Deep-linkable order ticket: /trade/<brokerLinkId>/XNSE:INFY:Equity
     // NOTE: `brokerLinkId` identifies a specific LINKED ACCOUNT, not a
     // connector/broker type — a user can hold two links for the same

@@ -1,174 +1,41 @@
-// The card surface, header, stack layout, buy/sell text colours, loading row and badges are
-// primitives from styles.scss. What remains is the ticket's own controls.
+// Everything on this screen is utilities in the template except the three
+// things below, each of which a utility class genuinely cannot express.
+@reference '../../../styles/tailwind.css';
+
 :host {
   display: block;
   max-width: 420px;
 }
 
-.ak-ticket {
-  --ak-gap: 16px;
-
-  padding: 20px;
-}
-
-.ak-ticket-header {
-  margin-bottom: 0; // the stack gap already spaces it
-}
-
-.ak-ticket-heading h2 {
-  font-size: 18px;
-  font-weight: 700;
-}
-
-// ---- Last traded price -------------------------------------------------------
-.ak-ticket-price {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--ak-radius-sm);
-}
-
-.ak-ticket-price .ak-col-price {
-  min-width: 0; // the headline price is the widest thing here; no reservation needed
-  font-size: 24px;
-  font-weight: 700;
-}
-
-// ---- Side toggle -------------------------------------------------------------
-// Colour AND a text label AND a glyph: never colour alone, per DESIGN.md.
-.ak-side-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
+// ---- Side toggle ---------------------------------------------------------
+// Colour AND a text label AND a glyph: never colour alone, per DESIGN.md. The
+// selected state is a bound `.selected` class, so base and modifier have to be
+// composable selectors rather than inline utility strings.
 .ak-side-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px;
-  border: 2px solid var(--ak-border);
-  border-radius: var(--ak-radius-md);
-  background: var(--ak-surface-2);
-  color: var(--ak-text-secondary);
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color var(--ak-motion) var(--ak-ease), background var(--ak-motion) var(--ak-ease),
-    color var(--ak-motion) var(--ak-ease);
+  @apply flex cursor-pointer items-center justify-center gap-1.5 rounded-md border-2 border-border
+    bg-surface-2 p-3 font-bold text-text-secondary transition-[border-color,background,color]
+    duration-(--duration-ak) ease-ak;
 }
 
 .ak-side-btn--buy.selected {
-  border-color: var(--ak-buy);
-  background: var(--ak-buy-surface);
-  color: var(--ak-buy);
+  @apply border-buy bg-buy-surface text-buy;
 }
 
 .ak-side-btn--sell.selected {
-  border-color: var(--ak-sell);
-  background: var(--ak-sell-surface);
-  color: var(--ak-sell);
+  @apply border-sell bg-sell-surface text-sell;
 }
 
+// ---- Directional submit buttons -------------------------------------------
+// `!important` because these have to beat Material's own filled-button colour
+// token, which a utility class loses to — the same reason `.ak-btn-danger`
+// lives in styles.scss. The sell foreground is near-black rather than white:
+// amber at this saturation fails 4.5:1 against white text.
 .ak-btn-buy {
-  background: var(--ak-buy) !important;
+  background: var(--color-buy) !important;
   color: #fff !important;
 }
 
 .ak-btn-sell {
-  background: var(--ak-sell) !important;
+  background: var(--color-sell) !important;
   color: #1a1200 !important;
-}
-
-.ak-kbd {
-  padding: 1px 5px;
-  border-radius: var(--ak-radius-xs);
-  background: var(--ak-surface-3);
-  font-family: var(--ak-font-mono);
-  font-size: 10px;
-}
-
-.ak-ticket-form,
-.ak-ticket-review {
-  --ak-gap: 12px;
-}
-
-mat-form-field {
-  width: 100%;
-}
-
-// ---- Inline notes -------------------------------------------------------------
-.ak-ticket-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ak-text-secondary);
-}
-
-.ak-ticket-note--warning { color: var(--ak-warning); }
-.ak-ticket-note--danger { color: var(--ak-danger); }
-
-// ---- Review -------------------------------------------------------------------
-.ak-ticket-review h3 {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.ak-review-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 16px;
-  font-size: 13px;
-}
-
-.ak-review-grid dt { color: var(--ak-text-tertiary); }
-.ak-review-grid dd { text-align: right; font-weight: 500; }
-
-.ak-estimate {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--ak-border);
-}
-
-.ak-estimate-loading { margin-top: 12px; }
-
-.ak-estimate-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-}
-
-.ak-estimate-row--muted { color: var(--ak-text-secondary); }
-
-.ak-estimate-row--total {
-  margin-top: 2px;
-  padding-top: 4px;
-  border-top: 1px dashed var(--ak-border);
-  font-weight: 700;
-}
-
-.ak-ticket-actions {
-  justify-content: flex-end;
-}
-
-// ---- Terminal states ------------------------------------------------------------
-.ak-ticket-submitting,
-.ak-ticket-result {
-  align-items: center;
-  text-align: center;
-  padding: 24px 0;
-  color: var(--ak-text-secondary);
-}
-
-.ak-ticket-result--ok mat-icon { color: var(--ak-success); }
-.ak-ticket-result--error mat-icon { color: var(--ak-danger); }
-
-.ak-kbd-hint {
-  text-align: center;
 }

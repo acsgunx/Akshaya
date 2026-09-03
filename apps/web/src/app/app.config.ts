@@ -21,7 +21,8 @@ export const appConfig: ApplicationConfig = {
     // the framework now optimises for. Interceptors are unaffected.
     provideHttpClient(withFetch(), withInterceptors([authInterceptor, errorInterceptor])),
     // NOTE: no `provideAnimations`. Angular Material 22 drives its own
-    // transitions from CSS, so `@angular/animations` is no longer a
-    // dependency of this app at all — that whole runtime is out of the bundle.
+    // transitions from CSS and AG Grid ships its own, so `@angular/animations`
+    // is not a dependency of this app at all — that whole runtime is out of
+    // the bundle.
   ],
 };

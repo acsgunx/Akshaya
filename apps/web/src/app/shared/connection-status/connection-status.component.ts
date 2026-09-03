@@ -24,53 +24,23 @@ export type ConnectionBadgeStatus = 'live' | 'degraded' | 'stale' | 'disconnecte
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <span
-      class="ak-conn"
-      [class]="'ak-conn--' + status()"
+      class="inline-flex items-center gap-1.5 text-xs whitespace-nowrap text-text-secondary"
       [matTooltip]="tooltip()"
       role="status"
       [attr.aria-label]="label() + ': ' + tooltip()"
     >
-      <span class="ak-conn-dot" aria-hidden="true"></span>
-      <span class="ak-conn-label">{{ label() }}</span>
+      <!--
+        The four states map straight onto the semantic tokens they mean —
+        success/warning/danger — with no intermediate alias layer to fall out
+        of step with them. "Stale" is deliberately the neutral tertiary dot:
+        it is not an error, it is connected-but-nothing-arriving.
+      -->
+      <span class="size-2 shrink-0 rounded-full" [class]="dotClass()" aria-hidden="true"></span>
+      <span>{{ label() }}</span>
       @if (sessionCountdownLabel(); as countdown) {
-        <span class="ak-conn-countdown">· {{ countdown }}</span>
+        <span class="text-warning tabular-nums">· {{ countdown }}</span>
       }
     </span>
-  `,
-  // The four states map straight onto the semantic tokens they mean — there is no
-  // separate `--ak-state-*` alias layer to keep in step with them.
-  styles: `
-    .ak-conn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--ak-text-secondary);
-      white-space: nowrap;
-    }
-    .ak-conn-dot {
-      flex: none;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--dot, var(--ak-text-tertiary));
-    }
-    .ak-conn--live {
-      --dot: var(--ak-success);
-    }
-    .ak-conn--live .ak-conn-dot {
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--ak-success) 25%, transparent);
-    }
-    .ak-conn--degraded {
-      --dot: var(--ak-warning);
-    }
-    .ak-conn--disconnected {
-      --dot: var(--ak-danger);
-    }
-    .ak-conn-countdown {
-      font-variant-numeric: tabular-nums;
-      color: var(--ak-warning);
-    }
   `,
 })
 export class ConnectionStatusComponent {
@@ -88,6 +58,24 @@ export class ConnectionStatusComponent {
   constructor() {
     setInterval(() => this.now.set(Date.now()), 1000);
   }
+
+  /**
+   * Dot tint per state. The `live` ring is a halo of its own colour, which is
+   * what makes a healthy feed read as healthy at a glance on a dense row
+   * rather than as just another coloured pixel.
+   */
+  readonly dotClass = computed(() => {
+    switch (this.status()) {
+      case 'live':
+        return 'bg-success ring-2 ring-success/25';
+      case 'degraded':
+        return 'bg-warning';
+      case 'disconnected':
+        return 'bg-danger';
+      case 'stale':
+        return 'bg-text-tertiary';
+    }
+  });
 
   readonly status = computed<ConnectionBadgeStatus>(() => {
     if (this.streamState() === 'disconnected' || !this.gatewayRunning()) {

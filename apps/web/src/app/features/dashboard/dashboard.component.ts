@@ -24,7 +24,6 @@ import { DashboardStore } from './dashboard.store';
   imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule, MoneyPipe, QuantityPipe, ConnectionStatusComponent, EmptyStateComponent, VenueClockComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.component.html',
-  styleUrl: './dashboard.component.scss',
 })
 export class DashboardComponent {
   protected readonly store = inject(DashboardStore);
