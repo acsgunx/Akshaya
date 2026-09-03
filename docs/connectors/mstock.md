@@ -5,11 +5,20 @@
 - **API:** Type A REST + WebSocket
 - **Docs:** https://tradingapi.mstock.com/docs/v1/typeA/
 - **Hosting:** in-process
-- **Status:** implemented; **never executed against the live or sandbox API** — see below
+- **Status:** implemented. The **login leg is verified against a live account**; every leg after
+  it is still documentation-only — see below.
 
-> ⚠️ Everything here comes from the published documentation. No request has ever been sent. The
-> response shapes in `MStockDtos.cs` are the most likely place reality differs from this code.
-> Run the smoke test before trusting any of it.
+> ⚠️ Most of this file comes from the published documentation, and that documentation could not
+> be re-verified while writing this (the docs host returns `AccessDenied` to automated clients).
+> The response shapes in `MStockDtos.cs` remain the most likely place reality differs from this
+> code.
+>
+> **This has already bitten once.** The first login leg returned a perfectly good
+> `{"status":"success", …}` that the connector rejected, because three flags documented as
+> strings arrive as booleans — and one type mismatch aborts the whole document. The observed
+> payload, the fix, and the parsing rule it forced are written up in
+> [`mstock-login-response.md`](mstock-login-response.md). **Read it before touching any DTO in
+> this connector**; the next unverified leg (`session/token`) is wide open to the same fault.
 
 ## Endpoints
 
