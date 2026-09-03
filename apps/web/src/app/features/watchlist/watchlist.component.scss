@@ -1,6 +1,7 @@
 // The header's controls, and the column layout the header shares with `ak-watchlist-row`.
 :host {
-  --ak-cols: 1fr 60px var(--ak-col-price-width) 90px auto 32px 32px;
+  // Two extra 32px tracks for the Buy and Sell actions added to each row.
+  --ak-cols: 1fr 60px var(--ak-col-price-width) 90px auto 32px 32px 32px 32px;
 }
 
 // Keeps the link picker and search box grouped at the right of the header rather than

@@ -127,8 +127,24 @@ public sealed class Order
 
     public InstrumentKey Instrument => Request.Instrument;
 
-    /// <summary>The full request as submitted, kept verbatim so the order can be replayed and audited.</summary>
-    public PlaceOrderRequest Request { get; }
+    /// <summary>
+    /// The order's CURRENT terms — as submitted, then as amended.
+    ///
+    /// Updated by <see cref="RecordAmendment"/> when an amendment is accepted by the broker.
+    /// It was previously immutable, which meant a successful amendment appended an event
+    /// saying "quantity -> 7" while every projection off this aggregate — the blotter, the
+    /// risk gate's view of open exposure, the pending-quantity arithmetic — went on reporting
+    /// the original 10. The trader saw their own amendment ignored, and the platform sized its
+    /// next risk check against a quantity that no longer existed at the broker.
+    ///
+    /// Reconciliation would eventually correct it (see <see cref="ReconcileWith"/>, where the
+    /// broker still wins), but "eventually" is the next reconciliation pass, and in the
+    /// meantime the blotter is lying about something the trader did seconds ago.
+    ///
+    /// The ORIGINAL terms are not lost: every amendment appends an event describing exactly
+    /// what changed, so the audit trail still replays the order's whole life.
+    /// </summary>
+    public PlaceOrderRequest Request { get; private set; }
 
     public OrderState State { get; private set; }
 
@@ -324,9 +340,27 @@ public sealed class Order
     /// its price changed is still acknowledged. Inventing a state for it would double the size
     /// of the legal graph to express something the event log already says perfectly well.
     /// </summary>
-    public void RecordAmendment(DateTimeOffset at, string detail, string actor, string? rawBrokerPayload = null)
+    /// <summary>
+    /// Records an amendment attempt against the order.
+    ///
+    /// <paramref name="amended"/> is supplied ONLY when the broker accepted the change; a
+    /// blocked or failed amendment passes null and leaves <see cref="Request"/> alone, because
+    /// the order is still working on its old terms and those are the terms the trader must see.
+    /// </summary>
+    public void RecordAmendment(
+        DateTimeOffset at,
+        string detail,
+        string actor,
+        string? rawBrokerPayload = null,
+        PlaceOrderRequest? amended = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(detail);
+
+        if (amended is not null)
+        {
+            Request = amended;
+        }
+
         UpdatedAt = at;
         _events.Add(new OrderEvent
         {

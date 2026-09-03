@@ -27,7 +27,7 @@ export interface PlaceOrderRequest {
   readonly tag?: string;
 }
 
-/** PUT /api/orders/{id} body. Mirrors `ModifyOrderRequestDto` — every field optional, at least one required. */
+/** POST /api/orders/{id}/modify body. Mirrors `ModifyOrderRequestDto` — every field optional, at least one required. */
 export interface ModifyOrderRequest {
   readonly quantity?: QuantityValue;
   readonly limitPrice?: Money;
@@ -138,4 +138,64 @@ export interface OrderQuery {
   readonly to?: string;
   readonly instrument?: InstrumentKey;
   readonly openOnly?: boolean;
+}
+
+/** GET /api/orders/trades query. Dates are yyyy-MM-dd in the venue's own terms. */
+export interface TradeQuery {
+  readonly brokerLinkId?: string;
+  readonly from?: string;
+  readonly to?: string;
+  readonly instrument?: InstrumentKey;
+}
+
+/**
+ * One execution. Mirrors `TradeDto`.
+ *
+ * A FILL, not an order: `quantity` and `price` describe this chunk alone.
+ * An order filled in three chunks produces three of these, and the blotter's
+ * single average price is not a substitute when someone is reconciling a
+ * contract note.
+ */
+export interface TradeRecord {
+  readonly tradeId: string;
+  readonly brokerOrderId: string;
+  readonly brokerLinkId: string;
+  /** Opaque connector id — a label, never a branch target. */
+  readonly connectorId: string;
+  readonly instrument: InstrumentKey;
+  readonly side: Side;
+  readonly quantity: QuantityValue;
+  readonly price: Money;
+  readonly executedAt: string;
+  /** Only when the broker reports charges per trade; otherwise absent, never zero. */
+  readonly charges?: Money;
+}
+
+/**
+ * Mirrors `TradesResponse`. `warnings` names the links that could not be
+ * read; the trades that DID load are returned anyway, and `isPartial` must be
+ * surfaced so nobody reconciles against a silently incomplete list.
+ */
+export interface TradesResult {
+  readonly trades: readonly TradeRecord[];
+  readonly warnings: readonly string[];
+  readonly isPartial: boolean;
+}
+
+/**
+ * POST /api/portfolio/positions/convert body. Mirrors
+ * `ConvertPositionRequestDto`.
+ *
+ * `from` is required rather than looked up: a hedged account can hold the
+ * same instrument under two products at once, and a conversion that guesses
+ * converts the wrong position.
+ */
+export interface ConvertPositionRequest {
+  readonly brokerLinkId: string;
+  readonly instrument: InstrumentKey;
+  /** 'buy' for a long position, 'sell' for a short one. */
+  readonly side: Side;
+  readonly quantity: QuantityValue;
+  readonly from: PositionEffect;
+  readonly to: PositionEffect;
 }

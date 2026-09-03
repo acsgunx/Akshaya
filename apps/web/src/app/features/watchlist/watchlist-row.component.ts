@@ -48,6 +48,32 @@ type FlashDirection = 'up' | 'down' | undefined;
 
       <ak-connection-status label="" [streamState]="connectionState()" [isDataStale]="isStale()" />
 
+      <!--
+        Buy and Sell open the ticket already staged to that side. They do not
+        place anything — the ticket's review-then-confirm step is what turns
+        an intention into an order, and a one-click trade from a scrolling
+        list is exactly the mis-click this design refuses to allow.
+      -->
+      <a
+        class="ak-iconbtn ak-focus-halo ak-buy-text"
+        [routerLink]="['/trade', brokerLinkId(), instrument().key]"
+        [queryParams]="{ side: 'buy' }"
+        [attr.aria-label]="'Buy ' + instrument().key"
+        matTooltip="Buy"
+      >
+        <mat-icon class="ak-i-sm" aria-hidden="true">add_circle_outline</mat-icon>
+      </a>
+
+      <a
+        class="ak-iconbtn ak-focus-halo ak-sell-text"
+        [routerLink]="['/trade', brokerLinkId(), instrument().key]"
+        [queryParams]="{ side: 'sell' }"
+        [attr.aria-label]="'Sell ' + instrument().key"
+        matTooltip="Sell"
+      >
+        <mat-icon class="ak-i-sm" aria-hidden="true">remove_circle_outline</mat-icon>
+      </a>
+
       <a
         class="ak-iconbtn ak-focus-halo"
         [routerLink]="['/chart', brokerLinkId(), instrument().key]"

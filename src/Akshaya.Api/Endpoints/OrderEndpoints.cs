@@ -95,11 +95,18 @@ public static class OrderEndpoints
             return result.ToHttp(CancelAllResponse.From);
         });
 
+        // NULLABLE bools, not bare ones. A non-nullable `bool` parameter is a REQUIRED query
+        // string value in minimal APIs, so `GET /api/orders?openOnly=false` — exactly what the
+        // web client sends — threw "Required parameter bool unresolvedOnly was not provided"
+        // and returned a 500. The blotter showed "Could not load orders" and nothing else.
+        //
+        // Filters are optional by nature: omitting one means "do not filter", not "reject the
+        // request". Both default to false below.
         group.MapGet("/", async (
             string? brokerLinkId,
             string? instrument,
-            bool openOnly,
-            bool unresolvedOnly,
+            bool? openOnly,
+            bool? unresolvedOnly,
             DateTimeOffset? from,
             DateTimeOffset? to,
             int? limit,
@@ -124,8 +131,8 @@ public static class OrderEndpoints
                 UserId = user.UserId,
                 BrokerLinkId = brokerLinkId,
                 Instrument = instrumentKey,
-                OpenOnly = openOnly,
-                UnresolvedOnly = unresolvedOnly,
+                OpenOnly = openOnly ?? false,
+                UnresolvedOnly = unresolvedOnly ?? false,
                 From = from,
                 To = to,
                 Limit = limit is > 0 ? limit.Value : 200,

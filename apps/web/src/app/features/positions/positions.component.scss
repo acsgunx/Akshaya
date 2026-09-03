@@ -8,6 +8,11 @@
 
 // A leg carries a "position effect" label the parent row has no column for, so the leg grid
 // trades the parent's expander column for it rather than inventing its own widths.
+//
+// The trailing 108px is the ACTIONS column — square off, add to, convert. Those live on the
+// leg rather than the blended row because only a leg names one broker account and one product,
+// which is what an order or a conversion needs. Without a track declared for it the buttons
+// render outside the grid and are invisible, which is exactly what happened first time.
 .ak-tleg {
-  --ak-cols: 1fr 120px var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-pnl-width);
+  --ak-cols: 1fr 120px var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-pnl-width) 108px;
 }

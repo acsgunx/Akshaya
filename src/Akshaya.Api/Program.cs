@@ -234,6 +234,7 @@ try
     builder.Services.AddScoped<IValidator<ContinueLinkRequestDto>, ContinueLinkRequestDtoValidator>();
     builder.Services.AddScoped<IValidator<PlaceOrderRequestDto>, PlaceOrderRequestDtoValidator>();
     builder.Services.AddScoped<IValidator<ModifyOrderRequestDto>, ModifyOrderRequestDtoValidator>();
+    builder.Services.AddScoped<IValidator<ConvertPositionRequestDto>, ConvertPositionRequestDtoValidator>();
     builder.Services.AddScoped<IValidator<RiskPolicyDto>, RiskPolicyDtoValidator>();
     builder.Services.AddScoped<IValidator<KillSwitchRequestDto>, KillSwitchRequestDtoValidator>();
 

@@ -1,11 +1,81 @@
 <section>
   <header class="ak-page-head ak-row">
     <h1>Orders</h1>
-    <mat-button-toggle-group [value]="store.openOnly()" (change)="store.setOpenOnly($event.value)" aria-label="Filter">
-      <mat-button-toggle [value]="false">All</mat-button-toggle>
-      <mat-button-toggle [value]="true">Open only</mat-button-toggle>
-    </mat-button-toggle-group>
+    <div class="flex items-center gap-2">
+      <mat-button-toggle-group [value]="store.openOnly()" (change)="store.setOpenOnly($event.value)" aria-label="Filter">
+        <mat-button-toggle [value]="false">All</mat-button-toggle>
+        <mat-button-toggle [value]="true">Open only</mat-button-toggle>
+      </mat-button-toggle-group>
+
+      <a mat-stroked-button routerLink="/fills">Fills</a>
+
+      @if (hasWorkingOrders()) {
+        <button
+          mat-flat-button
+          type="button"
+          class="ak-btn-sell"
+          [disabled]="store.cancelAllInFlight()"
+          (click)="cancelAll()"
+        >
+          @if (store.cancelAllInFlight()) {
+            <mat-spinner diameter="18" />
+          } @else {
+            <mat-icon aria-hidden="true">cancel</mat-icon>
+          }
+          Cancel all
+        </button>
+      }
+    </div>
   </header>
+
+  @if (store.error(); as error) {
+    <p class="mb-3 flex items-start gap-1.5 rounded-sm border border-danger/40 bg-surface-2 p-2.5 text-xs text-danger" role="alert">
+      <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">error</mat-icon>
+      {{ error }}
+    </p>
+  }
+
+  @if (store.lastSweep(); as sweep) {
+    <!--
+      A partial sweep MUST keep saying so. `CancelAllResult.isPartial` is
+      documented as never to be hidden behind a clean count: reporting
+      "cancelled" after a sweep that missed five orders is the failure mode
+      that leaves someone exposed without knowing it. It stays until dismissed.
+    -->
+    <div
+      class="mb-3 flex items-start gap-2 rounded-sm border p-2.5 text-xs"
+      [class]="sweep.isPartial ? 'border-warning/40 text-warning' : 'border-success/40 text-success'"
+      role="status"
+    >
+      <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">
+        {{ sweep.isPartial ? 'warning' : 'check_circle' }}
+      </mat-icon>
+      <div class="flex-1">
+        <p class="font-medium">
+          Cancelled {{ sweep.totalCancelled }} of {{ sweep.totalRequested }} working order(s).
+        </p>
+        @if (sweep.isPartial) {
+          <p class="mt-0.5">
+            Some orders may still be live at your broker. Check the blotter below and cancel
+            anything still working individually.
+          </p>
+        }
+        @for (link of sweep.links; track link.brokerLinkId) {
+          @if (link.error) {
+            <p class="mt-0.5">{{ link.brokerLinkId }}: {{ link.error }}</p>
+          } @else if (!link.atomic) {
+            <p class="mt-0.5 opacity-80">
+              {{ link.brokerLinkId }}: this broker has no atomic cancel-all, so the orders were
+              cancelled one at a time.
+            </p>
+          }
+        }
+      </div>
+      <button mat-icon-button type="button" (click)="store.dismissSweep()" aria-label="Dismiss">
+        <mat-icon aria-hidden="true">close</mat-icon>
+      </button>
+    </div>
+  }
 
   @if (store.loading() && store.orders().length === 0) {
     <div class="ak-loading"><mat-spinner diameter="28" /> Loading orders…</div>
@@ -59,8 +129,18 @@
 
         <span class="ak-truncate ak-muted" [matTooltip]="order.statusMessage ?? ''">{{ order.statusMessage ?? '—' }}</span>
 
-        <span>
+        <span class="flex items-center justify-end">
           @if (!isOrderStateTerminal(order.state) && !isOrderUnresolved(order)) {
+            @if (canModify(order)) {
+              <button
+                mat-icon-button
+                (click)="openModify(order)"
+                [attr.aria-label]="'Modify order for ' + order.instrument"
+                matTooltip="Modify"
+              >
+                <mat-icon aria-hidden="true">edit</mat-icon>
+              </button>
+            }
             <button
               mat-icon-button
               [disabled]="store.cancellingIds().has(order.id)"

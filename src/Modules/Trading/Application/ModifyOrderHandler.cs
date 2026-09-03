@@ -174,7 +174,10 @@ public sealed class ModifyOrderHandler(
             return Result<PlaceOrderResult>.Failure(ack.Error);
         }
 
-        order.RecordAmendment(at, Describe(command), command.Actor, ack.Value.Message);
+        // `amended` — the accepted terms — so the aggregate itself moves, not just its event
+        // log. Passed only on the success path; the two failure paths above deliberately leave
+        // Request on the old terms, which are the ones still live at the broker.
+        order.RecordAmendment(at, Describe(command), command.Actor, ack.Value.Message, amended);
         await orders.SaveAsync(order, ct);
 
         await events.PublishAsync(

@@ -3,6 +3,13 @@
     <h1>Positions</h1>
   </header>
 
+  @if (conversionError(); as error) {
+    <p class="mb-3 flex items-start gap-1.5 text-xs text-danger" role="alert">
+      <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">error</mat-icon>
+      {{ error }}
+    </p>
+  }
+
   @if (store.loading() && !store.snapshot()) {
     <div class="ak-loading"><mat-spinner diameter="28" /> Loading positions…</div>
   } @else if (positions().length === 0) {
@@ -22,15 +29,22 @@
     <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport">
       <div *cdkVirtualFor="let pos of positions(); trackBy: trackByGroupKey">
         <div class="ak-trow" role="row">
+          <!--
+            Expandable even with ONE leg. It used to be disabled below two,
+            back when the legs row was purely informational — but the legs now
+            carry the square-off, add-to and convert actions, and a single
+            broker is the common case. Leaving the gate at two made every
+            action on this screen unreachable for most users.
+          -->
           <button
             type="button"
             class="ak-expand ak-focus-halo"
             [attr.aria-expanded]="isExpanded(pos.groupKey)"
-            [attr.aria-label]="'Toggle legs for ' + pos.instrument"
+            [attr.aria-label]="'Show actions and broker legs for ' + pos.instrument"
             (click)="toggle(pos.groupKey)"
-            [disabled]="pos.legs.length <= 1"
+            [disabled]="pos.legs.length === 0"
           >
-            @if (pos.legs.length > 1) {
+            @if (pos.legs.length > 0) {
               <mat-icon class="ak-i-sm" aria-hidden="true">{{ isExpanded(pos.groupKey) ? 'expand_more' : 'chevron_right' }}</mat-icon>
             }
           </button>
@@ -58,6 +72,48 @@
                 <span class="ak-col-qty">{{ leg.netQuantity | akQuantity: { fractional: true } }}</span>
                 <span class="ak-col-price">{{ leg.averagePrice | akMoney }}</span>
                 <span class="ak-col-pnl">{{ leg.unrealisedPnl | akMoney }}</span>
+
+                <!--
+                  Actions hang off the LEG, never the blended row: only a leg
+                  names one broker account and one product, and those are the
+                  two things an order or a conversion cannot do without.
+                -->
+                <span class="flex items-center justify-end gap-1">
+                  <button
+                    mat-icon-button
+                    type="button"
+                    (click)="exit(pos, leg)"
+                    [attr.aria-label]="'Square off ' + pos.instrument + ' at ' + leg.displayName"
+                    matTooltip="Square off — opens the ticket, does not place the order"
+                  >
+                    <mat-icon aria-hidden="true">logout</mat-icon>
+                  </button>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    (click)="addTo(pos, leg)"
+                    [attr.aria-label]="'Add to ' + pos.instrument + ' at ' + leg.displayName"
+                    matTooltip="Add to this position"
+                  >
+                    <mat-icon aria-hidden="true">add</mat-icon>
+                  </button>
+                  @if (canConvert(leg)) {
+                    <button
+                      mat-icon-button
+                      type="button"
+                      [disabled]="isConverting(leg)"
+                      (click)="openConvert(pos, leg)"
+                      [attr.aria-label]="'Convert product for ' + pos.instrument + ' at ' + leg.displayName"
+                      matTooltip="Convert between products (e.g. intraday to delivery)"
+                    >
+                      @if (isConverting(leg)) {
+                        <mat-spinner diameter="18" />
+                      } @else {
+                        <mat-icon aria-hidden="true">swap_horiz</mat-icon>
+                      }
+                    </button>
+                  }
+                </span>
               </div>
             }
           </div>

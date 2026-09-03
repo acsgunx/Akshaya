@@ -66,6 +66,14 @@ export const routes: Routes = [
     loadComponent: () => import('./features/orders/orders.component').then((m) => m.OrdersComponent),
   },
   {
+    // Executions, not orders. Separate route because it answers a different
+    // question — see FillsComponent's class doc.
+    path: 'fills',
+    title: 'Fills · Akshaya',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/fills/fills.component').then((m) => m.FillsComponent),
+  },
+  {
     path: 'connectors',
     title: 'Brokers · Akshaya',
     canActivate: [authGuard],
