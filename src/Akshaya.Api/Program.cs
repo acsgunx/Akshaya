@@ -14,6 +14,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Security.Claims;
 using Akshaya.Api.Contracts;
 using Akshaya.Api.Endpoints;
 using Akshaya.Api.Hubs;
@@ -22,14 +23,20 @@ using Akshaya.Connector.Paper;
 using Akshaya.Connectors.Abstractions;
 using Akshaya.Connectors.Host;
 using Akshaya.Connectors.Sdk;
+using Akshaya.Modules.Identity;
+using Akshaya.Modules.Identity.Infrastructure;
+using Akshaya.Modules.Identity.Infrastructure.Ef;
 using Akshaya.Modules.Portfolio;
 using Akshaya.Modules.Portfolio.Ports;
 using Akshaya.Modules.Trading;
 using Akshaya.Modules.Trading.Ports;
 using Akshaya.SharedKernel;
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -132,17 +139,76 @@ try
 
     builder.Services.Configure<PortfolioOptions>(builder.Configuration.GetSection("Portfolio"));
 
-    // ── DEV AUTH STUB. ────────────────────────────────────────────────────────────────────────
-    // TODO(Phase 1 Identity): replace ICurrentUserAccessor's registration with a claims-based
-    // implementation reading a validated bearer token, and add real authentication/authorization
-    // middleware below. Every endpoint depends on the ICurrentUserAccessor abstraction rather
-    // than HttpContext.User directly for exactly this reason: this is the only line that needs
-    // to change. Until then every caller who can reach this API trades as a single fixed
-    // tenant/user (optionally overridden via the X-Dev-Tenant / X-Dev-User headers for exercising
-    // more than one identity locally) — this MUST NEVER run outside a local or sealed dev
-    // environment.
+    // ── Identity: accounts, sessions, and the saved-broker-credential vault. ──────────────────
+    //
+    // Postgres is the only persisted store in the application so far, and that is deliberate:
+    // orders and risk policies can be rebuilt from the broker on restart, whereas a user's
+    // account and the credentials they asked us to remember cannot be rebuilt from anything.
+    var identityConnection = builder.Configuration.GetConnectionString("Identity")
+        ?? "Host=localhost;Port=5432;Database=akshaya;Username=akshaya;Password=akshaya";
+
+    // The MIGRATIONS live here, not in the module. The module owns the model and stays
+    // provider-agnostic — which is what lets its tests run against SQLite or the in-memory
+    // provider — while the composition root owns the choice of Postgres and the
+    // Postgres-specific DDL that choice generates.
+    builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(
+        identityConnection,
+        npgsql => npgsql
+            .MigrationsAssembly(typeof(Program).Assembly.FullName)
+            .MigrationsHistoryTable("__ef_migrations", IdentityDbContext.SchemaName)));
+
+    builder.Services.Configure<CredentialProtectionOptions>(
+        builder.Configuration.GetSection(CredentialProtectionOptions.SectionName));
+
+    builder.Services.AddIdentityModule();
+
+    // ── Authentication: an HTTP-only session cookie. ──────────────────────────────────────────
+    //
+    // A cookie rather than a bearer token in localStorage, because behind this session sit
+    // saved broker credentials: a token JavaScript can read is a token an XSS bug can exfiltrate.
+    // SameSite=Lax is enough here — every state-changing call is a fetch() from our own origin,
+    // and Lax already blocks the cross-site form POST that CSRF needs.
+    builder.Services
+        .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+        .AddCookie(options =>
+        {
+            options.Cookie.Name = "akshaya.session";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+
+            // Always over HTTPS in a deployment; relaxed for the plain-HTTP dev server, which
+            // is the only place a Secure cookie would silently never be set.
+            options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+                ? CookieSecurePolicy.SameAsRequest
+                : CookieSecurePolicy.Always;
+
+            options.ExpireTimeSpan = TimeSpan.FromDays(14);
+            options.SlidingExpiration = true;
+
+            // This is an API: an unauthenticated XHR must get a status the Angular app can act
+            // on, not a 302 to a login page that does not exist server-side.
+            options.Events.OnRedirectToLogin = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            };
+            options.Events.OnRedirectToAccessDenied = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return Task.CompletedTask;
+            };
+        });
+
+    // FAIL CLOSED. Every endpoint requires an authenticated user unless it explicitly opts out
+    // with AllowAnonymous. The alternative — remembering RequireAuthorization on each new
+    // endpoint — fails open, and the endpoint someone forgets is the one that places orders.
+    builder.Services.AddAuthorization(options =>
+        options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build());
+
     builder.Services.AddHttpContextAccessor();
-    builder.Services.AddScoped<ICurrentUserAccessor, DevCurrentUserAccessor>();
+    builder.Services.AddScoped<ICurrentUserAccessor, ClaimsCurrentUserAccessor>();
 
     // ── Broker-link auth-flow state, and FluentValidation validators for this project's own
     // Contracts. Not registered via AddValidatorsFromAssemblyContaining: this csproj references
@@ -151,6 +217,8 @@ try
     // that assembly-scanning extension method is not available here — each validator is
     // registered individually instead. ────────────────────────────────────────────────────────
     builder.Services.AddSingleton<PendingLinkAuthStore>();
+    builder.Services.AddScoped<IValidator<RegisterRequestDto>, RegisterRequestDtoValidator>();
+    builder.Services.AddScoped<IValidator<SignInRequestDto>, SignInRequestDtoValidator>();
     builder.Services.AddScoped<IValidator<BeginLinkRequestDto>, BeginLinkRequestDtoValidator>();
     builder.Services.AddScoped<IValidator<ContinueLinkRequestDto>, ContinueLinkRequestDtoValidator>();
     builder.Services.AddScoped<IValidator<PlaceOrderRequestDto>, PlaceOrderRequestDtoValidator>();
@@ -227,6 +295,11 @@ try
 
     var app = builder.Build();
 
+    // Force the credential cipher to be constructed NOW, so a missing or malformed master key
+    // fails the deploy rather than the first user who ticks "remember this". The cipher
+    // validates its whole key set in its constructor; resolving it is the whole check.
+    _ = app.Services.GetRequiredService<Akshaya.Modules.Identity.Ports.ICredentialCipher>();
+
     // Load the connector catalog once, at startup, before any request can ask for a manifest.
     // FailFastOnPluginError is off by default (see above), so a broken third-party plugin is
     // recorded and surfaced via the "connectors" health check rather than taking the host down.
@@ -255,12 +328,22 @@ try
 
     app.UseCors();
 
-    app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
-    app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = _ => true });
+    // Order matters and is not arbitrary: CORS first (so a rejected pre-flight never reaches
+    // auth), then authentication to populate HttpContext.User, then authorization to enforce
+    // RequireAuthorization() using it.
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-    app.MapOpenApi();
+    // Probes are for the orchestrator, which has no session. They expose no tenant data.
+    app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = _ => true }).AllowAnonymous();
+
+    app.MapOpenApi().AllowAnonymous();
     app.MapScalarApiReference();
 
+    // Everything below is covered by the fallback policy above and needs a signed-in user;
+    // sign-up and sign-in opt back out individually inside MapAccountEndpoints.
+    app.MapAccountEndpoints();
     app.MapConnectorEndpoints();
     app.MapBrokerLinkEndpoints();
     app.MapOrderEndpoints();
@@ -627,9 +710,9 @@ public sealed class PortfolioOptions
 /// <summary>
 /// The authenticated caller's tenant and user id.
 ///
-/// TODO(Phase 1 Identity): every endpoint depends on this abstraction rather than on
-/// <c>HttpContext.User</c> directly so that swapping <see cref="DevCurrentUserAccessor"/> for a
-/// real, claims-based implementation is the entire migration.
+/// Every endpoint depends on this abstraction rather than on <c>HttpContext.User</c> directly,
+/// which is what made swapping the old header-trusting dev stub for
+/// <see cref="ClaimsCurrentUserAccessor"/> a one-line change in the composition root.
 /// </summary>
 public interface ICurrentUserAccessor
 {
@@ -638,58 +721,61 @@ public interface ICurrentUserAccessor
 
     /// <summary>The caller's own user id within that tenant.</summary>
     string UserId { get; }
+
+    /// <summary>
+    /// False for an anonymous caller, where <see cref="UserId"/> and <see cref="TenantId"/>
+    /// are empty. Endpoints behind <c>RequireAuthorization()</c> never see false; the handful
+    /// that are deliberately anonymous (<c>/api/account/me</c>) check it.
+    /// </summary>
+    bool IsAuthenticated { get; }
 }
 
 /// <summary>
-/// DEV-ONLY STUB. Trusts two request headers instead of an authenticated principal, so the rest
-/// of the platform can be exercised end to end before Identity exists.
+/// Reads the tenant and user id from the authenticated principal's claims.
 ///
-/// THIS GRANTS FULL TRADING ACCESS TO ANY CALLER WHO CAN REACH THE API, WITH NO AUTHENTICATION
-/// WHATSOEVER. It must never run anywhere but a local machine or a sealed development
-/// environment.
-///
-/// TODO(Phase 1 Identity): delete this class and register a real <see cref="ICurrentUserAccessor"/>
-/// that reads the tenant and user id from a validated JWT's claims, and add the corresponding
-/// authentication/authorization middleware to the pipeline above.
+/// The claims come from the signed session cookie and from nowhere else. The tenant in
+/// particular is never taken from a header or a request body: every store below is
+/// tenant-scoped, so a tenant a caller can name is a tenant a caller can read.
 /// </summary>
-internal sealed class DevCurrentUserAccessor : ICurrentUserAccessor
+internal sealed class ClaimsCurrentUserAccessor : ICurrentUserAccessor
 {
-    public DevCurrentUserAccessor(IHttpContextAccessor httpContextAccessor)
+    public ClaimsCurrentUserAccessor(IHttpContextAccessor httpContextAccessor)
     {
         ArgumentNullException.ThrowIfNull(httpContextAccessor);
-        (TenantId, UserId) = DevIdentity.Resolve(httpContextAccessor.HttpContext);
+        (TenantId, UserId, IsAuthenticated) = AkshayaIdentity.Resolve(httpContextAccessor.HttpContext?.User);
     }
 
     public string TenantId { get; }
 
     public string UserId { get; }
+
+    public bool IsAuthenticated { get; }
 }
 
 /// <summary>
-/// Shared by <see cref="DevCurrentUserAccessor"/> and <see cref="Akshaya.Api.Hubs.MarketDataHub"/>.
+/// Shared by <see cref="ClaimsCurrentUserAccessor"/> and <see cref="Akshaya.Api.Hubs.MarketDataHub"/>.
 ///
 /// The hub cannot use <see cref="IHttpContextAccessor"/> reliably: SignalR hub method
 /// invocations do not run inside the original HTTP request's ambient context once the connection
 /// is established, so the ambient <c>HttpContext</c> it exposes is typically null there. The hub
-/// instead reads the same two dev headers directly off <c>HubCallerContext.GetHttpContext()</c>
-/// (populated from the original connection-upgrade request). This type is the one place that
-/// decides what an unauthenticated dev request's identity is, so both call sites agree.
+/// reads the principal off <c>HubCallerContext.User</c> instead. This type is the one place that
+/// decides what a principal's identity is, so both call sites agree.
 /// </summary>
-internal static class DevIdentity
+internal static class AkshayaIdentity
 {
-    public const string TenantHeader = "X-Dev-Tenant";
-    public const string UserHeader = "X-Dev-User";
-    public const string DefaultTenantId = "dev-tenant";
-    public const string DefaultUserId = "dev-user";
-
-    public static (string TenantId, string UserId) Resolve(HttpContext? httpContext)
+    public static (string TenantId, string UserId, bool IsAuthenticated) Resolve(ClaimsPrincipal? principal)
     {
-        var tenantId = httpContext?.Request.Headers[TenantHeader].FirstOrDefault();
-        var userId = httpContext?.Request.Headers[UserHeader].FirstOrDefault();
+        var userId = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var tenantId = principal?.FindFirstValue(AkshayaClaims.TenantId);
 
-        return (
-            string.IsNullOrWhiteSpace(tenantId) ? DefaultTenantId : tenantId,
-            string.IsNullOrWhiteSpace(userId) ? DefaultUserId : userId);
+        // Both claims or neither. A principal carrying a user id but no tenant would otherwise
+        // fall through to an empty tenant string and quietly read another tenant's empty set
+        // instead of failing.
+        return principal?.Identity?.IsAuthenticated == true
+               && !string.IsNullOrWhiteSpace(userId)
+               && !string.IsNullOrWhiteSpace(tenantId)
+            ? (tenantId, userId, true)
+            : (string.Empty, string.Empty, false);
     }
 }
 

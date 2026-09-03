@@ -4,13 +4,15 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
 
+import { AuthStore } from '../../core/auth.store';
 import { ConnectorStore } from '../../core/connector.store';
 import { challengeKindLabel } from '../../core/labels';
-import type { AuthCredentials } from '../../core/models';
+import type { AuthCredentials, SavedCredential } from '../../core/models';
 import { BrokerLinkStore } from './broker-link.store';
 
 /**
@@ -37,7 +39,16 @@ import { BrokerLinkStore } from './broker-link.store';
 @Component({
   selector: 'ak-broker-link-wizard',
   standalone: true,
-  imports: [DatePipe, ReactiveFormsModule, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatProgressSpinnerModule],
+  imports: [
+    DatePipe,
+    ReactiveFormsModule,
+    MatButtonModule,
+    MatCheckboxModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+  ],
   providers: [BrokerLinkStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './broker-link-wizard.component.html',
@@ -46,6 +57,7 @@ import { BrokerLinkStore } from './broker-link.store';
 export class BrokerLinkWizardComponent {
   private readonly connectorStore = inject(ConnectorStore);
   private readonly router = inject(Router);
+  protected readonly auth = inject(AuthStore);
   protected readonly store = inject(BrokerLinkStore);
   protected readonly challengeKindLabel = challengeKindLabel;
 
@@ -76,6 +88,55 @@ export class BrokerLinkWizardComponent {
 
   private readonly expirySeconds = signal<number | undefined>(undefined);
   protected readonly challengeCountdown = computed(() => this.expirySeconds());
+
+  /** Saved logins this user already has for THIS connector. Drives the "use saved login" panel. */
+  protected readonly savedLogins = computed(() =>
+    this.auth.savedCredentials().filter((c) => c.connectorId === this.connectorId()),
+  );
+
+  /** The saved login in use, or undefined when the user is typing a fresh one. */
+  protected readonly selectedSaved = signal<SavedCredential | undefined>(undefined);
+
+  /** Field keys the user ticked "remember" for. */
+  private readonly rememberKeys = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * Fields still worth asking for.
+   *
+   * With a saved login selected, the fields it covers are dropped from the form
+   * — the whole point is not retyping them — leaving only what is genuinely
+   * missing, which for a daily broker relink is usually just the password.
+   */
+  protected readonly visibleFields = computed(() => {
+    const fields = this.manifest()?.auth.credentialFields ?? [];
+    const covered = this.selectedSaved()?.rememberedKeys ?? [];
+    return fields.filter((f) => !covered.includes(f.key));
+  });
+
+  protected isRemembered(key: string): boolean {
+    return this.rememberKeys().has(key);
+  }
+
+  protected toggleRemember(key: string, remember: boolean): void {
+    const next = new Set(this.rememberKeys());
+    if (remember) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+    this.rememberKeys.set(next);
+  }
+
+  protected useSaved(credential: SavedCredential): void {
+    this.selectedSaved.set(credential);
+    if (credential.nickname) {
+      this.nicknameControl.setValue(credential.nickname);
+    }
+  }
+
+  protected enterManually(): void {
+    this.selectedSaved.set(undefined);
+  }
 
   constructor() {
     effect(() => {
@@ -115,6 +176,22 @@ export class BrokerLinkWizardComponent {
         this.expirySeconds.set(s - 1);
       }
     }, 1000);
+
+    // Saved logins for this connector decide whether the form opens as "reuse"
+    // or "type it all in", so they have to be loaded before the form is useful.
+    void this.auth.loadSavedCredentials();
+
+    // Default every field to "remember" once the manifest arrives. Opt-out rather
+    // than opt-in: the user asked for saved logins by coming here, and a wizard
+    // where they must tick five boxes to get the feature they wanted is a wizard
+    // where they tick none and wonder why nothing was saved. Secrets are still
+    // individually untickable, which is the control that matters.
+    effect(() => {
+      const manifest = this.manifest();
+      if (manifest && this.rememberKeys().size === 0 && this.selectedSaved() === undefined) {
+        this.rememberKeys.set(new Set(manifest.auth.credentialFields.map((f) => f.key)));
+      }
+    });
   }
 
   /** The single validation message shown under a credential field, or null while it is fine. */
@@ -137,16 +214,38 @@ export class BrokerLinkWizardComponent {
   }
 
   protected submitCredentials(): void {
-    if (this.credentialForm.invalid) {
-      this.credentialForm.markAllAsTouched();
+    const visible = new Set(this.visibleFields().map((f) => f.key));
+
+    // A field hidden because a saved login already covers it must not be able to
+    // block submission with a "required" error for a value the server will fill in.
+    const blocking = Object.entries(this.credentialForm.controls)
+      .filter(([key, control]) => visible.has(key) && control.invalid);
+
+    if (blocking.length > 0) {
+      for (const [, control] of blocking) {
+        control.markAsTouched();
+      }
       return;
     }
-    const credentials = this.credentialForm.getRawValue() as AuthCredentials;
+
+    const raw = this.credentialForm.getRawValue();
+    const credentials: Record<string, string> = {};
+    for (const key of visible) {
+      const value = raw[key];
+      if (value) {
+        credentials[key] = value;
+      }
+    }
+
+    const remember = [...this.rememberKeys()].filter((key) => credentials[key]);
+
     this.store.begin({
       connectorId: this.connectorId(),
-      credentials,
+      credentials: credentials as AuthCredentials,
       nickname: this.nicknameControl.value || undefined,
       redirectUri: `${window.location.origin}/connectors/${this.connectorId()}/link`,
+      savedCredentialId: this.selectedSaved()?.id,
+      rememberFields: remember,
     });
   }
 

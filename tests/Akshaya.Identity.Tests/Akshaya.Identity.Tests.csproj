@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE IDENTITY MODULE'S TEST SUITE.
+
+    Three things must be true and are all invisible from the outside, which is exactly why
+    they need tests rather than a manual check: a password hash must not be reversible or
+    comparable in variable time, a sealed credential must not open under the wrong key or
+    after a single flipped bit, and one user must never be able to read another's vault.
+
+    Runs against SQLite rather than a fake store, deliberately. UserAccountService relies on
+    the database's UNIQUE index to arbitrate two simultaneous sign-ups; an in-memory fake that
+    "checks then inserts" would pass a test the real thing fails under concurrency. SQLite
+    enforces the constraint, so the test exercises the mechanism that actually runs — and that
+    it works at all is the proof that the module is provider-agnostic.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Identity.Tests</RootNamespace>
+    <AssemblyName>Akshaya.Identity.Tests</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!--
+      CA1707: test method names use underscores on purpose; they read as sentences in CI.
+      CA2007: no synchronisation context in a test host.
+      CA1848/CA1031: same reasons as the assembly under test.
+    -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1848;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Identity\Akshaya.Modules.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.1.0" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    IDENTITY AND THE CREDENTIAL VAULT.
+
+    Two responsibilities that belong together because they share one trust boundary:
+
+      1. Who the user is — email + password sign-up and sign-in for the platform itself.
+      2. What the user has told us to remember — the per-broker credential fields they chose
+         to save, encrypted at rest, so relinking a broker is one click rather than retyping
+         an API key and a client code every morning.
+
+    IT CONTAINS NO BROKER NAMES, and no knowledge of what any particular credential field
+    means. A saved credential is an opaque connector id plus an opaque bag of field keys the
+    MANIFEST declared — exactly the same indirection the link wizard uses. That is what makes
+    "remember my login" work for a broker nobody has written a connector for yet.
+
+    tests/Akshaya.Architecture.Tests scans src/Modules for vendor names; keep it that way.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Modules.Identity</RootNamespace>
+    <AssemblyName>Akshaya.Modules.Identity</AssemblyName>
+    <!--
+      CA1848: LoggerMessage source-gen delegates. Not worth it off the tick path.
+      CA2007: ConfigureAwait(false). No sync context in ASP.NET Core.
+      CA1031: catching Exception is correct at the decrypt boundary — a record that will not
+              unseal must degrade to "you need to re-enter this", never take the request down.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,90 @@
+<section class="ak-profile">
+  <header class="ak-profile-header">
+    <h1>Account</h1>
+    <p>Your profile, and the broker logins this platform is holding for you.</p>
+  </header>
+
+  @if (auth.user(); as user) {
+    <section class="ak-card">
+      <h2>Profile</h2>
+      <dl class="ak-detail-list">
+        <div>
+          <dt>Email</dt>
+          <dd>{{ user.email }}</dd>
+        </div>
+        @if (user.displayName) {
+          <div>
+            <dt>Name</dt>
+            <dd>{{ user.displayName }}</dd>
+          </div>
+        }
+        <div>
+          <dt>Member since</dt>
+          <dd>{{ user.createdAt | date: 'mediumDate' }}</dd>
+        </div>
+      </dl>
+      <div class="ak-card-actions">
+        <button mat-stroked-button type="button" (click)="signOut()">
+          <mat-icon aria-hidden="true">logout</mat-icon>
+          <span>Sign out</span>
+        </button>
+      </div>
+    </section>
+  }
+
+  <section class="ak-card">
+    <h2>Saved broker logins</h2>
+    <p class="ak-card-sub">
+      Encrypted on the server and used only to sign in to a broker on your behalf. They are never sent back to this
+      browser, so no page — including this one — can show you the values.
+    </p>
+
+    @if (auth.savedCredentials().length === 0) {
+      <ak-empty-state
+        icon="key_off"
+        title="No saved logins yet"
+        description="Tick “Remember this” on a field when you link a broker, and it will appear here."
+        [compact]="true"
+      />
+      <div class="ak-card-actions">
+        <a mat-flat-button color="primary" routerLink="/connectors">Link a broker</a>
+      </div>
+    } @else {
+      <ul class="ak-saved-list">
+        @for (credential of auth.savedCredentials(); track credential.id) {
+          <li class="ak-saved">
+            <div class="ak-saved-main">
+              <p class="ak-saved-title">
+                {{ credential.nickname ?? connectorName(credential.connectorId) }}
+                @if (credential.nickname) {
+                  <span class="ak-saved-broker">{{ connectorName(credential.connectorId) }}</span>
+                }
+              </p>
+              <p class="ak-saved-fields">
+                <mat-icon aria-hidden="true">lock</mat-icon>
+                <span>Saved: {{ fieldLabels(credential) }}</span>
+              </p>
+              <p class="ak-saved-meta">
+                Updated {{ credential.updatedAt | date: 'medium' }}
+                @if (credential.lastUsedAt) {
+                  · last used {{ credential.lastUsedAt | date: 'medium' }}
+                } @else {
+                  · not used yet
+                }
+              </p>
+            </div>
+            <button
+              mat-icon-button
+              type="button"
+              class="ak-saved-forget"
+              [attr.aria-label]="'Forget the saved login for ' + (credential.nickname ?? connectorName(credential.connectorId))"
+              (click)="forget(credential)"
+            >
+              <mat-icon aria-hidden="true">delete_outline</mat-icon>
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+</section>

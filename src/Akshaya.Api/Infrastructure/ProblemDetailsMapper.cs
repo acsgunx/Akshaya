@@ -1,4 +1,5 @@
 using Akshaya.Connectors.Abstractions;
+using Akshaya.Modules.Identity.Domain;
 using Akshaya.SharedKernel;
 
 namespace Akshaya.Api.Infrastructure;
@@ -58,6 +59,27 @@ public static class ProblemDetailsMapper
         ConnectorErrorCodes.InvalidRequest => StatusCodes.Status400BadRequest,
         ConnectorErrorCodes.ChallengeFailed => StatusCodes.Status400BadRequest,
         ConnectorErrorCodes.OrderRejected => StatusCodes.Status422UnprocessableEntity,
+
+        // ── Identity. The platform's own account, not a broker's. ──────────────────────────
+        //
+        // 409, not 400: the request was perfectly well formed and lost a race with an existing
+        // account. It is also the one identity response that deliberately DOES confirm an
+        // address is registered — sign-up cannot avoid it and stay usable, which is precisely
+        // why sign-in below refuses to.
+        IdentityErrorCodes.EmailAlreadyRegistered => StatusCodes.Status409Conflict,
+
+        IdentityErrorCodes.InvalidCredentials => StatusCodes.Status401Unauthorized,
+        IdentityErrorCodes.NotAuthenticated => StatusCodes.Status401Unauthorized,
+
+        // 403, not 401: signing in again will not help, so the client must not offer to.
+        IdentityErrorCodes.AccountDisabled => StatusCodes.Status403Forbidden,
+
+        IdentityErrorCodes.InvalidRequest => StatusCodes.Status400BadRequest,
+        IdentityErrorCodes.CredentialNotFound => StatusCodes.Status404NotFound,
+
+        // 422: the record exists and is intact, but this deployment cannot read it. Nothing the
+        // client sent was wrong, and retrying will not fix it — the user must re-enter and save.
+        IdentityErrorCodes.CredentialUnreadable => StatusCodes.Status422UnprocessableEntity,
 
         _ => StatusCodes.Status500InternalServerError,
     };

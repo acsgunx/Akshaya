@@ -1,4 +1,5 @@
 export * from './common.model';
+export * from './account.model';
 export * from './trading.model';
 export * from './manifest.model';
 export * from './auth.model';

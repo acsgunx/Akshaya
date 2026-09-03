@@ -1,0 +1,88 @@
+<section class="ak-auth" aria-labelledby="ak-auth-title">
+  <header class="ak-auth-head">
+    <span class="ak-auth-brand">Akshaya</span>
+    <h1 id="ak-auth-title">{{ isRegister() ? 'Create your account' : 'Sign in' }}</h1>
+    <p class="ak-auth-sub">
+      {{
+        isRegister()
+          ? 'One account holds every broker you link, and remembers the logins you ask it to.'
+          : 'Sign in to reach your linked brokers, positions and orders.'
+      }}
+    </p>
+  </header>
+
+  <form [formGroup]="form" class="ak-auth-form" (ngSubmit)="submit()">
+    @if (isRegister()) {
+      <div class="ak-field">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Name</mat-label>
+          <input matInput formControlName="displayName" autocomplete="name" />
+        </mat-form-field>
+        <p class="ak-field-msg">Optional. Only used to greet you.</p>
+      </div>
+    }
+
+    <div class="ak-field">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Email</mat-label>
+        <input matInput type="email" formControlName="email" autocomplete="email" inputmode="email" />
+      </mat-form-field>
+      @if (emailError(); as err) {
+        <p class="ak-field-msg ak-field-msg--error" role="alert">{{ err }}</p>
+      }
+    </div>
+
+    <div class="ak-field">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Password</mat-label>
+        <input
+          matInput
+          [type]="showPassword() ? 'text' : 'password'"
+          formControlName="password"
+          [attr.autocomplete]="isRegister() ? 'new-password' : 'current-password'"
+        />
+        <button
+          matSuffix
+          mat-icon-button
+          type="button"
+          [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+          [attr.aria-pressed]="showPassword()"
+          (click)="showPassword.set(!showPassword())"
+        >
+          <mat-icon aria-hidden="true">{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+        </button>
+      </mat-form-field>
+      @if (passwordError(); as err) {
+        <p class="ak-field-msg ak-field-msg--error" role="alert">{{ err }}</p>
+      } @else if (isRegister()) {
+        <p class="ak-field-msg">
+          At least {{ minimumPasswordLength }} characters. Length beats symbols — a few unrelated words is a strong password.
+        </p>
+      }
+    </div>
+
+    @if (auth.error(); as err) {
+      <p class="ak-banner ak-banner--error" role="alert">
+        <mat-icon aria-hidden="true">error_outline</mat-icon>
+        <span>{{ err.detail ?? 'Something went wrong. Try again.' }}</span>
+      </p>
+    }
+
+    <button mat-flat-button color="primary" type="submit" class="ak-btn-block" [disabled]="auth.busy()">
+      @if (auth.busy()) {
+        <mat-spinner diameter="18" />
+        <span>{{ isRegister() ? 'Creating…' : 'Signing in…' }}</span>
+      } @else {
+        <span>{{ isRegister() ? 'Create account' : 'Sign in' }}</span>
+      }
+    </button>
+
+    <p class="ak-auth-switch">
+      @if (isRegister()) {
+        Already have an account? <a routerLink="/sign-in">Sign in</a>
+      } @else {
+        New here? <a routerLink="/register">Create an account</a>
+      }
+    </p>
+  </form>
+</section>

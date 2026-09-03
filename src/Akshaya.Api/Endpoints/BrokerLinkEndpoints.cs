@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Akshaya.Api.Contracts;
 using Akshaya.Api.Infrastructure;
 using Akshaya.Connectors.Abstractions;
+using Akshaya.Modules.Identity.Application;
 using Akshaya.Modules.Trading.Ports;
 using Akshaya.SharedKernel;
 using FluentValidation;
@@ -37,6 +38,7 @@ public static class BrokerLinkEndpoints
             IConnectorFactory connectors,
             PendingLinkAuthStore pending,
             IBrokerLinkStore links,
+            BrokerCredentialVault vault,
             IClock clock,
             CancellationToken ct) =>
         {
@@ -44,6 +46,29 @@ public static class BrokerLinkEndpoints
             if (!validation.IsValid)
             {
                 return ProblemDetailsMapper.ValidationProblem(validation.Errors.Select(e => e.ErrorMessage));
+            }
+
+            // Saved fields first, supplied fields over the top. The plaintext lives only in
+            // this local for the duration of the request and is never echoed back.
+            var credentials = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            if (!string.IsNullOrWhiteSpace(request.SavedCredentialId))
+            {
+                var revealed = await vault.RevealAsync(user.UserId, request.SavedCredentialId, ct);
+                if (revealed.IsFailure)
+                {
+                    return ProblemDetailsMapper.ToProblem(revealed.Error);
+                }
+
+                foreach (var (key, value) in revealed.Value)
+                {
+                    credentials[key] = value;
+                }
+            }
+
+            foreach (var (key, value) in request.Credentials)
+            {
+                credentials[key] = value;
             }
 
             var connectorResult = connectors.CreateUnauthenticated(request.ConnectorId);
@@ -56,7 +81,7 @@ public static class BrokerLinkEndpoints
 
             var context = new AuthContext
             {
-                Credentials = new AuthCredentials(request.Credentials),
+                Credentials = new AuthCredentials(credentials),
                 RedirectUri = request.RedirectUri,
             };
 
@@ -70,11 +95,13 @@ public static class BrokerLinkEndpoints
                 stepResult.Value,
                 request.ConnectorId,
                 request.Nickname,
-                request.Credentials,
+                credentials,
                 request.RedirectUri,
+                request.RememberFields,
                 user,
                 pending,
                 links,
+                vault,
                 clock,
                 ct);
         });
@@ -87,6 +114,7 @@ public static class BrokerLinkEndpoints
             IConnectorFactory connectors,
             PendingLinkAuthStore pending,
             IBrokerLinkStore links,
+            BrokerCredentialVault vault,
             IClock clock,
             CancellationToken ct) =>
         {
@@ -133,9 +161,11 @@ public static class BrokerLinkEndpoints
                 flow.Nickname,
                 flow.Credentials,
                 flow.RedirectUri,
+                flow.RememberFields,
                 user,
                 pending,
                 links,
+                vault,
                 clock,
                 ct,
                 existingPendingId: id);
@@ -186,9 +216,11 @@ public static class BrokerLinkEndpoints
         string? nickname,
         IReadOnlyDictionary<string, string> credentials,
         string? redirectUri,
+        IReadOnlyList<string> rememberFields,
         ICurrentUserAccessor user,
         PendingLinkAuthStore pending,
         IBrokerLinkStore links,
+        BrokerCredentialVault vault,
         IClock clock,
         CancellationToken ct,
         string? existingPendingId = null)
@@ -211,6 +243,9 @@ public static class BrokerLinkEndpoints
 
             await links.SaveAsync(link, ct);
 
+            // Only now — the broker has accepted these, so they are worth remembering.
+            await RememberAsync(connectorId, nickname, credentials, rememberFields, user, vault, ct);
+
             if (existingPendingId is not null)
             {
                 pending.Remove(existingPendingId);
@@ -228,11 +263,49 @@ public static class BrokerLinkEndpoints
             nickname,
             credentials,
             redirectUri,
+            rememberFields,
             user.TenantId,
             user.UserId,
             clock.UtcNow));
 
         return Results.Ok(AuthStepDto.From(step, id));
+    }
+
+    /// <summary>
+    /// Persists the field values the user ticked "remember" for, after the broker accepted them.
+    ///
+    /// Only keys the user actually asked for are stored, and only those that have a value in
+    /// this login's credential set — a key the wizard sent but the user left blank is not a
+    /// secret worth a row, and a key nobody asked to remember must never end up in the vault
+    /// just because it happened to be in the same dictionary.
+    /// </summary>
+    private static async Task RememberAsync(
+        string connectorId,
+        string? nickname,
+        IReadOnlyDictionary<string, string> credentials,
+        IReadOnlyList<string> rememberFields,
+        ICurrentUserAccessor user,
+        BrokerCredentialVault vault,
+        CancellationToken ct)
+    {
+        if (rememberFields.Count == 0)
+        {
+            return;
+        }
+
+        var toSave = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var key in rememberFields)
+        {
+            if (credentials.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value))
+            {
+                toSave[key] = value;
+            }
+        }
+
+        if (toSave.Count > 0)
+        {
+            await vault.SaveAsync(user.TenantId, user.UserId, connectorId, nickname, toSave, ct);
+        }
     }
 }
 
@@ -279,6 +352,7 @@ public sealed record PendingLinkAuth(
     string? Nickname,
     IReadOnlyDictionary<string, string> Credentials,
     string? RedirectUri,
+    IReadOnlyList<string> RememberFields,
     string TenantId,
     string UserId,
     DateTimeOffset StartedAt);

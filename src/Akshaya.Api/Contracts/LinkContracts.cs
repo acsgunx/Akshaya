@@ -24,6 +24,26 @@ public sealed record BeginLinkRequestDto
 
     /// <summary>Where the OAuth callback should return to. Ignored by non-OAuth connectors.</summary>
     public string? RedirectUri { get; init; }
+
+    /// <summary>
+    /// A previously saved login to start from, if any.
+    ///
+    /// Its decrypted fields form the BASE of the credential set and anything in
+    /// <see cref="Credentials"/> is layered on top, so a user whose saved record covers the API
+    /// key and client code sends only the password. The plaintext never leaves the server: the
+    /// browser sends an id, not the secrets it stands for.
+    /// </summary>
+    public string? SavedCredentialId { get; init; }
+
+    /// <summary>
+    /// Which credential field keys to remember once this login SUCCEEDS, from the ones supplied
+    /// in <see cref="Credentials"/>.
+    ///
+    /// Opt-in and per-field, and acted on only after the broker has accepted the login —
+    /// saving credentials that have never worked produces a one-click button that one-click
+    /// fails, which is worse than no button.
+    /// </summary>
+    public IReadOnlyList<string> RememberFields { get; init; } = [];
 }
 
 public sealed class BeginLinkRequestDtoValidator : AbstractValidator<BeginLinkRequestDto>
