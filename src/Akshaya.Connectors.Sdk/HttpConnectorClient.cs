@@ -219,16 +219,25 @@ public sealed class HttpConnectorClient
         {
             // A shape change at the vendor is an operational event, not a crash. Log the body
             // so support can diff it against what we expected.
+            //
+            // ex.Path IS THE WHOLE DIAGNOSIS and is worth more than the body it comes with: it
+            // names the exact member that failed ("$.data.is_kyc") rather than leaving someone
+            // to eyeball a truncated payload against a DTO. A vendor silently retyping one
+            // field is the single most common way these calls break, and without the path that
+            // takes an afternoon to find — with it, seconds.
             _logger.LogWarning(
                 ex,
-                "{ConnectorId}: could not deserialise the response from {Path} into {Type}.",
+                "{ConnectorId}: could not deserialise the response from {Path} into {Type} at {JsonPath}.",
                 _options.ConnectorId,
                 path,
-                typeof(T).Name);
+                typeof(T).Name,
+                ex.Path ?? "(unknown member)");
 
             return Result<T>.Failure(BuildError(
                 ConnectorErrorCodes.Unknown,
-                "The broker's response could not be understood.",
+                ex.Path is { Length: > 0 } jsonPath
+                    ? $"The broker's response could not be understood: {jsonPath} was not the expected type."
+                    : "The broker's response could not be understood.",
                 null,
                 Truncate(body),
                 null,

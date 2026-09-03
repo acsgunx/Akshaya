@@ -65,29 +65,95 @@ internal sealed class MStockEnvelope<T>
 
 // --- authentication ---------------------------------------------------------------------
 
+/// <summary>
+/// The first login leg's payload, as mStock actually sends it:
+///
+/// <code>
+/// {"status":"success","data":{
+///    "ugid":"5544454f-…","is_kyc":true,"is_activate":false,"is_password_reset":true,
+///    "is_error":false,"cid":"1111","nm":"","flag":0}}
+/// </code>
+///
+/// EVERY FIELD IS OPTIONAL AND LENIENTLY TYPED, on purpose. This connector needs exactly one
+/// value out of the eight above — <see cref="Ugid"/> — and an earlier version of this class
+/// declared the three <c>is_*</c> flags as strings, which mStock sends as bare booleans. The
+/// result was a login that failed with "the broker's response could not be understood" while
+/// the broker had in fact said "success": a field nothing reads killed the whole document,
+/// because System.Text.Json treats one type mismatch as fatal for all of it.
+///
+/// The rule this class now follows: a field the connector does not act on must never be able
+/// to fail a login. See docs/connectors/mstock-login-response.md.
+/// </summary>
 internal sealed class MStockLoginData
 {
     /// <summary>Opaque login identifier some builds require to be echoed on the token call.</summary>
     [JsonPropertyName("ugid")]
+    [JsonConverter(typeof(LenientStringConverter))]
     public string? Ugid { get; init; }
 
+    /// <summary>Client code. Quoted on some builds ("1111"), bare on others.</summary>
     [JsonPropertyName("cid")]
+    [JsonConverter(typeof(LenientStringConverter))]
     public string? ClientId { get; init; }
 
-    [JsonPropertyName("nick_name")]
+    /// <summary>Account nickname. Sent as <c>nm</c>; <see cref="NickNameLong"/> covers the older key.</summary>
+    [JsonPropertyName("nm")]
+    [JsonConverter(typeof(LenientStringConverter))]
     public string? NickName { get; init; }
 
+    /// <summary>
+    /// The <c>nick_name</c> spelling. Kept because this connector was originally written
+    /// against it and there is no way to tell which builds still send it.
+    /// </summary>
+    [JsonPropertyName("nick_name")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? NickNameLong { get; init; }
+
+    /// <summary>
+    /// Masked mobile the OTP went to, when the build sends one.
+    ///
+    /// OFTEN ABSENT — the observed payload has no such field at all. The wizard therefore has
+    /// to treat "we cannot tell you where the code went" as normal and simply not show a
+    /// destination, rather than failing or inventing one.
+    /// </summary>
     [JsonPropertyName("mobile")]
+    [JsonConverter(typeof(LenientStringConverter))]
     public string? MaskedMobile { get; init; }
 
     [JsonPropertyName("is_kyc")]
-    public string? IsKyc { get; init; }
+    [JsonConverter(typeof(LenientBoolConverter))]
+    public bool? IsKyc { get; init; }
 
     [JsonPropertyName("is_activate")]
-    public string? IsActivated { get; init; }
+    [JsonConverter(typeof(LenientBoolConverter))]
+    public bool? IsActivated { get; init; }
 
     [JsonPropertyName("is_password_reset")]
-    public string? IsPasswordReset { get; init; }
+    [JsonConverter(typeof(LenientBoolConverter))]
+    public bool? IsPasswordReset { get; init; }
+
+    /// <summary>
+    /// mStock's own in-payload error flag, alongside the envelope's <c>status</c>.
+    ///
+    /// Not currently branched on: the envelope's status is the authority, and trusting a second
+    /// disagreeing signal would make "did this succeed" ambiguous. Mapped so it is visible in a
+    /// debugger and in logs when a support question needs answering.
+    /// </summary>
+    [JsonPropertyName("is_error")]
+    [JsonConverter(typeof(LenientBoolConverter))]
+    public bool? IsError { get; init; }
+
+    /// <summary>Undocumented status/sequence value. Mapped only so it cannot break the parse.</summary>
+    [JsonPropertyName("flag")]
+    [JsonConverter(typeof(LenientIntConverter))]
+    public int? Flag { get; init; }
+
+    /// <summary>The best available label for the account, whichever key the build used.</summary>
+    [JsonIgnore]
+    public string? DisplayName =>
+        !string.IsNullOrWhiteSpace(NickName) ? NickName
+        : !string.IsNullOrWhiteSpace(NickNameLong) ? NickNameLong
+        : null;
 }
 
 internal sealed class MStockSessionData
