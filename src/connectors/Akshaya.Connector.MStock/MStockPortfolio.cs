@@ -196,17 +196,30 @@ public sealed class MStockPortfolio : IConnectorPortfolio
             return Result<BrokerHolding>.Failure(instrument.Error);
         }
 
-        var quantity = dto.Quantity ?? 0m;
-        var t1 = dto.T1Quantity ?? 0m;
-
         return new BrokerHolding
         {
             Instrument = instrument.Value,
 
-            // T1 stock is bought-but-unsettled and IS sellable in India, so it belongs in the
-            // headline quantity. Leaving it out makes a holding bought yesterday look like it
-            // vanished.
-            Quantity = new Quantity(quantity + t1),
+            // `quantity` ALONE, and t1_quantity is deliberately NOT added to it.
+            //
+            // This previously computed `quantity + t1_quantity`, which is correct for Kite —
+            // where the two are disjoint, `quantity` being settled demat stock and
+            // `t1_quantity` the unsettled tranche. mStock does not split them that way: a real
+            // account holding 400 shares, with its own web console reporting "Unsettled Qty 0,
+            // DP Qty 400", was shown here as 800. Every figure derived from the quantity
+            // doubled with it — value, and the return percentage (-6.82% against a true
+            // -13.64%) — while the P&L, which comes straight from the broker's own `pnl`
+            // field, stayed right. A position that disagrees with its own percentage is how
+            // this was noticed.
+            //
+            // Using `quantity` alone reproduces that account exactly: 400 x 412.00 = 164,800
+            // invested, 400 x 355.80 = 142,320 current, -22,480 = -13.64%.
+            //
+            // If some other mStock account does report a separate unsettled tranche, this
+            // under-reports it, and that is the right way to be wrong: a trader who believes
+            // they hold 800 and sells 800 goes short or gets rejected, whereas one who believes
+            // they hold 400 and actually hold more has simply left stock unsold.
+            Quantity = new Quantity(dto.Quantity ?? 0m),
             AveragePrice = Rupees(dto.AveragePrice ?? 0m),
             LastPrice = RupeesOrNull(dto.LastPrice),
             UnrealisedPnl = RupeesOrNull(dto.Pnl),
