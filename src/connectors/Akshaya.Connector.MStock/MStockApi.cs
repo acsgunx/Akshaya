@@ -78,15 +78,31 @@ internal sealed class MStockApi : IAsyncDisposable
         var ownsClient = httpClient is null;
         var http = httpClient ?? new HttpClient();
 
-        http.BaseAddress ??= options.BaseUrl;
+        // BaseAddress and Timeout CANNOT BE SET ONCE A CLIENT HAS SENT A REQUEST — HttpClient
+        // throws InvalidOperationException, not a no-op. A supplied client is very likely to be
+        // a pooled one (that is the entire point of ConnectorActivationContext.HttpClientFactory),
+        // so a second facet configuring it would take down the call rather than the connector.
+        //
+        // Respecting an existing configuration is also the correct semantic: a caller who hands
+        // us a configured client did not ask for its timeout to be rewritten. The per-call
+        // deadline does not depend on this anyway — SendAsync enforces RequestTimeout with a
+        // linked cancellation token regardless of what the client's own timeout says.
+        try
+        {
+            http.BaseAddress ??= options.BaseUrl;
 
-        // One HttpClient serves both ordinary calls and the script-master download, so its
-        // own timeout is set to the longer of the two and the shorter one is enforced per
-        // call with a linked token. Setting it to RequestTimeout would abort every nightly
-        // instrument ingest at fifteen seconds.
-        http.Timeout = options.ScriptMasterTimeout > options.RequestTimeout
-            ? options.ScriptMasterTimeout
-            : options.RequestTimeout;
+            // One HttpClient serves both ordinary calls and the script-master download, so its
+            // own timeout is set to the longer of the two and the shorter one is enforced per
+            // call with a linked token. Setting it to RequestTimeout would abort every nightly
+            // instrument ingest at fifteen seconds.
+            http.Timeout = options.ScriptMasterTimeout > options.RequestTimeout
+                ? options.ScriptMasterTimeout
+                : options.RequestTimeout;
+        }
+        catch (InvalidOperationException)
+        {
+            // Already in use. Its existing base address and timeout stand.
+        }
 
         var apiKey = session?.Extras.GetValueOrDefault(MStockSessionKeys.ApiKey);
 
