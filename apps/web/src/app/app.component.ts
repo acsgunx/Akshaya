@@ -32,6 +32,7 @@ import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component'
             <a routerLink="/dashboard" routerLinkActive="active">Dashboard</a>
             <a routerLink="/watchlist" routerLinkActive="active">Watchlist</a>
             <a routerLink="/positions" routerLinkActive="active">Positions</a>
+            <a routerLink="/holdings" routerLinkActive="active">Holdings</a>
             <a routerLink="/orders" routerLinkActive="active">Orders</a>
             <a routerLink="/connectors" routerLinkActive="active">Brokers</a>
           </nav>

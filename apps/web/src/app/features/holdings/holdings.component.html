@@ -1,0 +1,158 @@
+<section class="ak-holdings">
+  <header class="ak-holdings-header">
+    <div>
+      <h1>Holdings</h1>
+      <p class="ak-holdings-sub">Delivery stock settled in your demat account, blended across every linked broker.</p>
+    </div>
+    <button
+      mat-icon-button
+      type="button"
+      class="ak-refresh ak-focus-halo"
+      aria-label="Refresh holdings"
+      [disabled]="store.loading()"
+      (click)="store.refresh(undefined)"
+    >
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </header>
+
+  @if (store.loading() && !store.snapshot()) {
+    <div class="ak-holdings-loading"><mat-spinner diameter="28" /> Loading holdings…</div>
+  } @else if (holdings().length === 0) {
+    <ak-empty-state
+      icon="account_balance_wallet"
+      title="No holdings"
+      description="Delivery stock held at any linked broker will appear here. Intraday and derivative exposure lives on the Positions screen."
+    />
+  } @else {
+    <!--
+      ONE SUMMARY CARD PER CURRENCY. Blending them into a single total would need an FX rate
+      nobody stated — see the `totals` computed for why that is refused rather than guessed.
+    -->
+    <div class="ak-totals">
+      @for (total of totals(); track total.currency) {
+        <article class="ak-total-card">
+          <header>
+            <span class="ak-total-label">Invested</span>
+            @if (totals().length > 1) {
+              <span class="ak-total-currency">{{ total.currency }}</span>
+            }
+          </header>
+          <p class="ak-total-value ak-num">{{ total.invested | akMoney }}</p>
+
+          <div class="ak-total-split">
+            <div>
+              <span class="ak-total-label">Current</span>
+              <p class="ak-total-secondary ak-num">{{ total.current | akMoney }}</p>
+            </div>
+            <div>
+              <span class="ak-total-label">Unrealised</span>
+              <p
+                class="ak-total-secondary ak-num"
+                [class.ak-buy-text]="+total.unrealisedPnl.amount >= 0"
+                [class.ak-sell-text]="+total.unrealisedPnl.amount < 0"
+              >
+                {{ total.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
+                @if (total.returnFraction !== undefined) {
+                  <span class="ak-total-return">({{ total.returnFraction | percent: '1.2-2' }})</span>
+                }
+              </p>
+            </div>
+          </div>
+        </article>
+      }
+    </div>
+
+    <div class="ak-holdings-table-head" role="row">
+      <span></span>
+      <span>Instrument</span>
+      <span class="ak-col-qty">Qty</span>
+      <span class="ak-col-price">Avg cost</span>
+      <span class="ak-col-price">Last</span>
+      <span class="ak-col-pnl">Value</span>
+      <span class="ak-col-pnl">Unrealised</span>
+      <span class="ak-col-return">Return</span>
+    </div>
+
+    <!-- Virtualised: only visible rows render, even with a few thousand holdings. -->
+    <cdk-virtual-scroll-viewport itemSize="44" class="ak-holdings-viewport">
+      <div *cdkVirtualFor="let holding of holdings(); trackBy: trackByGroupKey" class="ak-holding-row-wrap">
+        <div class="ak-holding-row" role="row">
+          <button
+            type="button"
+            class="ak-expand-btn ak-focus-halo"
+            [attr.aria-expanded]="isExpanded(holding.groupKey)"
+            [attr.aria-label]="'Toggle brokers holding ' + holding.instrument"
+            (click)="toggle(holding.groupKey)"
+            [disabled]="holding.legs.length <= 1"
+          >
+            @if (holding.legs.length > 1) {
+              <mat-icon aria-hidden="true">{{ isExpanded(holding.groupKey) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+            }
+          </button>
+
+          <span class="ak-holding-instrument">
+            {{ holding.instrument }}
+            @if (holding.legs.length > 1) {
+              <span class="ak-split-badge">{{ holding.legs.length }} brokers</span>
+            }
+            @if (isPledged(holding)) {
+              <!--
+                Pledged stock is collateral and cannot be freely sold. A trader looking at a
+                quantity they cannot actually sell needs to know before they try, not after the
+                broker rejects the order.
+              -->
+              <span
+                class="ak-pledge-badge"
+                [attr.title]="(holding.pledgedQuantity | akQuantity: { fractional: true }) + ' pledged as collateral'"
+              >
+                <mat-icon aria-hidden="true">lock</mat-icon>
+                {{ holding.pledgedQuantity | akQuantity: { fractional: true } }} pledged
+              </span>
+            }
+          </span>
+
+          <span class="ak-col-qty">{{ holding.quantity | akQuantity: { fractional: true } }}</span>
+          <span class="ak-col-price">{{ holding.averagePrice | akMoney }}</span>
+          <span class="ak-col-price">{{ holding.lastPrice | akMoney }}</span>
+          <span class="ak-col-pnl">{{ holding.currentValue | akMoney }}</span>
+          <span
+            class="ak-col-pnl"
+            [class.ak-buy-text]="!holding.unrealisedPnl || +holding.unrealisedPnl.amount >= 0"
+            [class.ak-sell-text]="holding.unrealisedPnl && +holding.unrealisedPnl.amount < 0"
+          >
+            {{ holding.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
+          </span>
+          <span
+            class="ak-col-return ak-num"
+            [class.ak-buy-text]="(returnFor(holding) ?? 0) >= 0"
+            [class.ak-sell-text]="(returnFor(holding) ?? 0) < 0"
+          >
+            @if (returnFor(holding); as ret) {
+              {{ ret | percent: '1.2-2' }}
+            } @else {
+              —
+            }
+          </span>
+        </div>
+
+        @if (isExpanded(holding.groupKey)) {
+          <div class="ak-legs">
+            @for (leg of holding.legs; track leg.brokerLinkId) {
+              <div class="ak-leg-row" role="row">
+                <span class="ak-leg-spacer"></span>
+                <span class="ak-leg-broker">{{ leg.displayName }}</span>
+                <span class="ak-col-qty">{{ leg.quantity | akQuantity: { fractional: true } }}</span>
+                <span class="ak-col-price">{{ leg.averagePrice | akMoney }}</span>
+                <span class="ak-col-price">{{ leg.lastPrice | akMoney }}</span>
+                <span class="ak-col-pnl">{{ leg.currentValue | akMoney }}</span>
+                <span class="ak-col-pnl">{{ leg.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}</span>
+                <span class="ak-col-return"></span>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </cdk-virtual-scroll-viewport>
+  }
+</section>

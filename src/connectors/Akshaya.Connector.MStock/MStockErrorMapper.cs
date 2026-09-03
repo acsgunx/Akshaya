@@ -111,7 +111,17 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
         ConnectorErrorCodes.BrokerUnavailable => "mStock is currently unavailable.",
         ConnectorErrorCodes.NotSupported => "mStock does not permit this action on this account.",
         ConnectorErrorCodes.InvalidRequest => "mStock rejected the request as invalid.",
-        _ => "mStock reported an error.",
+
+        // NO OPINION: SAY WHAT THE BROKER SAID.
+        //
+        // Falling through to "mStock reported an error." threw away a perfectly good message.
+        // A user who mistyped their OTP was told nothing at all, when the broker had said "The
+        // entered OTP is incorrect. Please proceed to login page." Our own wording is better
+        // than a vendor's ONLY when we understood the failure well enough to write one; when we
+        // did not, the vendor's text is the most useful thing available.
+        _ => string.IsNullOrWhiteSpace(context.VendorMessage)
+            ? "mStock reported an error."
+            : context.VendorMessage,
     };
 
     /// <summary>Maps a non-success HTTP response.</summary>
@@ -251,7 +261,15 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
             return ConnectorErrorCodes.SessionExpired;
         }
 
-        if (ContainsAny(message, "invalid otp", "incorrect otp", "invalid totp", "otp expired"))
+        // mStock's own wording is "The entered OTP is incorrect" and "Please enter correct
+        // TOTP" — neither of which matches "incorrect otp" or "invalid totp". Word order in a
+        // vendor's prose is not something to guess at once; match on the noun and let the
+        // surrounding words vary.
+        if (ContainsAny(
+                message,
+                "otp is incorrect", "otp is invalid", "incorrect otp", "invalid otp",
+                "correct totp", "incorrect totp", "invalid totp", "otp expired",
+                "entered otp"))
         {
             return ConnectorErrorCodes.ChallengeFailed;
         }
