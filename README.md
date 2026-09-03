@@ -101,7 +101,7 @@ tests/
   Akshaya.Connector.MStock.Tests/  Mapping, session expiry, symbol translation
   Akshaya.Identity.Tests/          Password hashing, the credential cipher, vault isolation
 scripts/                           Dev and verification scripts (see scripts/README.md)
-docs/                              Architecture, ADRs, per-connector notes, compliance
+docs/                              Architecture, internals, ADRs, per-connector notes, compliance
 ```
 
 ---
@@ -135,8 +135,9 @@ broker in every market.** An architecture test scans the core, the API and the f
 broker names and fails the build on a hit. If you need per-broker behaviour, add a manifest
 field — never a conditional.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it fits together and
-[`docs/ADDING-A-BROKER.md`](docs/ADDING-A-BROKER.md) for the checklist.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it fits together,
+[`docs/INTERNALS.md`](docs/INTERNALS.md) for the theory and mechanism behind every decision
+(backend and Angular), and [`docs/ADDING-A-BROKER.md`](docs/ADDING-A-BROKER.md) for the checklist.
 
 ---
 

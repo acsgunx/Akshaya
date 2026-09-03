@@ -1,5 +1,8 @@
 # Architecture
 
+This is the overview. For the theory behind each decision and the mechanism that implements it —
+on both the .NET and the Angular side — read [`INTERNALS.md`](INTERNALS.md).
+
 ## The problem this shape solves
 
 A trading platform that supports many brokers usually rots the same way. The first broker's
