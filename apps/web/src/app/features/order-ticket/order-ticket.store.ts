@@ -10,6 +10,12 @@ import type { ApiProblem, InstrumentDefinition, OrderActionResult, OrderEstimate
 
 export type OrderTicketPhase = 'form' | 'reviewing' | 'submitting' | 'submitted' | 'failed';
 
+/** What `loadInstrument` needs: the key, and the link to resolve it through. */
+export interface InstrumentRequest {
+  readonly brokerLinkId: string;
+  readonly instrument: string;
+}
+
 interface State {
   readonly instrument: InstrumentDefinition | undefined;
   readonly instrumentLoading: boolean;
@@ -63,11 +69,16 @@ const initialState: State = {
 export const OrderTicketStore = signalStore(
   withState(initialState),
   withMethods((store, api = inject(ApiService)) => ({
-    loadInstrument: rxMethod<string>(
+    /**
+     * Instrument details are resolved THROUGH A LINK: the resolve endpoint reads
+     * the instrument master for whichever connector that link belongs to, so the
+     * ticket cannot ask this question without saying which broker it means.
+     */
+    loadInstrument: rxMethod<InstrumentRequest>(
       pipe(
         tap(() => patchState(store, { instrumentLoading: true, instrumentError: undefined })),
-        switchMap((key) =>
-          api.getInstrument(key).pipe(
+        switchMap(({ brokerLinkId, instrument }) =>
+          api.getInstrument(brokerLinkId, instrument).pipe(
             tapResponse({
               next: (instrument) => patchState(store, { instrument, instrumentLoading: false }),
               error: (err: unknown) =>

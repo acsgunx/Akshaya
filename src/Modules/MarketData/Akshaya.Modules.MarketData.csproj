@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE INSTRUMENT MASTER.
+
+    One in-memory, searchable copy of every tradable contract a connector lists, held per
+    CONNECTOR (not per user and not per broker link) because the instrument master is a
+    property of the venue, not of whoever happens to be signed in.
+
+    It exists because the alternative is what came before it: instrument search delegated
+    straight to `IConnectorReference.SearchAsync` on a request-scoped connector, which for a
+    broker that publishes its master as a single CSV meant re-downloading and re-parsing two
+    hundred thousand rows on EVERY KEYSTROKE of a search box. The download is the expensive
+    part; doing it once and searching in memory is the whole point of this assembly.
+
+    Like the other modules, this one contains NO BROKER NAMES. It never fetches anything
+    itself — the caller passes a loader delegate — so it cannot know or care which broker's
+    rows it is holding.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Modules.MarketData</RootNamespace>
+    <AssemblyName>Akshaya.Modules.MarketData</AssemblyName>
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

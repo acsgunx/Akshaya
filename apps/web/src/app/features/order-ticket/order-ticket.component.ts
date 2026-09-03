@@ -177,8 +177,8 @@ export class OrderTicketComponent {
 
     effect(() => {
       const key = this.instrument();
-      this.store.loadInstrument(key);
-      const unsubscribe = this.marketData.subscribe(key, 'ltp');
+      this.store.loadInstrument({ brokerLinkId: this.brokerLinkId(), instrument: key });
+      const unsubscribe = this.marketData.subscribe(this.brokerLinkId(), key);
       this.destroyRef.onDestroy(unsubscribe);
     });
   }

@@ -105,6 +105,10 @@ export class WatchlistRowComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly instrument = input.required<InstrumentDefinition>();
+
+  /** The linked account this row's stream runs through; the hub subscribes per link. */
+  readonly brokerLinkId = input.required<string>();
+
   readonly remove = output<string>();
 
   protected readonly quote = computed(() => this.marketData.tickFor(this.instrument().key)());
@@ -139,7 +143,11 @@ export class WatchlistRowComponent {
 
   constructor() {
     effect(() => {
-      const unsubscribe = this.marketData.subscribe(this.instrument().key, 'ltp');
+      const brokerLinkId = this.brokerLinkId();
+      if (!brokerLinkId) {
+        return;
+      }
+      const unsubscribe = this.marketData.subscribe(brokerLinkId, this.instrument().key);
       this.destroyRef.onDestroy(unsubscribe);
     });
 

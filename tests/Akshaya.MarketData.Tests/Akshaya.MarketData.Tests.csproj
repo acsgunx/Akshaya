@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THE INSTRUMENT MASTER'S TEST SUITE.
+
+    Two things must stay true. First, search RANKING: on an Indian venue a symbol like NIFTY
+    is matched by thousands of option contracts, so "the cash scrip and the near expiry come
+    first" is not a nicety — it is the difference between a usable search box and one that
+    returns twenty strikes of the same expiry. Second, the master must load ONCE: the whole
+    reason this component exists is that a concurrent burst of searches used to mean a
+    concurrent burst of multi-hundred-thousand-row downloads.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.MarketData.Tests</RootNamespace>
+    <AssemblyName>Akshaya.MarketData.Tests</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!--
+      CA1707: test method names use underscores on purpose; they are read as sentences in CI.
+      CA2007: no synchronisation context in a test host.
+      CA1848/CA1031: same reasons as the assembly under test.
+    -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1848;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\MarketData\Akshaya.Modules.MarketData.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Akshaya.SharedKernel\Akshaya.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.1.0" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

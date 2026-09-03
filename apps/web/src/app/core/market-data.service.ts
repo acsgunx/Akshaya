@@ -2,8 +2,20 @@ import { Injectable, Signal, computed, signal } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 
 import type { InstrumentKey, OrderRecord } from './models';
-import type { StreamMode, StreamState } from './models/trading.model';
+import type { StreamState } from './models/trading.model';
 import type { Tick } from './models/market-data.model';
+
+/** One live subscription: which link it runs through, and how many components want it. */
+interface StreamSubscription {
+  readonly brokerLinkId: string;
+  readonly instrument: InstrumentKey;
+  readonly count: number;
+}
+
+/** Refcount key. The link is part of the identity, not decoration — see `refCounts`. */
+function streamKey(brokerLinkId: string, instrument: InstrumentKey): string {
+  return `${brokerLinkId}\u0000${instrument}`;
+}
 
 /**
  * SignalR wrapper that exposes SIGNALS, never Observables — every consumer in
@@ -22,7 +34,14 @@ import type { Tick } from './models/market-data.model';
 @Injectable({ providedIn: 'root' })
 export class MarketDataService {
   private hub: signalR.HubConnection | undefined;
-  private readonly refCounts = new Map<InstrumentKey, number>();
+
+  /**
+   * Reference counts keyed by LINK **and** instrument: the hub subscribes per
+   * broker link (`MarketDataHub.Subscribe(brokerLinkId, instruments)`), so the
+   * same symbol watched through two linked accounts is two upstream
+   * subscriptions and must not share one count.
+   */
+  private readonly refCounts = new Map<string, StreamSubscription>();
 
   private readonly _connectionState = signal<StreamState>('disconnected');
   readonly connectionState = this._connectionState.asReadonly();
@@ -38,8 +57,8 @@ export class MarketDataService {
   readonly isAnyWatchedInstrumentStale = computed(() => {
     const lastAt = this._lastTickAt();
     const now = Date.now();
-    for (const mic of this.refCounts.keys()) {
-      const at = lastAt.get(mic);
+    for (const { instrument } of this.refCounts.values()) {
+      const at = lastAt.get(instrument);
       if (at === undefined || now - at > 10_000) {
         return true;
       }
@@ -91,12 +110,13 @@ export class MarketDataService {
    * garbage collection to release a broker-side subscription, which is a
    * metered resource per `manifest.marketData.maxStreamSubscriptions`.
    */
-  subscribe(instrument: InstrumentKey, mode: StreamMode = 'ltp'): () => void {
-    const count = this.refCounts.get(instrument) ?? 0;
-    this.refCounts.set(instrument, count + 1);
+  subscribe(brokerLinkId: string, instrument: InstrumentKey): () => void {
+    const key = streamKey(brokerLinkId, instrument);
+    const existing = this.refCounts.get(key);
+    this.refCounts.set(key, { brokerLinkId, instrument, count: (existing?.count ?? 0) + 1 });
 
-    if (count === 0 && this.hub?.state === signalR.HubConnectionState.Connected) {
-      void this.hub.invoke('Subscribe', [instrument], mode).catch(() => {
+    if (!existing && this.hub?.state === signalR.HubConnectionState.Connected) {
+      void this.hub.invoke('Subscribe', brokerLinkId, [instrument]).catch(() => {
         // A failed subscribe leaves the instrument stale rather than
         // throwing into a template's effect; `isAnyWatchedInstrumentStale`
         // and the per-row `connection-status` badge are how this surfaces.
@@ -109,14 +129,14 @@ export class MarketDataService {
         return;
       }
       released = true;
-      const remaining = (this.refCounts.get(instrument) ?? 1) - 1;
+      const remaining = (this.refCounts.get(key)?.count ?? 1) - 1;
       if (remaining <= 0) {
-        this.refCounts.delete(instrument);
+        this.refCounts.delete(key);
         if (this.hub?.state === signalR.HubConnectionState.Connected) {
-          void this.hub.invoke('Unsubscribe', [instrument]).catch(() => undefined);
+          void this.hub.invoke('Unsubscribe', brokerLinkId, [instrument]).catch(() => undefined);
         }
       } else {
-        this.refCounts.set(instrument, remaining);
+        this.refCounts.set(key, { brokerLinkId, instrument, count: remaining });
       }
     };
   }
@@ -148,8 +168,8 @@ export class MarketDataService {
     if (!this.hub) {
       return;
     }
-    for (const instrument of this.refCounts.keys()) {
-      void this.hub.invoke('Subscribe', [instrument], 'ltp' satisfies StreamMode).catch(() => undefined);
+    for (const { brokerLinkId, instrument } of this.refCounts.values()) {
+      void this.hub.invoke('Subscribe', brokerLinkId, [instrument]).catch(() => undefined);
     }
   }
 }

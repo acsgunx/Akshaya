@@ -26,6 +26,7 @@ using Akshaya.Connectors.Sdk;
 using Akshaya.Modules.Identity;
 using Akshaya.Modules.Identity.Infrastructure;
 using Akshaya.Modules.Identity.Infrastructure.Ef;
+using Akshaya.Modules.MarketData;
 using Akshaya.Modules.Portfolio;
 using Akshaya.Modules.Portfolio.Ports;
 using Akshaya.Modules.Trading;
@@ -138,6 +139,16 @@ try
         new BrokerLinkPortfolioProvider(sp.GetRequiredService<IBrokerLinkStore>()));
 
     builder.Services.Configure<PortfolioOptions>(builder.Configuration.GetSection("Portfolio"));
+
+    // ── Instrument master. ───────────────────────────────────────────────────────────────────
+    //
+    // One shared, searchable copy of each connector's instrument list. Registered here rather
+    // than inside a connector because the whole point is that it OUTLIVES the request-scoped
+    // connectors that fill it: a broker whose master is a single large CSV would otherwise
+    // re-download it on every keystroke of a search box.
+    builder.Services.AddInstrumentMaster();
+    builder.Services.Configure<InstrumentMasterOptions>(
+        builder.Configuration.GetSection(InstrumentMasterOptions.SectionName));
 
     // ── Identity: accounts, sessions, and the saved-broker-credential vault. ──────────────────
     //
