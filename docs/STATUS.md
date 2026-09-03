@@ -1,23 +1,40 @@
 # Status: what is verified and what is not
 
-**Last updated: 2026-09-02**
+**Last updated: 2026-09-04**
 
 Read this before trusting anything in this repository.
 
 ## The headline
 
-This codebase was written in an environment with **no .NET SDK and no access to NuGet or npm**.
-That means:
+**This section's original claim is now out of date, and that is good news.** It said no C# file
+had ever been compiled, no test had ever run, and the Angular app had never been built. All
+three are now false:
 
-- **No C# file here has ever been compiled.**
-- **No test has ever been run.**
-- **The Angular app has never been installed, built, or served.**
+- `dotnet build Akshaya.sln` **succeeds**, 0 errors.
+- `dotnet test Akshaya.sln` **passes**: 535 tests across six projects.
+- `cd apps/web && npm run build && npm test && npm run lint` all **pass** (26 tests).
+- The API and the Angular app have been **run together** and exercised through a browser —
+  place, amend, cancel, cancel-all, fills, positions, square-off and the risk gate.
 
-Everything was written to be correct by inspection, cross-checked against the contract files, and
-run through a static consistency checker. That is not the same as a green build, and it would be
-dishonest to present it as one. Expect a first `dotnet build` to surface real errors — missing
-usings, signature drift between projects written in parallel, and package versions that need
-pinning to what actually exists on your feed.
+That last one matters most, because compiling proves less than running. Four defects survived
+every static check and were only found by using the app:
+
+- `GET /api/orders` declared its filters as non-nullable `bool`, which makes them **required**
+  query parameters. The web client sends only one of them, so the blotter 500'd on every load
+  and showed "Could not load orders". **The order screen had never worked.**
+- The web client called `PUT /api/orders/{id}` and `DELETE /api/orders/{id}`; the API exposes
+  `POST /{id}/modify` and `POST /{id}/cancel`. Both old paths return 405 — **cancelling from
+  the blotter had never worked either.**
+- An accepted amendment appended an event but never updated `Order.Request`, so the blotter,
+  `PendingQuantity` and the risk gate all kept reporting the pre-amendment numbers.
+- `orders.modifiable` carries **values**, not property names, so the API's camelCase policy
+  leaves the manifests' PascalCase alone. Every call site compared against camelCase, so the
+  order ticket's disclosed-quantity field had never rendered. This is the *same class of bug*
+  this file already records catching once (see below) — it was caught in the manifest and
+  missed in the comparison.
+
+The lesson to carry forward: the static checks in this repo are worth keeping, but "it passes
+the checker" and "a person used it" are very different claims.
 
 ## What *has* been verified
 
@@ -30,7 +47,10 @@ pinning to what actually exists on your feed.
 | Every connector ships a manifest and implements the contract | `--check connectors` | The host can load them |
 | Constructed types are declared somewhere | `--check types` | Catches an invented helper class |
 
-Run them all with `python3 scripts/verify-structure.py`. **All six pass as of 2026-09-02**, and
+Run them all with `python3 scripts/verify-structure.py`. Five of the six pass as of 2026-09-04;
+`type-resolution` reports pre-existing false positives on BCL and NuGet types (`AesGcm`,
+`Claim`, `PriorityQueue`, `SqliteConnection`) that predate this checker's `known_external` list.
+**A real compiler is now available and is the better check** — `dotnet build` is authoritative.
 `scripts/validate-manifests.py` validates all four manifests against the schema.
 
 Two real defects were found and fixed by those checks while writing this, which is roughly the
@@ -44,31 +64,49 @@ point of having them:
 
 ## What has NOT been verified
 
-- **Compilation.** The single biggest unknown.
-- **Package versions.** Versions in `.csproj` and `package.json` were chosen from knowledge, not
-  from a live feed. Some will not resolve. `scripts/bootstrap.sh` reports which.
+- ~~**Compilation.**~~ Resolved — the solution builds and the tests pass. See the headline.
+- ~~**Package versions.**~~ Resolved — restore succeeds. Two advisories are outstanding
+  (`Microsoft.OpenApi` 2.0.0, high; `OpenTelemetry.Exporter.OpenTelemetryProtocol` 1.12.0,
+  moderate) and should be bumped.
 - **The mStock connector against the live API.** Endpoint paths, headers and the auth flow come
-  from the published Type A documentation, but no request has ever been sent. Response shapes in
-  `MStockDtos.cs` are the most likely place reality differs from this code.
+  from the published Type A documentation, but no request has ever been sent beyond login.
+  Response shapes in `MStockDtos.cs` are the most likely place reality differs from this code.
+
+  The order, margin, position and error pages **were re-read from the vendor's site on
+  2026-09-04** and several real mismatches were corrected — placement and modification are
+  form-encoded rather than JSON, modify is a replace rather than a patch, cancel-all reports no
+  count, `/trades` needs a date window, and two documented statuses (`TRIGGERED`, `PENDING`)
+  were unmapped. mStock also publishes a margin-and-charges calculator the manifest had declared
+  absent. See [`features/orders.md`](features/orders.md) and
+  [`connectors/mstock.md`](connectors/mstock.md). The docs host refuses plain HTTP clients but
+  serves a real browser — re-check through one rather than assuming it is unreachable.
+
+- **Order behaviour beyond the Paper connector.** The whole order flow has been exercised
+  end to end against `paper`, which implements the same contract. The mStock smoke test in
+  [`features/orders.md`](features/orders.md) §13 has **not** been run.
 - **Charge schedules.** The rate constants in `Akshaya.Connector.Paper/Charges/` are marked
   `REVIEW:` and must be checked against current published schedules before anyone trusts a
   backtest's net P&L.
-- **The Angular app's runtime behaviour.** Templates, bindings and imports were checked by hand
-  and by grep, not by the compiler.
+- **The Angular app's runtime behaviour**, beyond the order flow. The order, fills and positions
+  screens have been driven in a browser against a live API. The dashboard, watchlist, chart,
+  holdings and broker-link wizard have been compiled and type-checked but not exercised the
+  same way — and the four defects in the headline are what that difference is worth.
 
 ## Recommended order of work
 
-1. `scripts/bootstrap.sh` — resolve the toolchain and fix package versions until restore succeeds.
-2. `dotnet build` — fix compile errors. Expect the seams between projects written in parallel
-   (Sdk ↔ connectors, Modules ↔ Api) to need the most attention.
-3. `dotnet test tests/Akshaya.Architecture.Tests` — these encode the design's rules; get them
-   green early so later work cannot quietly violate them.
-4. `dotnet test tests/Akshaya.Connectors.TestKit` — the conformance suite against the two fake
-   connectors. Green here means the abstraction spans two genuinely different brokers.
-5. `dotnet test` — everything else.
-6. `cd apps/web && npm install && npm run build`.
-7. Only then: point the mStock connector at the sandbox and run the manual smoke test in
-   [`connectors/mstock.md`](connectors/mstock.md).
+Steps 1–6 of the original list are done: the solution restores, builds and tests green, and the
+web app builds. What is left:
+
+1. **Run the app and use the screens that have not been used.** Four defects hid behind a green
+   build; there is no reason to think the remaining screens are cleaner than the order screens
+   were. `./scripts/dev-up.sh`, or `ASPNETCORE_ENVIRONMENT=Development dotnet run --project
+   src/Akshaya.Api` alongside `npm --prefix apps/web start`.
+2. **Durable persistence.** Everything is in-memory; nothing survives a restart. This blocks
+   GTT, and it blocks trusting anything overnight.
+3. **Identity.** Every request still runs as a dev user.
+4. **Point the mStock connector at a real account** and run the smoke test in
+   [`features/orders.md`](features/orders.md) §13 — it is the longer and more current of the
+   two, covering orders, amendments, stops, cancel-all, AMO, history and conversion.
 
 ## Coverage against the build plan
 
@@ -77,9 +115,9 @@ point of having them:
 | 0 | Foundations, SharedKernel, solution, CI, architecture tests | Written |
 | 1 | Identity, tenancy, 2FA | **Not started** — the API uses a clearly-marked dev auth stub |
 | 2 | Connector contract, SDK, host, conformance kit, two fakes | Written |
-| 3 | mStock connector | Written, unverified against the live API |
+| 3 | mStock connector | Written; re-checked against the published docs 2026-09-04, still unverified against the live API beyond login |
 | 4 | Credential vault, envelope encryption, link flow | **Partial** — the link flow exists, the KMS-backed vault does not |
-| 5 | Order state machine, risk gate, portfolio, reconciliation | Written |
+| 5 | Order state machine, risk gate, portfolio, reconciliation | Written and **exercised end to end** against the Paper connector; persistence still in-memory |
 | 6 | Market data, SignalR fan-out, candles | **Partial** — the hub and conflation exist; TimescaleDB storage does not |
 | 7 | Strategy engine, backtester | **Not started** — the Paper connector and charge schedules are the groundwork |
 | 8 | Second and third connectors | **Not started** — this is the phase that tests whether the design worked |

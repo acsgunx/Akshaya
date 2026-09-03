@@ -8,10 +8,12 @@
 - **Status:** implemented. The **login leg is verified against a live account**; every leg after
   it is still documentation-only — see below.
 
-> ⚠️ Most of this file comes from the published documentation, and that documentation could not
-> be re-verified while writing this (the docs host returns `AccessDenied` to automated clients).
-> The response shapes in `MStockDtos.cs` remain the most likely place reality differs from this
-> code.
+> ⚠️ Most of this file comes from the published documentation. The **order, margin, position
+> and error pages were re-read from <https://tradingapi.mstock.com/docs/v1/typeA/> on
+> 2026-09-04** and the corrections are folded in below; the docs host refuses plain HTTP
+> clients (`AccessDenied`) but serves a real browser, so re-checking is possible — do it
+> through one. The remaining response shapes in `MStockDtos.cs` are still the most likely place
+> reality differs from this code.
 >
 > **This has already bitten five times.** A successful login was rejected as unparseable; the
 > session `checksum` was computed as a SHA-256 hash when mStock wants the literal string `L`;
@@ -34,14 +36,16 @@
 | Session token (OTP) | `POST /openapi/typea/session/token` |
 | Verify TOTP | `POST /openapi/typea/session/verifytotp` |
 | Logout | `GET /openapi/typea/logout` |
-| Place order | `POST /openapi/typea/orders/{variety}` — `reg` or `amo` |
-| Modify | `PUT /openapi/typea/orders/regular/{orderId}` |
+| Place order | `POST /openapi/typea/orders/{variety}` — `reg` or `amo` — **form-encoded** |
+| Modify | `PUT /openapi/typea/orders/regular/{orderId}` — **form-encoded, and a REPLACE** |
 | Cancel | `DELETE /openapi/typea/orders/regular/{orderId}` |
-| Cancel all | `POST /openapi/typea/orders/cancelall` |
+| Cancel all | `POST /openapi/typea/orders/cancelall` — **reports no count** |
 | Order book | `GET /openapi/typea/orders` |
 | Order details | `GET /openapi/typea/order/details?order_no=&segment=` (`E` / `D`) |
-| Trade book | `GET /openapi/typea/tradebook` |
-| Trades | `GET /openapi/typea/trades` |
+| Trade book (today) | `GET /openapi/typea/tradebook` |
+| Trade history | `GET /openapi/typea/trades?fromdate=&todate=` |
+| Margin + charges | `POST /openapi/typea/margins/orders` — **JSON, not form** |
+| Convert position | `POST /openapi/typea/portfolio/convertposition` — form-encoded |
 | Script master | `GET /openapi/typea/instruments/scriptmaster` (CSV) |
 | LTP | `GET /openapi/typea/instruments/quote/ltp` |
 | OHLC | `GET /openapi/typea/instruments/quote/ohlc` |
@@ -110,6 +114,21 @@ default is how a rejected order shows as open.
 
 ## Quirks and gotchas
 
+- **Writes are form-encoded, not JSON.** Placement, modification and position conversion all
+  take `application/x-www-form-urlencoded`. The margin calculator is the one documented
+  exception and takes JSON. Combined with the HTTP-200 error convention below, sending JSON to
+  a form route does not fail loudly — it comes back looking like a rejected order.
+- **Modify is a REPLACE, not a patch.** It documents the full order context alongside the
+  changed fields, so sending only deltas lets the broker refill the rest from its own defaults —
+  a price amendment on a CNC order can come back as MIS and square off at 15:20 unasked. The
+  connector reads the live order first and carries the unchanged values through.
+- **Cancel-all reports no count.** The documented payload is a single `{"order_id": ...}`.
+  Reading a count gives zero, and "0 cancelled" after a successful sweep is indistinguishable
+  from a sweep that did nothing. The connector counts what left the book instead.
+- **`/trades` is history and takes `fromdate`/`todate`; `/tradebook` is today only.** The date
+  window picks the route.
+- **`TRIGGERED` means working, not filled.** A fired stop is live at the exchange. Both it and
+  bare `PENDING` appear in mStock's own samples.
 - **Business failures arrive as HTTP 200** with `status: "error"` in the envelope. `MStockApi`
   unwraps and checks the envelope centrally, once, so no facet can forget.
 - **Symbols carry a series suffix on NSE cash** (`INFY-EQ`) but not on BSE. The translator prefers
@@ -139,10 +158,24 @@ the API.
 |---|---|---|
 | — | — | **Not yet performed** |
 
+## Not offered by Type A
+
+- **GTT (good-till-triggered).** There is no such section in the documentation at all. A
+  resting multi-day order must be synthesised by the platform — which is blocked on durable
+  persistence, not on this connector. See [`../features/orders.md`](../features/orders.md) §7.
+- **Bracket and cover orders**, iceberg orders, GTC/GTD validity.
+- **Atomic basket placement.** The "Basket APIs" create *saved* baskets (create / fetch /
+  rename / delete / calculate), not multi-leg atomic placement, so `PlaceBasketAsync` loops and
+  the manifest keeps `basket.atomic: false`.
+
 ## Open questions
 
 - Exact response shape of the historical/intraday chart endpoints — the DTOs are a best reading of
   the docs.
 - Whether `cancelall` is atomic or best-effort. The manifest currently claims non-atomic basket
   behaviour, which is the safe assumption.
+- Whether `/margins/orders` really wants JSON: the prose says form-encoded, the cURL sample sets
+  `Content-Type: application/json` and sends a JSON body. The sample is followed.
+- Whether `/trades` accepts its date window as a query string. The docs show `--data-urlencode`
+  on a GET; the connector sends a query string, which is the conventional reading.
 - Sandbox availability and whether it needs a separate API key.
