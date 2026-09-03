@@ -20,21 +20,23 @@ import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component'
   imports: [RouterOutlet, RouterLink, RouterLinkActive, MatIconModule, AppearanceMenuComponent, KillSwitchComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="ak-shell">
+    <div class="flex min-h-screen flex-col">
       <!--
         The chrome is for signed-in users. On the sign-in and sign-up screens
         there is no nav to offer and no kill switch to press, and rendering a
         disabled shell around them just makes the app look broken.
       -->
       @if (auth.isAuthenticated()) {
-        <header class="ak-topbar">
-          <span class="ak-brand">Akshaya</span>
-          <nav class="ak-nav" aria-label="Primary">
+        <header
+          class="sticky top-0 z-10 flex h-14 items-center gap-6 border-b border-border bg-surface-1 px-5"
+        >
+          <span class="text-base font-bold">Akshaya</span>
+          <nav class="flex flex-1 gap-1" aria-label="Primary">
             @for (item of navItems; track item.path) {
               <a class="ak-navlink" [routerLink]="item.path" routerLinkActive="active">{{ item.label }}</a>
             }
           </nav>
-          <div class="ak-topbar-actions">
+          <div class="flex items-center gap-3">
             <ak-kill-switch />
             <!--
               Deferred: the appearance menu is the only thing in the shell that needs
@@ -46,102 +48,53 @@ import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component'
             @defer (on idle) {
               <ak-appearance-menu />
             } @placeholder {
-              <span class="ak-appearance-slot" aria-hidden="true"></span>
+              <!-- Reserves the trigger's footprint so the topbar does not shift when it loads. -->
+              <span class="inline-block w-10" aria-hidden="true"></span>
             }
             <a
               routerLink="/account"
               routerLinkActive="active"
-              class="ak-navlink ak-account-link"
+              class="ak-navlink max-w-50 px-2.5! py-1.5!"
               [attr.aria-label]="'Account: ' + auth.displayName()"
             >
-              <mat-icon class="ak-i-sm" aria-hidden="true">account_circle</mat-icon>
-              <span class="ak-truncate">{{ auth.displayName() }}</span>
+              <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">account_circle</mat-icon>
+              <span class="min-w-0 truncate">{{ auth.displayName() }}</span>
             </a>
           </div>
         </header>
       }
-      <main class="ak-content" [class.ak-content--bare]="!auth.isAuthenticated()">
+      <main class="ak-content w-full flex-1" [class.ak-content--bare]="!auth.isAuthenticated()">
         <router-outlet />
       </main>
     </div>
   `,
   styles: `
-    :host {
-      display: block;
-      min-height: 100vh;
-      background: var(--ak-bg);
-    }
-    .ak-shell {
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-    }
-    .ak-topbar {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      gap: 24px;
-      height: 56px;
-      padding: 0 20px;
-      background: var(--ak-surface-1);
-      border-bottom: 1px solid var(--ak-border);
-    }
-    .ak-brand {
-      font-size: 16px;
-      font-weight: 700;
-    }
-    .ak-nav {
-      display: flex;
-      flex: 1;
-      gap: 4px;
-    }
-    /* One rule for the primary nav and the account link — they are the same control. */
+    /*
+      The one place in the shell that is a class rather than utilities in the
+      template: \`routerLinkActive\` applies a bare \`active\` class name, and a
+      \`[class]\` binding on the same element fights it for ownership of
+      classList. \`@apply\` keeps the definition in Tailwind's vocabulary and,
+      more importantly, keeps ONE definition shared by the primary nav and the
+      account link, which are the same control.
+    */
+    @reference '../styles/tailwind.css';
+
     .ak-navlink {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 12px;
-      border-radius: var(--ak-radius-sm);
-      color: var(--ak-text-secondary);
-      font-size: 13px;
-      font-weight: 500;
-      text-decoration: none;
+      @apply inline-flex items-center gap-1.5 rounded-sm px-3 py-2 text-[13px] font-medium
+        text-text-secondary no-underline hover:bg-surface-2 hover:text-text-primary;
     }
-    .ak-navlink:hover {
-      background: var(--ak-surface-2);
-      color: var(--ak-text-primary);
-    }
+
     .ak-navlink.active {
-      background: var(--ak-surface-3);
-      color: var(--ak-text-primary);
+      @apply bg-surface-3 text-text-primary;
     }
-    .ak-account-link {
-      max-width: 200px;
-      padding: 6px 10px;
-    }
-    /* Reserves the trigger's footprint so the topbar does not shift when it loads. */
-    .ak-appearance-slot {
-      display: inline-block;
-      width: 40px;
-    }
-    .ak-topbar-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+
     .ak-content {
-      flex: 1;
-      width: 100%;
-      max-width: 1440px;
-      margin: 0 auto;
-      padding: 20px;
+      @apply mx-auto max-w-[1440px] p-5;
     }
+
     /* The auth screens centre themselves and own their whole viewport. */
     .ak-content--bare {
-      max-width: none;
-      padding: 0;
+      @apply max-w-none p-0;
     }
   `,
 })

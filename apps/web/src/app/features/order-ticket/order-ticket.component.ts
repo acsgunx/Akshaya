@@ -7,7 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 
 import { BrokerLinksStore } from '../../core/broker-links.store';
 import { ConnectorStore } from '../../core/connector.store';
@@ -65,6 +65,7 @@ interface OrderTicketFormControls {
     MatInputModule,
     MatProgressSpinnerModule,
     MatSelectModule,
+    RouterLink,
     MoneyPipe,
     ConnectionStatusComponent,
   ],

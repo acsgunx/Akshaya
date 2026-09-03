@@ -37,7 +37,7 @@ import { AppearanceStore } from '../../core/appearance.store';
         <span>Switch to {{ isDark() ? 'light' : 'dark' }}</span>
       </button>
 
-      <div class="ak-menu-section">
+      <div class="px-3.5 pt-1 pb-2.5">
         <!-- $event.stopPropagation() keeps the menu open: this is a setting the user
              wants to see take effect on the prices behind the menu, not a navigation. -->
         <mat-checkbox
@@ -47,15 +47,18 @@ import { AppearanceStore } from '../../core/appearance.store';
         >
           Colour-blind-safe buy/sell
         </mat-checkbox>
-        <p class="ak-menu-help">
+        <p class="mt-1 text-[11px]/[1.4] whitespace-normal text-text-tertiary">
           Swaps the blue/amber pair for cyan and violet, which differ in brightness as well as
           hue.
         </p>
       </div>
     </mat-menu>
   `,
-  // NOTE: the menu's own contents render in a CDK overlay OUTSIDE this component, so
-  // they cannot be styled from here — see `.ak-appearance-panel` in styles.scss.
+  // NOTE: the menu's contents render in a CDK overlay OUTSIDE this component, so a
+  // component-scoped style cannot reach them. Tailwind utilities can, because they
+  // are global — which is why the panel's inner spacing is written as classes above.
+  // Only the panel's own width still needs a global rule (`.ak-appearance-panel` in
+  // styles.scss), since that element is created by Material, not by this template.
   styles: `
     :host {
       display: inline-flex;

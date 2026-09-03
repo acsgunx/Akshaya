@@ -42,11 +42,12 @@ export interface ConfirmDialogData {
     <mat-dialog-content>
       <p>{{ data.message }}</p>
       @if (data.typeToConfirm) {
-        <label class="ak-type-confirm">
+        <label class="mt-3 flex flex-col gap-1.5 text-xs text-text-secondary">
           <span>Type "{{ data.typeToConfirm }}" to confirm</span>
           <input
             type="text"
-            class="ak-focus-halo"
+            class="ak-focus-halo rounded-sm border border-border bg-surface-2 px-2.5 py-2
+                   font-[inherit] text-text-primary"
             [attr.aria-label]="'Type ' + data.typeToConfirm + ' to confirm'"
             (input)="onTypedChange($event)"
           />
@@ -67,24 +68,6 @@ export interface ConfirmDialogData {
         {{ data.confirmLabel ?? 'Confirm' }}
       </button>
     </mat-dialog-actions>
-  `,
-  styles: `
-    .ak-type-confirm {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-top: 12px;
-      font-size: 12px;
-      color: var(--ak-text-secondary);
-    }
-    .ak-type-confirm input {
-      padding: 8px 10px;
-      background: var(--ak-surface-2);
-      border: 1px solid var(--ak-border);
-      border-radius: var(--ak-radius-sm);
-      color: var(--ak-text-primary);
-      font: inherit;
-    }
   `,
 })
 export class ConfirmDialogComponent {

@@ -8,6 +8,7 @@ import type {
   BrokerLink,
   CancelAllRequest,
   CancelAllResult,
+  CandleSeries,
   ConnectorHealth,
   ConnectorManifest,
   InstrumentDefinition,
@@ -23,6 +24,7 @@ import type {
   RegisterRequest,
   SavedCredential,
   SignInRequest,
+  TimeFrame,
   UserProfile,
 } from './models';
 
@@ -206,6 +208,36 @@ export class ApiService {
   getQuote(brokerLinkId: string, instrument: string): Observable<Quote> {
     const params = new HttpParams().set('brokerLinkId', brokerLinkId).set('instrument', instrument);
     return this.http.get<Quote>('/api/market-data/quote', { params });
+  }
+
+  /**
+   * Historical OHLC bars for one instrument — the chart's backfill, before
+   * the SignalR stream takes over for everything after `to`.
+   *
+   * `from`/`to` go on the wire as ISO-8601 with an offset, which is what the
+   * backend's `DateTimeOffset` parameters bind from; a bare local datetime
+   * would be read in the SERVER's zone and silently shift a session's bars
+   * for anyone trading a venue in another one. `Date.toISOString()` is always
+   * UTC with a `Z`, so the round trip is unambiguous by construction.
+   *
+   * Which `timeFrame` values a broker will actually answer is declared per
+   * connector in `manifest.marketData.historicalTimeFrames` — ask the
+   * manifest, never this method, what to offer a user.
+   */
+  getHistory(
+    brokerLinkId: string,
+    instrument: string,
+    timeFrame: TimeFrame,
+    from: Date,
+    to: Date,
+  ): Observable<CandleSeries> {
+    const params = new HttpParams()
+      .set('brokerLinkId', brokerLinkId)
+      .set('instrument', instrument)
+      .set('timeFrame', timeFrame)
+      .set('from', from.toISOString())
+      .set('to', to.toISOString());
+    return this.http.get<CandleSeries>('/api/market-data/history', { params });
   }
 
   // ---- Kill switch (per-tenant global trading halt) ---------------------------

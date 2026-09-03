@@ -5,38 +5,48 @@
   that supports six renders six. This file has no idea which broker that is.
 -->
 @if (!manifest()) {
-  <div class="ak-loading">
+  <div class="flex items-center gap-2.5 p-8 text-text-secondary">
     <mat-spinner diameter="28" />
     <span>Loading broker capabilities…</span>
   </div>
 } @else {
-  <section class="ak-card ak-stack ak-ticket" aria-label="Order ticket">
-    <header class="ak-page-head ak-ticket-header">
-      <div class="ak-ticket-heading">
-        <h2>{{ instrumentLabel() }}</h2>
-        <span class="ak-muted">{{ manifest()!.displayName }}</span>
+  <section class="flex flex-col gap-4 rounded-lg border border-border bg-surface-1 p-5" aria-label="Order ticket">
+    <header class="flex items-start justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-bold">{{ instrumentLabel() }}</h2>
+        <span class="text-xs text-text-secondary">{{ manifest()!.displayName }}</span>
       </div>
-      <ak-connection-status
-        label="Feed"
-        [streamState]="connectionState()"
-        [isDataStale]="isFeedStale()"
-      />
+      <div class="flex items-center gap-2">
+        <ak-connection-status
+          label="Feed"
+          [streamState]="connectionState()"
+          [isDataStale]="isFeedStale()"
+        />
+        <!-- Reciprocal of the chart screen's "Trade" button. -->
+        <a
+          class="ak-focus-halo inline-flex items-center justify-center border-0 bg-none p-0 text-text-tertiary hover:text-text-primary"
+          [routerLink]="['/chart', brokerLinkId(), instrument()]"
+          [attr.aria-label]="'Open chart for ' + instrumentLabel()"
+        >
+          <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">candlestick_chart</mat-icon>
+        </a>
+      </div>
     </header>
 
     @if (quote(); as tick) {
-      <div class="ak-ticket-price" [class.ak-flash-up]="isBuy()" aria-live="polite">
-        <span class="ak-col-price ak-num">{{ tick.lastPrice | akMoney }}</span>
-        <span class="ak-label">last traded price</span>
+      <div class="flex items-baseline gap-2 rounded-sm px-2.5 py-2" aria-live="polite">
+        <span class="text-2xl font-bold tabular-nums">{{ tick.lastPrice | akMoney }}</span>
+        <span class="text-[11px] tracking-[0.03em] uppercase text-text-tertiary">last traded price</span>
       </div>
     } @else {
-      <p class="ak-muted">Waiting for a live price…</p>
+      <p class="text-xs text-text-secondary">Waiting for a live price…</p>
     }
 
     @switch (store.phase()) {
       @case ('form') {
-        <form [formGroup]="form" class="ak-stack ak-ticket-form">
+        <form [formGroup]="form" class="flex flex-col gap-3">
           <!-- Side: colour + redundant text label per buy/sell decision in DESIGN.md -->
-          <div class="ak-side-toggle" role="radiogroup" aria-label="Side">
+          <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Side">
             <button
               type="button"
               class="ak-side-btn ak-side-btn--buy"
@@ -46,7 +56,7 @@
               (click)="stageSide('buy')"
             >
               <span aria-hidden="true">▲</span> Buy
-              <span class="ak-kbd">B</span>
+              <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">B</span>
             </button>
             <button
               type="button"
@@ -57,11 +67,11 @@
               (click)="stageSide('sell')"
             >
               <span aria-hidden="true">▼</span> Sell
-              <span class="ak-kbd">S</span>
+              <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">S</span>
             </button>
           </div>
 
-          <mat-form-field appearance="outline">
+          <mat-form-field appearance="outline" class="w-full">
             <mat-label>Order type</mat-label>
             <mat-select formControlName="orderType">
               @for (type of manifest()!.orders.types; track type) {
@@ -70,7 +80,7 @@
             </mat-select>
           </mat-form-field>
 
-          <mat-form-field appearance="outline">
+          <mat-form-field appearance="outline" class="w-full">
             <mat-label>Product</mat-label>
             <mat-select formControlName="positionEffect">
               @for (effect of manifest()!.orders.positionEffects; track effect) {
@@ -79,7 +89,7 @@
             </mat-select>
           </mat-form-field>
 
-          <mat-form-field appearance="outline">
+          <mat-form-field appearance="outline" class="w-full">
             <mat-label>Time in force</mat-label>
             <mat-select formControlName="timeInForce">
               @for (tif of manifest()!.orders.timeInForce; track tif) {
@@ -89,14 +99,14 @@
           </mat-form-field>
 
           @if (form.controls.timeInForce.value === 'gtd') {
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" class="w-full">
               <mat-label>Good till date</mat-label>
               <input matInput type="date" formControlName="goodTillDate" />
             </mat-form-field>
           }
 
           @if (manifest()!.orders.varieties.length > 1) {
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" class="w-full">
               <mat-label>Variety</mat-label>
               <mat-select formControlName="variety">
                 @for (variety of manifest()!.orders.varieties; track variety) {
@@ -106,7 +116,7 @@
             </mat-form-field>
           }
 
-          <mat-form-field appearance="outline">
+          <mat-form-field appearance="outline" class="w-full">
             <mat-label>
               Quantity
               @if (store.instrument()?.lotSize && store.instrument()!.lotSize > 1) {
@@ -127,43 +137,43 @@
           </mat-form-field>
 
           @if (showLimitPrice()) {
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" class="w-full">
               <mat-label>Limit price ({{ store.instrument()?.currency }})</mat-label>
               <input matInput type="number" inputmode="decimal" formControlName="limitPrice" />
             </mat-form-field>
           }
 
           @if (showTriggerPrice()) {
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" class="w-full">
               <mat-label>Trigger price ({{ store.instrument()?.currency }})</mat-label>
               <input matInput type="number" inputmode="decimal" formControlName="triggerPrice" />
             </mat-form-field>
           }
 
           @if (manifest()!.orders.modifiable.includes('disclosedQuantity')) {
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" class="w-full">
               <mat-label>Disclosed quantity (optional)</mat-label>
               <input matInput type="number" inputmode="decimal" formControlName="disclosedQuantity" />
             </mat-form-field>
           }
 
           @if (manifest()!.orders.basket.supported && !manifest()!.orders.basket.atomic) {
-            <p class="ak-ticket-note ak-ticket-note--warning">
-              <mat-icon class="ak-i-sm" aria-hidden="true">warning</mat-icon>
+            <p class="flex items-start gap-1.5 text-xs text-text-secondary text-warning">
+              <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">warning</mat-icon>
               This broker fills basket orders one leg at a time — a partial fill leaving you
               half-hedged is possible.
             </p>
           }
 
           @if (manifest()!.compliance.algoApprovalRequired) {
-            <p class="ak-ticket-note">
-              <mat-icon class="ak-i-sm" aria-hidden="true">info</mat-icon>
+            <p class="flex items-start gap-1.5 text-xs text-text-secondary">
+              <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">info</mat-icon>
               {{ manifest()!.compliance.regulator ?? 'Your regulator' }} requires algo approval for
               automated order flow on this broker.
             </p>
           }
 
-          <footer class="ak-row ak-ticket-actions">
+          <footer class="flex items-center justify-end gap-2">
             <button mat-flat-button type="button" [disabled]="form.invalid" (click)="reviewOrder()" [class]="isBuy() ? 'ak-btn-buy' : 'ak-btn-sell'">
               Review {{ sideLabel(form.controls.side.value) }} order
             </button>
@@ -172,11 +182,11 @@
       }
 
       @case ('reviewing') {
-        <div class="ak-ticket-review">
-          <h3>Confirm your order</h3>
-          <dl class="ak-review-grid">
+        <div class="flex flex-col gap-3">
+          <h3 class="mb-2 text-[15px] font-semibold">Confirm your order</h3>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
             <dt>Side</dt>
-            <dd [class]="isBuy() ? 'ak-buy-text' : 'ak-sell-text'">{{ sideLabel(form.controls.side.value) }}</dd>
+            <dd class="text-right font-medium" [class]="isBuy() ? 'text-buy' : 'text-sell'">{{ sideLabel(form.controls.side.value) }}</dd>
             <dt>Order type</dt>
             <dd>{{ orderTypeLabel(form.controls.orderType.value) }}</dd>
             <dt>Product</dt>
@@ -184,52 +194,52 @@
             <dt>Time in force</dt>
             <dd>{{ timeInForceLabel(form.controls.timeInForce.value) }}</dd>
             <dt>Quantity</dt>
-            <dd class="ak-num">{{ form.controls.quantity.value }}</dd>
+            <dd class="text-right font-medium tabular-nums">{{ form.controls.quantity.value }}</dd>
             @if (showLimitPrice()) {
               <dt>Limit price</dt>
-              <dd class="ak-num">{{ { amount: form.controls.limitPrice.value, currency: store.instrument()?.currency ?? '' } | akMoney }}</dd>
+              <dd class="text-right font-medium tabular-nums">{{ { amount: form.controls.limitPrice.value, currency: store.instrument()?.currency ?? '' } | akMoney }}</dd>
             }
             <dt>Estimated value</dt>
-            <dd class="ak-num">{{ estimatedValue() | akMoney }}</dd>
+            <dd class="text-right font-medium tabular-nums">{{ estimatedValue() | akMoney }}</dd>
           </dl>
 
           @if (store.estimateLoading()) {
-            <div class="ak-row ak-muted ak-estimate-loading"><mat-spinner diameter="20" /> Estimating margin and charges…</div>
+            <div class="mt-3 flex items-center gap-2 text-xs text-text-secondary"><mat-spinner diameter="20" /> Estimating margin and charges…</div>
           } @else if (store.estimate(); as est) {
-            <div class="ak-estimate">
+            <div class="mt-3 flex flex-col gap-1 border-t border-border pt-3">
               @if (est.marginRequired) {
-                <div class="ak-estimate-row">
+                <div class="flex justify-between text-xs">
                   <span>Margin required</span>
-                  <span class="ak-num">{{ est.marginRequired | akMoney }}</span>
+                  <span class="tabular-nums">{{ est.marginRequired | akMoney }}</span>
                 </div>
               }
               @for (line of est.charges; track line.name) {
-                <div class="ak-estimate-row ak-estimate-row--muted">
+                <div class="flex justify-between text-xs text-text-secondary">
                   <span>{{ line.name }}</span>
-                  <span class="ak-num">{{ line.amount | akMoney }}</span>
+                  <span class="tabular-nums">{{ line.amount | akMoney }}</span>
                 </div>
               }
               @if (est.totalCharges) {
-                <div class="ak-estimate-row ak-estimate-row--total">
+                <div class="flex justify-between text-xs mt-0.5 border-t border-dashed border-border pt-1 font-bold">
                   <span>Total charges</span>
-                  <span class="ak-num">{{ est.totalCharges | akMoney }}</span>
+                  <span class="tabular-nums">{{ est.totalCharges | akMoney }}</span>
                 </div>
               }
               @if (est.isMarginSufficient === false) {
-                <p class="ak-ticket-note ak-ticket-note--danger">
-                  <mat-icon class="ak-i-sm" aria-hidden="true">error</mat-icon>
+                <p class="flex items-start gap-1.5 text-xs text-text-secondary text-danger">
+                  <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">error</mat-icon>
                   Available margin may not cover this order.
                 </p>
               }
               @for (warning of est.warnings; track warning) {
-                <p class="ak-ticket-note ak-ticket-note--warning">{{ warning }}</p>
+                <p class="flex items-start gap-1.5 text-xs text-text-secondary text-warning">{{ warning }}</p>
               }
             </div>
           } @else {
-            <p class="ak-ticket-note">This broker does not provide a pre-trade cost estimate.</p>
+            <p class="flex items-start gap-1.5 text-xs text-text-secondary">This broker does not provide a pre-trade cost estimate.</p>
           }
 
-          <footer class="ak-row ak-ticket-actions">
+          <footer class="flex items-center justify-end gap-2">
             <button mat-button type="button" (click)="backToForm()">Back</button>
             <button mat-flat-button type="button" [class]="isBuy() ? 'ak-btn-buy' : 'ak-btn-sell'" (click)="confirmSubmit()">
               Confirm {{ sideLabel(form.controls.side.value) }}
@@ -244,41 +254,41 @@
           an actual broker acknowledgement — never a provisional "order
           placed" row. See the long comment in order-ticket.store.ts.
         -->
-        <div class="ak-stack ak-ticket-submitting" role="status" aria-live="assertive">
+        <div class="flex flex-col items-center gap-3 py-6 text-center text-text-secondary" role="status" aria-live="assertive">
           <mat-spinner diameter="32" />
           <p>Submitting to {{ manifest()!.displayName }}…</p>
         </div>
       }
 
       @case ('submitted') {
-        <div class="ak-stack ak-ticket-result ak-ticket-result--ok" role="status">
-          <mat-icon class="ak-i-lg" aria-hidden="true">check_circle</mat-icon>
-          <h3>Order {{ store.result()?.status }}</h3>
+        <div class="flex flex-col items-center gap-3 py-6 text-center text-text-secondary" role="status">
+          <mat-icon class="size-[34px] shrink-0 text-[34px] text-success" aria-hidden="true">check_circle</mat-icon>
+          <h3 class="text-[15px] font-semibold">Order {{ store.result()?.status }}</h3>
           @if (store.result()?.brokerOrderId; as id) {
-            <p class="ak-num">Broker order id: {{ id }}</p>
+            <p class="tabular-nums">Broker order id: {{ id }}</p>
           }
           @if (store.result()?.message; as msg) {
-            <p class="ak-muted">"{{ msg }}"</p>
+            <p class="text-xs text-text-secondary">"{{ msg }}"</p>
           }
           <button mat-flat-button type="button" (click)="placeAnother()">Place another order</button>
         </div>
       }
 
       @case ('failed') {
-        <div class="ak-stack ak-ticket-result ak-ticket-result--error" role="alert">
-          <mat-icon class="ak-i-lg" aria-hidden="true">error</mat-icon>
-          <h3>{{ store.submitError()?.title ?? 'Order not placed' }}</h3>
+        <div class="flex flex-col items-center gap-3 py-6 text-center text-text-secondary" role="alert">
+          <mat-icon class="size-[34px] shrink-0 text-[34px] text-danger" aria-hidden="true">error</mat-icon>
+          <h3 class="text-[15px] font-semibold">{{ store.submitError()?.title ?? 'Order not placed' }}</h3>
           <p>{{ store.submitError()?.detail }}</p>
           @if (store.submitError()?.['vendorMessage']; as vendorMessage) {
-            <p class="ak-muted">Broker said: "{{ vendorMessage }}"</p>
+            <p class="text-xs text-text-secondary">Broker said: "{{ vendorMessage }}"</p>
           }
           <button mat-button type="button" (click)="backToForm()">Back to ticket</button>
         </div>
       }
     }
 
-    <p class="ak-caption ak-kbd-hint">
-      <span class="ak-kbd">B</span> Buy · <span class="ak-kbd">S</span> Sell · <span class="ak-kbd">Esc</span> Cancel
+    <p class="text-center text-[11px] text-text-tertiary">
+      <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">B</span> Buy · <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">S</span> Sell · <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">Esc</span> Cancel
     </p>
   </section>
 }

@@ -1,162 +1,20 @@
-// The card, banners, fields, badges, stacked actions and fine print are all primitives from
-// styles.scss. What is left here is the wizard's own header, its saved-login picker and the
-// four step panels.
+// Two rules; everything else on this screen is utilities in the template.
+@reference '../../../styles/tailwind.css';
+
 :host {
   display: block;
   padding: 24px 16px 48px;
 }
 
-// ---- Card head ---------------------------------------------------------------
-.ak-card {
-  padding: 0; // the head and body own their own padding, and the head has a rule under it
-  overflow: hidden;
-}
-
-.ak-card-head {
-  --ak-gap: 14px;
-
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--ak-border);
-}
-
-.ak-card-head h1 {
-  font-size: 17px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.ak-card-sub {
-  --ak-gap: 8px;
-
-  flex-wrap: wrap;
-  margin-top: 3px;
-  font-size: 12px;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-avatar {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--ak-radius-md);
-  background: var(--ak-surface-3);
-  color: var(--ak-brand);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.ak-card-body {
-  --ak-gap: 18px;
-
-  padding: 22px 24px 24px;
-}
-
-// ---- Saved-login picker --------------------------------------------------------
-.ak-saved-picker {
-  --ak-gap: 6px;
-}
-
-.ak-saved-option {
-  --ak-gap: 10px;
-
-  width: 100%;
-  padding: 10px 12px;
-  text-align: left;
-  color: var(--ak-text-secondary);
-  background: var(--ak-surface-2);
-  border: 1px solid var(--ak-border);
-  border-radius: var(--ak-radius-md);
-  cursor: pointer;
-}
-
-.ak-saved-option:hover {
-  border-color: var(--ak-border-strong);
-  color: var(--ak-text-primary);
-}
-
+// The saved-login picker's selected state is a BOUND class, so it has to be a
+// selector rather than an inline utility string.
 .ak-saved-option--active {
-  border-color: var(--ak-brand);
-  background: color-mix(in srgb, var(--ak-brand) 10%, var(--ak-surface-2));
-  color: var(--ak-text-primary);
-}
+  @apply border-brand text-text-primary;
 
-.ak-saved-option mat-icon {
-  color: var(--ak-brand);
-}
+  // `color-mix` against a token, which Tailwind has no utility for.
+  background-color: color-mix(in srgb, var(--color-brand) 10%, var(--color-surface-2));
 
-.ak-saved-option-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  font-size: 13px;
-}
-
-// ---- Fields --------------------------------------------------------------------
-.ak-fields {
-  --ak-gap: 16px;
-}
-
-.ak-label-opt {
-  color: var(--ak-text-tertiary);
-  font-weight: 400;
-}
-
-.ak-remember {
-  margin-top: 2px;
-  font-size: 12px;
-}
-
-// ---- Actions -------------------------------------------------------------------
-.ak-actions {
-  --ak-gap: 8px;
-}
-
-.ak-actions .mat-mdc-button-base {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-// ---- Step panels (completed / challenge / redirect / gateway) -------------------
-.ak-panel {
-  --ak-gap: 10px;
-}
-
-.ak-panel h2 {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.ak-panel-icon {
-  color: var(--ak-info);
-}
-
-.ak-panel--ok {
-  align-items: center;
-  text-align: center;
-}
-
-.ak-panel--ok .ak-panel-icon {
-  color: var(--ak-success);
-}
-
-.ak-panel-line {
-  font-size: 13px;
-  color: var(--ak-text-secondary);
-}
-
-.ak-panel-muted {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ak-text-tertiary);
-}
-
-// The one-time-code timer. Urgent at <30s because that is roughly the point past which
-// re-reading a code off a phone and typing it will not beat the expiry.
-.ak-countdown--urgent {
-  color: var(--ak-danger);
-  font-weight: 600;
+  mat-icon {
+    @apply text-brand;
+  }
 }

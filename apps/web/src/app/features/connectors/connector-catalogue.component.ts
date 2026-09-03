@@ -19,7 +19,6 @@ import { EmptyStateComponent } from '../../shared/empty-state/empty-state.compon
   imports: [RouterLink, MatButtonModule, MatIconModule, MatProgressSpinnerModule, EmptyStateComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './connector-catalogue.component.html',
-  styleUrl: './connector-catalogue.component.scss',
 })
 export class ConnectorCatalogueComponent implements OnInit {
   protected readonly store = inject(ConnectorStore);

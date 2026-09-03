@@ -1,8 +1,11 @@
-<section class="ak-card ak-card--centred ak-auth" aria-labelledby="ak-auth-title">
-  <header class="ak-auth-head">
-    <span class="ak-auth-brand">Akshaya</span>
-    <h1 id="ak-auth-title">{{ isRegister() ? 'Create your account' : 'Sign in' }}</h1>
-    <p class="ak-sub">
+<section
+  class="mx-auto w-full max-w-100 rounded-lg border border-border bg-surface-1 px-6.5 pt-7 pb-6.5 shadow-ak-2"
+  aria-labelledby="ak-auth-title"
+>
+  <header class="mb-5.5">
+    <span class="mb-2.5 block text-[13px] font-bold tracking-[0.06em] uppercase text-brand">Akshaya</span>
+    <h1 id="ak-auth-title" class="text-xl/tight font-bold">{{ isRegister() ? 'Create your account' : 'Sign in' }}</h1>
+    <p class="mt-1 text-[13px] text-text-secondary">
       {{
         isRegister()
           ? 'One account holds every broker you link, and remembers the logins you ask it to.'
@@ -11,29 +14,35 @@
     </p>
   </header>
 
-  <form [formGroup]="form" class="ak-stack" (ngSubmit)="submit()">
+  <form [formGroup]="form" class="flex flex-col gap-3" (ngSubmit)="submit()">
     @if (isRegister()) {
-      <div class="ak-field">
-        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <!--
+        Help and error text is rendered here, under the field, rather than in
+        Material's subscript wrapper — which is hidden once, globally, in
+        styles.scss. Keeping it in our own markup is what lets the message be
+        a real `role="alert"` live region rather than decorative subscript.
+      -->
+      <div class="flex flex-col gap-1.5">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="w-full">
           <mat-label>Name</mat-label>
           <input matInput formControlName="displayName" autocomplete="name" />
         </mat-form-field>
-        <p class="ak-field-msg">Optional. Only used to greet you.</p>
+        <p class="px-0.5 text-xs/[1.4] text-text-tertiary">Optional. Only used to greet you.</p>
       </div>
     }
 
-    <div class="ak-field">
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+    <div class="flex flex-col gap-1.5">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="w-full">
         <mat-label>Email</mat-label>
         <input matInput type="email" formControlName="email" autocomplete="email" inputmode="email" />
       </mat-form-field>
       @if (emailError(); as err) {
-        <p class="ak-field-msg ak-field-msg--error" role="alert">{{ err }}</p>
+        <p class="px-0.5 text-xs/[1.4] text-danger" role="alert">{{ err }}</p>
       }
     </div>
 
-    <div class="ak-field">
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+    <div class="flex flex-col gap-1.5">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="w-full">
         <mat-label>Password</mat-label>
         <input
           matInput
@@ -49,26 +58,33 @@
           [attr.aria-pressed]="showPassword()"
           (click)="showPassword.set(!showPassword())"
         >
-          <mat-icon class="ak-i-sm" aria-hidden="true">{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+          <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">{{
+            showPassword() ? 'visibility_off' : 'visibility'
+          }}</mat-icon>
         </button>
       </mat-form-field>
       @if (passwordError(); as err) {
-        <p class="ak-field-msg ak-field-msg--error" role="alert">{{ err }}</p>
+        <p class="px-0.5 text-xs/[1.4] text-danger" role="alert">{{ err }}</p>
       } @else if (isRegister()) {
-        <p class="ak-field-msg">
-          At least {{ minimumPasswordLength }} characters. Length beats symbols — a few unrelated words is a strong password.
+        <p class="px-0.5 text-xs/[1.4] text-text-tertiary">
+          At least {{ minimumPasswordLength }} characters. Length beats symbols — a few unrelated words is a strong
+          password.
         </p>
       }
     </div>
 
     @if (auth.error(); as err) {
-      <p class="ak-banner ak-banner--error" role="alert">
-        <mat-icon class="ak-i-sm" aria-hidden="true">error_outline</mat-icon>
+      <p
+        class="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/12 px-3 py-2.5
+               text-[12.5px]/[1.45] text-text-primary"
+        role="alert"
+      >
+        <mat-icon class="mt-px size-[18px] shrink-0 text-[18px] text-danger" aria-hidden="true">error_outline</mat-icon>
         <span>{{ err.detail ?? 'Something went wrong. Try again.' }}</span>
       </p>
     }
 
-    <button mat-flat-button color="primary" type="submit" class="ak-block" [disabled]="auth.busy()">
+    <button mat-flat-button color="primary" type="submit" class="w-full" [disabled]="auth.busy()">
       @if (auth.busy()) {
         <mat-spinner diameter="18" />
         <span>{{ isRegister() ? 'Creating…' : 'Signing in…' }}</span>
@@ -77,11 +93,13 @@
       }
     </button>
 
-    <p class="ak-auth-switch">
+    <p class="text-center text-[12.5px] text-text-tertiary">
       @if (isRegister()) {
-        Already have an account? <a routerLink="/sign-in">Sign in</a>
+        Already have an account?
+        <a routerLink="/sign-in" class="font-semibold no-underline hover:underline">Sign in</a>
       } @else {
-        New here? <a routerLink="/register">Create an account</a>
+        New here?
+        <a routerLink="/register" class="font-semibold no-underline hover:underline">Create an account</a>
       }
     </p>
   </form>

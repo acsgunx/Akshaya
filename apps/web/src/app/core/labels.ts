@@ -10,7 +10,7 @@
  * exists to avoid.
  */
 
-import type { OrderType, OrderVariety, PositionEffect, Side, TimeInForce } from './models/trading.model';
+import type { OrderType, OrderVariety, PositionEffect, Side, TimeFrame, TimeInForce } from './models/trading.model';
 import type { ChallengeKind } from './models/manifest.model';
 
 export function positionEffectLabel(effect: PositionEffect): string {
@@ -101,6 +101,34 @@ export function challengeKindLabel(kind: ChallengeKind): string {
 }
 
 /** Which order types need a limit price field shown. */
+/**
+ * Chart timeframe labels. Short forms ("5m", "1D") because they sit in a
+ * dense toggle above a chart, and because they are the notation every
+ * charting tool a trader already uses writes them in.
+ */
+export function timeFrameLabel(frame: TimeFrame): string {
+  switch (frame) {
+    case 'oneMinute':
+      return '1m';
+    case 'threeMinutes':
+      return '3m';
+    case 'fiveMinutes':
+      return '5m';
+    case 'fifteenMinutes':
+      return '15m';
+    case 'thirtyMinutes':
+      return '30m';
+    case 'oneHour':
+      return '1H';
+    case 'oneDay':
+      return '1D';
+    case 'oneWeek':
+      return '1W';
+    case 'oneMonth':
+      return '1M';
+  }
+}
+
 export function orderTypeNeedsLimitPrice(type: OrderType): boolean {
   return type === 'limit' || type === 'stopLimit';
 }

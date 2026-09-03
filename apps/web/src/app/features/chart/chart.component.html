@@ -1,0 +1,104 @@
+<!--
+  The timeframe toggle below iterates `manifest.marketData.historicalTimeFrames`.
+  It is not a hardcoded 1m/5m/1D list and must not become one — a broker that
+  serves only daily bars is supposed to render exactly one button here.
+-->
+<section>
+  <header class="mb-3.5 flex items-center gap-4">
+    <div>
+      <h1 class="text-[22px] font-bold">{{ instrumentLabel() }}</h1>
+      <p class="mt-1 text-[13px] text-text-secondary">
+        {{ manifest()?.displayName || link()?.nickname || 'Loading broker…' }}
+        @if (quote(); as tick) {
+          · <span class="font-medium tabular-nums">{{ tick.lastPrice | akMoney }}</span>
+        }
+      </p>
+    </div>
+
+    <div class="ml-auto flex items-center gap-2">
+      <ak-connection-status label="Feed" [streamState]="connectionState()" [isDataStale]="isFeedStale()" />
+      <a mat-stroked-button [routerLink]="['/trade', brokerLinkId(), instrument()]">
+        <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">receipt_long</mat-icon>
+        Trade
+      </a>
+    </div>
+  </header>
+
+  @if (!manifest()) {
+    <div class="flex items-center gap-2.5 p-8 text-text-secondary">
+      <mat-spinner diameter="28" />
+      <span>Loading broker capabilities…</span>
+    </div>
+  } @else if (!supportsHistory()) {
+    <ak-empty-state
+      icon="show_chart"
+      title="This broker does not serve price history"
+      description="Live prices still stream on the watchlist and the order ticket. Historical bars need a broker whose connector declares them."
+    />
+  } @else {
+    <div class="mb-3 flex items-center gap-1" role="group" aria-label="Chart timeframe">
+      @for (frame of timeFrames(); track frame) {
+        <button
+          type="button"
+          class="ak-tf"
+          [class.ak-tf--active]="frame === timeFrame()"
+          [attr.aria-pressed]="frame === timeFrame()"
+          (click)="selectTimeFrame(frame)"
+        >
+          {{ label(frame) }}
+        </button>
+      }
+    </div>
+
+    <!--
+      Freshness and connection are two independent facts (DESIGN.md). The
+      banner speaks to "the bars stopped forming"; the badge above speaks to
+      "the pipe is down". A chart whose last candle is ten minutes old on a
+      liquid instrument looks perfectly healthy without this.
+    -->
+    <ak-stale-banner label="prices" [lastUpdatedAt]="lastUpdatedAt()" [thresholdMs]="15000" />
+
+    <div class="ak-chart-card rounded-lg border border-border bg-surface-1 p-3">
+      @if (store.loading()) {
+        <div class="flex items-center gap-2.5 p-8 text-text-secondary">
+          <mat-spinner diameter="28" />
+          <span>
+            @if (timeFrame(); as frame) {
+              Loading {{ label(frame) }} bars…
+            } @else {
+              Loading bars…
+            }
+          </span>
+        </div>
+      } @else if (store.error(); as error) {
+        <div
+          class="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/12 px-3 py-2.5
+                 text-[12.5px]/[1.45] text-text-primary"
+          role="alert"
+        >
+          <mat-icon class="mt-px size-[18px] shrink-0 text-[18px] text-danger" aria-hidden="true">error_outline</mat-icon>
+          <span>{{ error }}</span>
+        </div>
+      } @else if (store.candles().length === 0) {
+        <ak-empty-state
+          icon="show_chart"
+          title="No bars for this window"
+          description="The broker returned no history for this instrument at this timeframe."
+          [compact]="true"
+        />
+      } @else if (store.loadedTimeFrame(); as loadedFrame) {
+        <!--
+          `loadedTimeFrame` — not the selected one — is what the chart folds
+          live ticks against, so a tick arriving between "user picked 15m" and
+          "15m bars came back" cannot be folded into a 1m bar at a 15m label.
+        -->
+        <ak-price-chart
+          [candles]="store.candles()"
+          [timeFrame]="loadedFrame"
+          [tick]="quote()"
+          [ariaLabel]="instrumentLabel() + ' ' + label(loadedFrame) + ' price chart'"
+        />
+      }
+    </div>
+  }
+</section>
