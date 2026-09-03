@@ -1,7 +1,6 @@
 import { ApplicationConfig, provideZonelessChangeDetection } from '@angular/core';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
 import { provideRouter, withComponentInputBinding, withViewTransitions } from '@angular/router';
-import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 
 import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
@@ -18,9 +17,11 @@ export const appConfig: ApplicationConfig = {
     // fields that would silently stop updating the view under zoneless).
     provideZonelessChangeDetection(),
     provideRouter(routes, withComponentInputBinding(), withViewTransitions()),
-    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
-    // Async-loaded so Material's animation runtime isn't in the initial
-    // bundle for a first paint that is mostly tables and forms.
-    provideAnimationsAsync(),
+    // fetch rather than XHR: no zone.js in this app, and fetch is the backend
+    // the framework now optimises for. Interceptors are unaffected.
+    provideHttpClient(withFetch(), withInterceptors([authInterceptor, errorInterceptor])),
+    // NOTE: no `provideAnimations`. Angular Material 22 drives its own
+    // transitions from CSS, so `@angular/animations` is no longer a
+    // dependency of this app at all — that whole runtime is out of the bundle.
   ],
 };

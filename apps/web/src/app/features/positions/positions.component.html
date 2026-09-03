@@ -1,14 +1,14 @@
-<section class="ak-positions">
-  <header class="ak-positions-header">
+<section>
+  <header class="ak-page-head">
     <h1>Positions</h1>
   </header>
 
   @if (store.loading() && !store.snapshot()) {
-    <div class="ak-positions-loading"><mat-spinner diameter="28" /> Loading positions…</div>
+    <div class="ak-loading"><mat-spinner diameter="28" /> Loading positions…</div>
   } @else if (positions().length === 0) {
     <ak-empty-state icon="show_chart" title="No open positions" description="Positions across every linked broker will appear here." />
   } @else {
-    <div class="ak-positions-table-head" role="row">
+    <div class="ak-thead" role="row">
       <span></span>
       <span>Instrument</span>
       <span class="ak-col-qty">Net qty</span>
@@ -19,25 +19,25 @@
     </div>
 
     <!-- Virtualised: only visible rows are rendered even with thousands of blended positions. -->
-    <cdk-virtual-scroll-viewport itemSize="44" class="ak-positions-viewport">
-      <div *cdkVirtualFor="let pos of positions(); trackBy: trackByGroupKey" class="ak-position-row-wrap">
-        <div class="ak-position-row" role="row">
+    <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport">
+      <div *cdkVirtualFor="let pos of positions(); trackBy: trackByGroupKey">
+        <div class="ak-trow" role="row">
           <button
             type="button"
-            class="ak-expand-btn ak-focus-halo"
+            class="ak-expand ak-focus-halo"
             [attr.aria-expanded]="isExpanded(pos.groupKey)"
             [attr.aria-label]="'Toggle legs for ' + pos.instrument"
             (click)="toggle(pos.groupKey)"
             [disabled]="pos.legs.length <= 1"
           >
             @if (pos.legs.length > 1) {
-              <mat-icon aria-hidden="true">{{ isExpanded(pos.groupKey) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+              <mat-icon class="ak-i-sm" aria-hidden="true">{{ isExpanded(pos.groupKey) ? 'expand_more' : 'chevron_right' }}</mat-icon>
             }
           </button>
-          <span class="ak-position-instrument">
+          <span class="ak-row ak-truncate ak-strong">
             {{ pos.instrument }}
             @if (pos.legs.length > 1) {
-              <span class="ak-split-badge">{{ pos.legs.length }} brokers</span>
+              <span class="ak-badge">{{ pos.legs.length }} brokers</span>
             }
           </span>
           <span class="ak-col-qty" [class.ak-sell-text]="+pos.netQuantity < 0">{{ pos.netQuantity | akQuantity: { fractional: true } }}</span>
@@ -52,9 +52,9 @@
         @if (isExpanded(pos.groupKey)) {
           <div class="ak-legs">
             @for (leg of pos.legs; track leg.brokerLinkId) {
-              <div class="ak-leg-row" role="row">
-                <span class="ak-leg-broker">{{ leg.displayName }}</span>
-                <span class="ak-leg-effect">{{ positionEffectLabel(leg.positionEffect) }}</span>
+              <div class="ak-tleg" role="row">
+                <span class="ak-truncate">{{ leg.displayName }}</span>
+                <span class="ak-truncate">{{ positionEffectLabel(leg.positionEffect) }}</span>
                 <span class="ak-col-qty">{{ leg.netQuantity | akQuantity: { fractional: true } }}</span>
                 <span class="ak-col-price">{{ leg.averagePrice | akMoney }}</span>
                 <span class="ak-col-pnl">{{ leg.unrealisedPnl | akMoney }}</span>

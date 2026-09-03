@@ -1,3 +1,5 @@
+// The auth screens own the whole viewport and centre themselves; everything inside is a
+// primitive (`.ak-card--centred`, `.ak-field`, `.ak-banner`, `.ak-block`).
 :host {
   display: block;
   min-height: 100vh;
@@ -6,13 +8,7 @@
 }
 
 .ak-auth {
-  width: 100%;
   max-width: 400px;
-  margin-inline: auto;
-  background: var(--ak-surface-1);
-  border: 1px solid var(--ak-border);
-  border-radius: var(--ak-radius-lg);
-  box-shadow: var(--ak-shadow-2);
   padding: 28px 26px 26px;
 }
 
@@ -20,128 +16,33 @@
   margin-bottom: 22px;
 }
 
+.ak-auth-head h1 {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .ak-auth-brand {
   display: block;
+  margin-bottom: 10px;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ak-brand);
-  margin-bottom: 10px;
-}
-
-.ak-auth-head h1 {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.25;
-  color: var(--ak-text-primary);
-}
-
-.ak-auth-sub {
-  margin-top: 6px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.ak-field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.ak-field mat-form-field {
-  width: 100%;
-}
-
-.ak-field-msg {
-  margin: 0;
-  padding-inline: 2px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-field-msg--error {
-  color: var(--ak-danger);
-}
-
-.ak-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--ak-radius-md);
-  font-size: 12.5px;
-  line-height: 1.45;
-  background: color-mix(in srgb, var(--ak-danger) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ak-danger) 40%, transparent);
-  color: var(--ak-text-primary);
-}
-
-.ak-banner mat-icon {
-  flex: none;
-  font-size: 18px;
-  width: 18px;
-  height: 18px;
-  margin-top: 1px;
-  color: var(--ak-danger);
-}
-
-.ak-btn-block {
-  width: 100%;
-}
-
-button[mat-flat-button] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-button[mat-flat-button] mat-spinner {
-  --mdc-circular-progress-active-indicator-color: currentColor;
 }
 
 .ak-auth-switch {
-  margin: 2px 0 0;
   text-align: center;
   font-size: 12.5px;
   color: var(--ak-text-tertiary);
 }
 
 .ak-auth-switch a {
-  color: var(--ak-brand);
   font-weight: 600;
   text-decoration: none;
 }
 
 .ak-auth-switch a:hover {
   text-decoration: underline;
-}
-
-:host ::ng-deep {
-  .mat-mdc-form-field-subscript-wrapper {
-    display: none;
-  }
-
-  .mat-mdc-text-field-wrapper {
-    background: var(--ak-surface-2);
-  }
-
-  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
-    .mdc-notched-outline__leading,
-  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
-    .mdc-notched-outline__notch,
-  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
-    .mdc-notched-outline__trailing {
-    border-color: var(--ak-border-strong);
-  }
 }

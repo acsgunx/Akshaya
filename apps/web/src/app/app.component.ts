@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { AuthStore } from './core/auth.store';
 import { BrokerLinksStore } from './core/broker-links.store';
 import { ConnectorStore } from './core/connector.store';
+import { AppearanceMenuComponent } from './shared/appearance/appearance-menu.component';
 import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component';
 
 /**
@@ -16,7 +17,7 @@ import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component'
 @Component({
   selector: 'ak-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, MatIconModule, KillSwitchComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, MatIconModule, AppearanceMenuComponent, KillSwitchComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="ak-shell">
@@ -29,23 +30,32 @@ import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component'
         <header class="ak-topbar">
           <span class="ak-brand">Akshaya</span>
           <nav class="ak-nav" aria-label="Primary">
-            <a routerLink="/dashboard" routerLinkActive="active">Dashboard</a>
-            <a routerLink="/watchlist" routerLinkActive="active">Watchlist</a>
-            <a routerLink="/positions" routerLinkActive="active">Positions</a>
-            <a routerLink="/holdings" routerLinkActive="active">Holdings</a>
-            <a routerLink="/orders" routerLinkActive="active">Orders</a>
-            <a routerLink="/connectors" routerLinkActive="active">Brokers</a>
+            @for (item of navItems; track item.path) {
+              <a class="ak-navlink" [routerLink]="item.path" routerLinkActive="active">{{ item.label }}</a>
+            }
           </nav>
           <div class="ak-topbar-actions">
             <ak-kill-switch />
+            <!--
+              Deferred: the appearance menu is the only thing in the shell that needs
+              Material's menu and checkbox, and pulling those into the initial bundle to
+              render one icon button costs ~100kB on first paint. Idle-loading keeps it off
+              the critical path, so it is present long before anyone reaches for it and
+              no first click is wasted merely triggering the download.
+            -->
+            @defer (on idle) {
+              <ak-appearance-menu />
+            } @placeholder {
+              <span class="ak-appearance-slot" aria-hidden="true"></span>
+            }
             <a
               routerLink="/account"
               routerLinkActive="active"
-              class="ak-account-link"
+              class="ak-navlink ak-account-link"
               [attr.aria-label]="'Account: ' + auth.displayName()"
             >
-              <mat-icon aria-hidden="true">account_circle</mat-icon>
-              <span class="ak-account-name">{{ auth.displayName() }}</span>
+              <mat-icon class="ak-i-sm" aria-hidden="true">account_circle</mat-icon>
+              <span class="ak-truncate">{{ auth.displayName() }}</span>
             </a>
           </div>
         </header>
@@ -67,43 +77,54 @@ import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component'
       min-height: 100vh;
     }
     .ak-topbar {
-      display: flex;
-      align-items: center;
-      gap: 24px;
-      padding: 0 20px;
-      height: 56px;
-      background: var(--ak-surface-1);
-      border-bottom: 1px solid var(--ak-border);
       position: sticky;
       top: 0;
       z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      height: 56px;
+      padding: 0 20px;
+      background: var(--ak-surface-1);
+      border-bottom: 1px solid var(--ak-border);
     }
     .ak-brand {
-      font-weight: 700;
       font-size: 16px;
-      letter-spacing: 0.01em;
-      color: var(--ak-text-primary);
+      font-weight: 700;
     }
     .ak-nav {
       display: flex;
-      gap: 4px;
       flex: 1;
+      gap: 4px;
     }
-    .ak-nav a {
+    /* One rule for the primary nav and the account link — they are the same control. */
+    .ak-navlink {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       padding: 8px 12px;
       border-radius: var(--ak-radius-sm);
       color: var(--ak-text-secondary);
-      text-decoration: none;
       font-size: 13px;
       font-weight: 500;
+      text-decoration: none;
     }
-    .ak-nav a:hover {
+    .ak-navlink:hover {
       background: var(--ak-surface-2);
       color: var(--ak-text-primary);
     }
-    .ak-nav a.active {
+    .ak-navlink.active {
       background: var(--ak-surface-3);
       color: var(--ak-text-primary);
+    }
+    .ak-account-link {
+      max-width: 200px;
+      padding: 6px 10px;
+    }
+    /* Reserves the trigger's footprint so the topbar does not shift when it loads. */
+    .ak-appearance-slot {
+      display: inline-block;
+      width: 40px;
     }
     .ak-topbar-actions {
       display: flex;
@@ -112,50 +133,29 @@ import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component'
     }
     .ak-content {
       flex: 1;
-      padding: 20px;
-      max-width: 1440px;
       width: 100%;
+      max-width: 1440px;
       margin: 0 auto;
+      padding: 20px;
     }
     /* The auth screens centre themselves and own their whole viewport. */
     .ak-content--bare {
-      padding: 0;
       max-width: none;
-    }
-    .ak-account-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border-radius: var(--ak-radius-sm);
-      color: var(--ak-text-secondary);
-      text-decoration: none;
-      font-size: 13px;
-      font-weight: 500;
-      max-width: 200px;
-    }
-    .ak-account-link:hover {
-      background: var(--ak-surface-2);
-      color: var(--ak-text-primary);
-    }
-    .ak-account-link.active {
-      background: var(--ak-surface-3);
-      color: var(--ak-text-primary);
-    }
-    .ak-account-link mat-icon {
-      flex: none;
-      font-size: 18px;
-      width: 18px;
-      height: 18px;
-    }
-    .ak-account-name {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      padding: 0;
     }
   `,
 })
 export class AppComponent implements OnInit {
+  /** The primary nav, as data — adding a screen is one entry, not a hand-copied anchor. */
+  protected readonly navItems = [
+    { path: '/dashboard', label: 'Dashboard' },
+    { path: '/watchlist', label: 'Watchlist' },
+    { path: '/positions', label: 'Positions' },
+    { path: '/holdings', label: 'Holdings' },
+    { path: '/orders', label: 'Orders' },
+    { path: '/connectors', label: 'Brokers' },
+  ] as const;
+
   private readonly connectorStore = inject(ConnectorStore);
   private readonly brokerLinksStore = inject(BrokerLinksStore);
   protected readonly auth = inject(AuthStore);

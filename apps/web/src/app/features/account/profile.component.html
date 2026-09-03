@@ -1,7 +1,9 @@
-<section class="ak-profile">
-  <header class="ak-profile-header">
-    <h1>Account</h1>
-    <p>Your profile, and the broker logins this platform is holding for you.</p>
+<section class="ak-stack ak-profile">
+  <header class="ak-page-head">
+    <div>
+      <h1>Account</h1>
+      <p class="ak-sub">Your profile, and the broker logins this platform is holding for you.</p>
+    </div>
   </header>
 
   @if (auth.user(); as user) {
@@ -23,7 +25,7 @@
           <dd>{{ user.createdAt | date: 'mediumDate' }}</dd>
         </div>
       </dl>
-      <div class="ak-card-actions">
+      <div class="ak-row ak-card-actions">
         <button mat-stroked-button type="button" (click)="signOut()">
           <mat-icon aria-hidden="true">logout</mat-icon>
           <span>Sign out</span>
@@ -34,7 +36,7 @@
 
   <section class="ak-card">
     <h2>Saved broker logins</h2>
-    <p class="ak-card-sub">
+    <p class="ak-sub ak-card-sub">
       Encrypted on the server and used only to sign in to a broker on your behalf. They are never sent back to this
       browser, so no page — including this one — can show you the values.
     </p>
@@ -46,25 +48,25 @@
         description="Tick “Remember this” on a field when you link a broker, and it will appear here."
         [compact]="true"
       />
-      <div class="ak-card-actions">
+      <div class="ak-row ak-card-actions">
         <a mat-flat-button color="primary" routerLink="/connectors">Link a broker</a>
       </div>
     } @else {
-      <ul class="ak-saved-list">
+      <ul class="ak-saved-list ak-stack">
         @for (credential of auth.savedCredentials(); track credential.id) {
           <li class="ak-saved">
-            <div class="ak-saved-main">
+            <div class="ak-grow">
               <p class="ak-saved-title">
                 {{ credential.nickname ?? connectorName(credential.connectorId) }}
                 @if (credential.nickname) {
-                  <span class="ak-saved-broker">{{ connectorName(credential.connectorId) }}</span>
+                  <span class="ak-caption">{{ connectorName(credential.connectorId) }}</span>
                 }
               </p>
-              <p class="ak-saved-fields">
-                <mat-icon aria-hidden="true">lock</mat-icon>
+              <p class="ak-row ak-muted ak-saved-fields">
+                <mat-icon class="ak-i-xs" aria-hidden="true">lock</mat-icon>
                 <span>Saved: {{ fieldLabels(credential) }}</span>
               </p>
-              <p class="ak-saved-meta">
+              <p class="ak-caption ak-saved-meta">
                 Updated {{ credential.updatedAt | date: 'medium' }}
                 @if (credential.lastUsedAt) {
                   · last used {{ credential.lastUsedAt | date: 'medium' }}

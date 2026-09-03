@@ -1,8 +1,8 @@
-<section class="ak-auth" aria-labelledby="ak-auth-title">
+<section class="ak-card ak-card--centred ak-auth" aria-labelledby="ak-auth-title">
   <header class="ak-auth-head">
     <span class="ak-auth-brand">Akshaya</span>
     <h1 id="ak-auth-title">{{ isRegister() ? 'Create your account' : 'Sign in' }}</h1>
-    <p class="ak-auth-sub">
+    <p class="ak-sub">
       {{
         isRegister()
           ? 'One account holds every broker you link, and remembers the logins you ask it to.'
@@ -11,7 +11,7 @@
     </p>
   </header>
 
-  <form [formGroup]="form" class="ak-auth-form" (ngSubmit)="submit()">
+  <form [formGroup]="form" class="ak-stack" (ngSubmit)="submit()">
     @if (isRegister()) {
       <div class="ak-field">
         <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -49,7 +49,7 @@
           [attr.aria-pressed]="showPassword()"
           (click)="showPassword.set(!showPassword())"
         >
-          <mat-icon aria-hidden="true">{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+          <mat-icon class="ak-i-sm" aria-hidden="true">{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
         </button>
       </mat-form-field>
       @if (passwordError(); as err) {
@@ -63,12 +63,12 @@
 
     @if (auth.error(); as err) {
       <p class="ak-banner ak-banner--error" role="alert">
-        <mat-icon aria-hidden="true">error_outline</mat-icon>
+        <mat-icon class="ak-i-sm" aria-hidden="true">error_outline</mat-icon>
         <span>{{ err.detail ?? 'Something went wrong. Try again.' }}</span>
       </p>
     }
 
-    <button mat-flat-button color="primary" type="submit" class="ak-btn-block" [disabled]="auth.busy()">
+    <button mat-flat-button color="primary" type="submit" class="ak-block" [disabled]="auth.busy()">
       @if (auth.busy()) {
         <mat-spinner diameter="18" />
         <span>{{ isRegister() ? 'Creating…' : 'Signing in…' }}</span>

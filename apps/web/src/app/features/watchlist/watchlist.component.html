@@ -1,5 +1,5 @@
-<section class="ak-watchlist">
-  <header class="ak-watchlist-header">
+<section>
+  <header class="ak-page-head ak-row">
     <h1>Watchlist</h1>
 
     @if (usableLinks().length > 1) {
@@ -38,7 +38,7 @@
   } @else if (store.watched().length === 0) {
     <ak-empty-state icon="visibility" title="Your watchlist is empty" description="Search above to add an instrument." />
   } @else {
-    <div class="ak-watchlist-table-head" role="row">
+    <div class="ak-thead" role="row">
       <span>Instrument</span>
       <span>Ccy</span>
       <span class="ak-col-price">LTP</span>

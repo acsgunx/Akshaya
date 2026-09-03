@@ -27,7 +27,7 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
     @if (store.state().isEngaged) {
       <button
         mat-flat-button
-        class="ak-kill-btn ak-kill-btn--engaged"
+        class="ak-kill-btn ak-btn-danger"
         [disabled]="store.busy()"
         matTooltip="All trading is halted. Click to resume."
         (click)="disengage()"
@@ -48,6 +48,7 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
       </button>
     }
   `,
+  // The engaged state is the shared `.ak-btn-danger` primitive.
   styles: `
     .ak-kill-btn {
       display: inline-flex;
@@ -59,10 +60,6 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
     .ak-kill-btn mat-icon {
       flex: none;
       margin: 0;
-    }
-    .ak-kill-btn--engaged {
-      background: var(--ak-danger) !important;
-      color: white !important;
     }
   `,
 })

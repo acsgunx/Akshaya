@@ -15,30 +15,17 @@ import { MatIconModule } from '@angular/material/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (visible()) {
-      <div class="ak-stale-banner" role="alert">
-        <mat-icon aria-hidden="true">warning</mat-icon>
+      <div class="ak-banner ak-banner--warn" role="alert">
+        <mat-icon class="ak-i-sm" aria-hidden="true">warning</mat-icon>
         <span>{{ message() }}</span>
       </div>
     }
   `,
+  // Entirely the `.ak-banner--warn` primitive; the component contributes the wording,
+  // not the styling.
   styles: `
-    .ak-stale-banner {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      background: color-mix(in srgb, var(--ak-warning) 14%, var(--ak-surface-1));
-      border: 1px solid color-mix(in srgb, var(--ak-warning) 40%, transparent);
-      border-radius: var(--ak-radius-sm);
-      color: var(--ak-text-primary);
-      font-size: 12px;
-    }
-    mat-icon {
-      font-size: 18px;
-      width: 18px;
-      height: 18px;
-      color: var(--ak-warning);
-      flex: none;
+    :host {
+      display: block;
     }
   `,
 })

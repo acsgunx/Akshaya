@@ -33,15 +33,6 @@ import { MatIconModule } from '@angular/material/icon';
       text-align: center;
       color: var(--ak-text-secondary);
     }
-    :host(.ak-empty--compact) .ak-empty {
-      padding: 20px 16px;
-      gap: 6px;
-    }
-    :host(.ak-empty--compact) mat-icon {
-      font-size: 24px;
-      width: 24px;
-      height: 24px;
-    }
     mat-icon {
       font-size: 32px;
       width: 32px;
@@ -56,6 +47,16 @@ import { MatIconModule } from '@angular/material/icon';
     .ak-empty-desc {
       font-size: 12px;
       max-width: 40ch;
+    }
+    /* Compact: for an empty state inside a dashboard card rather than a full page. */
+    :host(.ak-empty--compact) .ak-empty {
+      padding: 20px 16px;
+      gap: 6px;
+    }
+    :host(.ak-empty--compact) mat-icon {
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
     }
   `,
 })
