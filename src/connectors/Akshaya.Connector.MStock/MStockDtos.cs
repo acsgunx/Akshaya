@@ -508,58 +508,106 @@ internal sealed class MStockHoldingDto
     public decimal? Pnl { get; init; }
 }
 
-internal sealed class MStockFundsData
+/// <summary>
+/// One row of <c>/openapi/typea/user/fundsummary</c>, as mStock actually documents it:
+///
+/// <code>
+/// {"status":"success","data":[{
+///    "AVAILABLE_BALANCE":"299972678840.29","AMOUNT_UTILIZED":"27395824.71",
+///    "CLEAR_BALANCE":"199999949998","COLLATERALS":"74668","SEG":"A", … }]}
+/// </code>
+///
+/// TWO THINGS THIS CLASS EXISTS TO CORRECT. The previous version expected
+/// <c>{"equity":{"available":{…}}}</c> — Zerodha Kite's margins shape, not mStock's. mStock
+/// returns an ARRAY of flat rows with SCREAMING_SNAKE_CASE keys, so deserialising it into an
+/// object threw and the fund summary could never have worked. And every monetary value is a
+/// QUOTED string ("0.0", "299972678840.29"); they bind to <c>decimal?</c> only because
+/// <see cref="MStockJson.Options"/> sets <c>AllowReadingFromString</c>.
+///
+/// Field names are the vendor's own, verbatim, including the misspelled
+/// <c>OPT_BUY_PRIMIUM_UTILIZE</c>. Renaming them to read nicely would mean this class no longer
+/// matches the payload it is documenting, which is exactly how the last mismatch survived.
+/// </summary>
+internal sealed class MStockFundRow
 {
-    [JsonPropertyName("equity")]
-    public MStockFundSegment? Equity { get; init; }
+    /// <summary>Segment code. "A" in the documented sample; the only row for an equity account.</summary>
+    [JsonPropertyName("SEG")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? Segment { get; init; }
 
-    [JsonPropertyName("commodity")]
-    public MStockFundSegment? Commodity { get; init; }
-}
+    [JsonPropertyName("LIMIT_TYPE")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? LimitType { get; init; }
 
-internal sealed class MStockFundSegment
-{
-    [JsonPropertyName("net")]
-    public decimal? Net { get; init; }
+    /// <summary>What the account can actually trade with right now. The headline number.</summary>
+    [JsonPropertyName("AVAILABLE_BALANCE")]
+    public decimal? AvailableBalance { get; init; }
 
-    [JsonPropertyName("available")]
-    public MStockFundAvailable? Available { get; init; }
+    /// <summary>Settled cash, excluding collateral and unsettled payins.</summary>
+    [JsonPropertyName("CLEAR_BALANCE")]
+    public decimal? ClearBalance { get; init; }
 
-    [JsonPropertyName("utilised")]
-    public MStockFundUtilised? Utilised { get; init; }
-}
+    [JsonPropertyName("UNCLEAR_BALANCE")]
+    public decimal? UnclearBalance { get; init; }
 
-internal sealed class MStockFundAvailable
-{
-    [JsonPropertyName("cash")]
-    public decimal? Cash { get; init; }
+    /// <summary>Margin consumed by open positions and working orders.</summary>
+    [JsonPropertyName("AMOUNT_UTILIZED")]
+    public decimal? AmountUtilized { get; init; }
 
-    [JsonPropertyName("live_balance")]
-    public decimal? LiveBalance { get; init; }
+    [JsonPropertyName("COLLATERALS")]
+    public decimal? Collaterals { get; init; }
 
-    [JsonPropertyName("collateral")]
-    public decimal? Collateral { get; init; }
+    [JsonPropertyName("MF_COLLATERAL")]
+    public decimal? MutualFundCollateral { get; init; }
 
-    [JsonPropertyName("intraday_payin")]
-    public decimal? IntradayPayin { get; init; }
-}
+    [JsonPropertyName("REALISED_PROFITS")]
+    public decimal? RealisedProfits { get; init; }
 
-internal sealed class MStockFundUtilised
-{
-    [JsonPropertyName("debits")]
-    public decimal? Debits { get; init; }
+    [JsonPropertyName("MTM_COMBINED")]
+    public decimal? MarkToMarketCombined { get; init; }
 
-    [JsonPropertyName("exposure")]
-    public decimal? Exposure { get; init; }
+    [JsonPropertyName("ADDITIONAL_MARGIN")]
+    public decimal? AdditionalMargin { get; init; }
 
-    [JsonPropertyName("m2m_realised")]
-    public decimal? RealisedM2M { get; init; }
+    [JsonPropertyName("PEAK_MARGIN")]
+    public decimal? PeakMargin { get; init; }
 
-    [JsonPropertyName("m2m_unrealised")]
-    public decimal? UnrealisedM2M { get; init; }
+    [JsonPropertyName("PHYSICAL_MARGIN")]
+    public decimal? PhysicalMargin { get; init; }
 
-    [JsonPropertyName("span")]
-    public decimal? Span { get; init; }
+    [JsonPropertyName("ADHOC_LIMIT")]
+    public decimal? AdhocLimit { get; init; }
+
+    [JsonPropertyName("BANK_HOLDING")]
+    public decimal? BankHolding { get; init; }
+
+    [JsonPropertyName("LIMIT_SOD")]
+    public decimal? LimitStartOfDay { get; init; }
+
+    [JsonPropertyName("SUM_OF_ALL")]
+    public decimal? SumOfAll { get; init; }
+
+    [JsonPropertyName("RECEIVABLES")]
+    public decimal? Receivables { get; init; }
+
+    [JsonPropertyName("PAY_OUT_AMT")]
+    public decimal? PayOutAmount { get; init; }
+
+    [JsonPropertyName("OFS_UTILIZED")]
+    public decimal? OfsUtilized { get; init; }
+
+    /// <summary>Vendor's spelling of "premium". Kept verbatim so this matches the wire.</summary>
+    [JsonPropertyName("OPT_BUY_PRIMIUM_UTILIZE")]
+    public decimal? OptionBuyPremiumUtilized { get; init; }
+
+    [JsonPropertyName("MTF_AVAILABLE_BALANCE")]
+    public decimal? MtfAvailableBalance { get; init; }
+
+    [JsonPropertyName("MTF_COLLATERAL")]
+    public decimal? MtfCollateral { get; init; }
+
+    [JsonPropertyName("MTF_UTILIZE")]
+    public decimal? MtfUtilized { get; init; }
 }
 
 // --- market data --------------------------------------------------------------------------

@@ -92,8 +92,10 @@ public sealed class MStockPortfolio : IConnectorPortfolio
     public async Task<Result<IReadOnlyList<BrokerBalance>>> GetBalancesAsync(
         CancellationToken ct = default)
     {
+        // An ARRAY of flat rows, one per segment — not the nested equity/commodity object the
+        // Kite-lineage APIs return. See MStockFundRow.
         var response = await _api
-            .GetAsync<MStockFundsData>(_options.FundsPath, query: null, ct)
+            .GetAsync<IReadOnlyList<MStockFundRow>>(_options.FundsPath, query: null, ct)
             .ConfigureAwait(false);
 
         if (response.IsFailure)
@@ -101,37 +103,46 @@ public sealed class MStockPortfolio : IConnectorPortfolio
             return Result<IReadOnlyList<BrokerBalance>>.Failure(response.Error);
         }
 
-        // The contract returns a LIST of balances because a Moomoo or IBKR account holds
-        // several currencies at once. mStock holds one, so this list has one row — but the
-        // shape stays the same so the portfolio module needs no special case for India.
-        var equity = response.Value.Equity ?? response.Value.Commodity;
-        if (equity is null)
+        if (response.Value.Count == 0)
         {
-            return Result<IReadOnlyList<BrokerBalance>>.Failure(
-                MStockErrors.MissingField(_options.FundsPath, "equity"));
+            // An account with no funding rows is a real state (a freshly opened account), not a
+            // malformed response. An empty list is the honest answer; inventing a zero balance
+            // would tell the risk gate the account has ₹0 to trade with, which is a different
+            // and much more dangerous claim than "we do not know".
+            return Result<IReadOnlyList<BrokerBalance>>.Success([]);
         }
 
-        var available = equity.Available;
-        var utilised = equity.Utilised;
+        // The contract returns a LIST of balances because a Moomoo or IBKR account holds
+        // several currencies at once. mStock reports one row per segment, all in INR — the
+        // shape stays the same so the portfolio module needs no special case for India.
+        var balances = new List<BrokerBalance>(response.Value.Count);
 
-        var balance = new BrokerBalance
+        foreach (var row in response.Value)
         {
-            Currency = Inr,
+            balances.Add(new BrokerBalance
+            {
+                Currency = Inr,
 
-            // "Available to trade" is the live balance when mStock reports one: the plain cash
-            // figure excludes intraday payins and collateral the account can already trade
-            // against, and showing the smaller number would have the trader believe orders
-            // will bounce when they will not.
-            AvailableToTrade = Rupees(available?.LiveBalance ?? available?.Cash ?? equity.Net ?? 0m),
-            CashBalance = RupeesOrNull(available?.Cash),
-            UsedMargin = RupeesOrNull(utilised?.Debits ?? utilised?.Exposure),
-            AvailableMargin = RupeesOrNull(equity.Net),
-            Collateral = RupeesOrNull(available?.Collateral),
-            RealisedPnl = RupeesOrNull(utilised?.RealisedM2M),
-            UnrealisedPnl = RupeesOrNull(utilised?.UnrealisedM2M),
-        };
+                // AVAILABLE_BALANCE is what the account can actually trade with. CLEAR_BALANCE
+                // excludes collateral and unsettled payins the account can already trade
+                // against, and showing that smaller number would have the trader believe
+                // orders will bounce when they will not.
+                AvailableToTrade = Rupees(row.AvailableBalance ?? row.ClearBalance ?? 0m),
+                CashBalance = RupeesOrNull(row.ClearBalance),
+                UsedMargin = RupeesOrNull(row.AmountUtilized),
+                AvailableMargin = RupeesOrNull(row.AvailableBalance),
+                Collateral = RupeesOrNull(row.Collaterals),
+                RealisedPnl = RupeesOrNull(row.RealisedProfits),
 
-        return Result<IReadOnlyList<BrokerBalance>>.Success([balance]);
+                // mStock reports a COMBINED mark-to-market, not a separate unrealised figure.
+                // Reporting the combined number as "unrealised" would double-count realised
+                // profits, so this stays null: the portfolio blender treats null as "this
+                // broker does not report it" and omits it rather than showing a wrong total.
+                UnrealisedPnl = null,
+            });
+        }
+
+        return Result<IReadOnlyList<BrokerBalance>>.Success(balances);
     }
 
     private Result<BrokerPosition> MapPosition(MStockPositionDto dto)

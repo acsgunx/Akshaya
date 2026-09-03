@@ -178,14 +178,12 @@ public sealed class MStockAuth : IConnectorAuth
             return await CompleteWithTotpAsync(api, apiKey, username, code, ct).ConfigureAwait(false);
         }
 
-        var checksum = ComputeChecksum(apiKey, code, context.Credentials.GetOrDefault("api_secret"));
-
         var session = await api.PostFormAsync<MStockSessionData>(
             _options.SessionTokenPath,
             [
                 new KeyValuePair<string, string>("api_key", apiKey),
                 new KeyValuePair<string, string>("request_token", code),
-                new KeyValuePair<string, string>("checksum", checksum),
+                new KeyValuePair<string, string>("checksum", SessionSource),
             ],
             ct).ConfigureAwait(false);
 
@@ -229,9 +227,7 @@ public sealed class MStockAuth : IConnectorAuth
             [
                 new KeyValuePair<string, string>("api_key", apiKey),
                 new KeyValuePair<string, string>("refresh_token", session.RefreshToken),
-                new KeyValuePair<string, string>(
-                    "checksum",
-                    ComputeChecksum(apiKey, session.RefreshToken, null)),
+                new KeyValuePair<string, string>("checksum", SessionSource),
             ],
             ct).ConfigureAwait(false);
 
@@ -315,7 +311,7 @@ public sealed class MStockAuth : IConnectorAuth
             [
                 new KeyValuePair<string, string>("api_key", apiKey),
                 new KeyValuePair<string, string>("request_token", code),
-                new KeyValuePair<string, string>("checksum", ComputeChecksum(apiKey, code, null)),
+                new KeyValuePair<string, string>("checksum", SessionSource),
             ],
             ct).ConfigureAwait(false);
 
@@ -375,23 +371,25 @@ public sealed class MStockAuth : IConnectorAuth
     }
 
     /// <summary>
-    /// mStock signs the session exchange with a SHA-256 checksum over the api key, the
-    /// request token and the api secret, in that order, hex-encoded lowercase — the same
-    /// recipe the rest of the Kite-lineage APIs use.
+    /// mStock's <c>checksum</c> parameter is NOT a checksum.
     ///
-    /// Not every Type A subscription is issued a secret. When there is none the checksum is
-    /// computed over the first two components alone; mStock accepts that for those accounts.
-    /// The secret is never logged and never leaves this method.
+    /// This connector originally computed <c>SHA256(api_key + request_token + api_secret)</c>,
+    /// which is the genuine recipe for the rest of the Kite-lineage APIs and a very reasonable
+    /// thing to assume from the parameter's name. mStock's Type A documentation says something
+    /// else entirely: the field is a SOURCE identifier, documented as
+    ///
+    ///     checksum | string | source (L)
+    ///
+    /// — a short constant, not a hash of anything. Sending a 64-character hex digest where the
+    /// broker expects <c>L</c> fails the session exchange for every user, which is the step
+    /// immediately after the login this connector had already got wrong.
+    ///
+    /// It is an option rather than a constant so a partner issued a different source code can
+    /// change it in configuration instead of waiting for a release.
+    ///
+    /// See docs/connectors/mstock-login-response.md.
     /// </summary>
-    internal static string ComputeChecksum(string apiKey, string requestToken, string? apiSecret)
-    {
-        var payload = string.IsNullOrEmpty(apiSecret)
-            ? apiKey + requestToken
-            : apiKey + requestToken + apiSecret;
-
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(payload));
-        return Convert.ToHexStringLower(hash);
-    }
+    internal string SessionSource => _options.SessionSource;
 
     private static void AddIfPresent(IDictionary<string, string> target, string key, string? value)
     {

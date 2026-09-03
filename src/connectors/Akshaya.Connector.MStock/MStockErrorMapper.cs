@@ -44,6 +44,16 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
     private const string DataException = "DataException";
     private const string GeneralException = "GeneralException";
 
+    /// <summary>
+    /// The API key itself is suspended or expired — documented as a 403 on every route.
+    ///
+    /// Distinct from a dead SESSION: signing in again will not help, because the key behind
+    /// the sign-in is what expired. mStock keys last roughly 13 months and must be
+    /// regenerated in the API portal, so the user needs to be sent there rather than round
+    /// the login loop again.
+    /// </summary>
+    private const string ApiKeyException = "APIKeyException";
+
     /// <inheritdoc />
     public string? MapToCanonicalCode(VendorErrorContext context)
     {
@@ -63,6 +73,7 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
                 HoldingException => ConnectorErrorCodes.OrderRejected,
                 OrderException => ClassifyOrderException(context.VendorMessage),
                 PermissionException => ConnectorErrorCodes.NotSupported,
+                ApiKeyException => ConnectorErrorCodes.ReauthRequired,
                 NetworkException or GeneralException => ConnectorErrorCodes.BrokerUnavailable,
                 DataException => ConnectorErrorCodes.Unknown,
                 _ => null,
@@ -84,7 +95,9 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
     public string DescribeCanonicalCode(string canonicalCode, VendorErrorContext context) => canonicalCode switch
     {
         ConnectorErrorCodes.SessionExpired => "The mStock session has expired; sign in again.",
-        ConnectorErrorCodes.ReauthRequired => "mStock needs you to sign in again.",
+        ConnectorErrorCodes.ReauthRequired => context.VendorCode == ApiKeyException
+            ? "Your mStock API key has expired or been suspended. Generate a new one in the mStock API portal."
+            : "mStock needs you to sign in again.",
         ConnectorErrorCodes.InvalidCredentials => "mStock did not accept the username or password.",
         ConnectorErrorCodes.ChallengeFailed => "mStock did not accept the one-time code.",
         ConnectorErrorCodes.InsufficientFunds => "The mStock account does not have enough funds for this order.",
@@ -178,6 +191,7 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
             HoldingException => ConnectorErrorCodes.OrderRejected,
             OrderException => ClassifyOrderException(payload.Message),
             PermissionException => ConnectorErrorCodes.NotSupported,
+            ApiKeyException => ConnectorErrorCodes.ReauthRequired,
             NetworkException or GeneralException => ConnectorErrorCodes.BrokerUnavailable,
             DataException => ConnectorErrorCodes.Unknown,
             _ => ClassifyFromMessage(payload.Message) ?? FromStatusCodeOnly(statusCode),
@@ -281,13 +295,42 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
         _ => $"mStock returned an unexpected HTTP {statusCode}.",
     };
 
+    /// <summary>
+    /// Substring match, anchored to a WORD BOUNDARY at the start of the needle.
+    ///
+    /// The anchor is not decoration. A plain <c>Contains</c> matched "scrip" inside
+    /// "API sub<b>scrip</b>tion", so mStock's "API is suspended/expired for use. Please check
+    /// your API subscription" was classified as INSTRUMENT NOT FOUND — a user whose API key had
+    /// expired was told their stock did not exist, and nothing in that message would ever have
+    /// led them to renew the key.
+    ///
+    /// The repository already knew this lesson: BrokerLeakageRules word-boundaries its own
+    /// matches precisely because "futu" otherwise matches "future". This is the same bug in a
+    /// different file.
+    ///
+    /// Only the LEADING boundary is required, so plurals and suffixes still match — "scrip"
+    /// finds "scrips", "insufficient fund" finds "insufficient funds" — while a needle buried
+    /// inside a longer word does not.
+    /// </summary>
     private static bool ContainsAny(string haystack, params ReadOnlySpan<string> needles)
     {
         foreach (var needle in needles)
         {
-            if (haystack.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            var from = 0;
+            while (from <= haystack.Length - needle.Length)
             {
-                return true;
+                var at = haystack.IndexOf(needle, from, StringComparison.OrdinalIgnoreCase);
+                if (at < 0)
+                {
+                    break;
+                }
+
+                if (at == 0 || !char.IsLetter(haystack[at - 1]))
+                {
+                    return true;
+                }
+
+                from = at + 1;
             }
         }
 

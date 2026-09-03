@@ -1,11 +1,21 @@
-# mStock login response — observed shape, and the parsing rule it forced
+# mStock Type A — where this connector disagreed with the API
 
-**Status:** resolved. The fault below was reproduced from a live account, fixed, and pinned by
-`tests/Akshaya.Connector.MStock.Tests/MStockLoginResponseTests.cs`.
+**Status:** resolved. Five faults, each verified against
+[the official Type A User documentation](https://tradingapi.mstock.com/docs/v1/typeA/User/)
+(retrieved 2026-09-03) and pinned by tests.
 
-This document exists because the bug was not really "three fields had the wrong type". It was
-"any field having an unexpected type fails the whole login, including fields nothing reads" —
-and that is a mistake worth never making twice, in this connector or the next one.
+This started as one bug — a successful login rejected as unparseable — but the documentation
+showed the same *kind* of mistake in four more places, three of them in code paths the user had
+not reached yet. They share one cause: **the connector was written to Zerodha Kite's shapes**,
+which mStock resembles closely enough to be dangerous and differs from in specifics.
+
+| # | What broke | Where | Would have surfaced as |
+|---|---|---|---|
+| 1 | `is_kyc`/`is_activate`/`is_password_reset` typed as `string?`, sent as booleans | login | ✅ reported — "response could not be understood" |
+| 2 | `checksum` computed as `SHA256(key+token+secret)`; it is the literal source string `L` | OTP / TOTP session | every OTP rejected |
+| 3 | Fund summary expected Kite's `{"equity":{…}}`; mStock sends an **array** of flat rows | fund summary | balances never loaded |
+| 4 | Logout `data` is the string `"Success"`, deserialised into a class | logout | every logout reported failed |
+| 5 | `"scrip"` matched inside `"subscription"` | error mapping | expired API key reported as *"instrument not found"* |
 
 ---
 
@@ -41,9 +51,7 @@ The login had worked. We threw the result away.
 
 ## Root cause
 
-`MStockLoginData` was written from the published Type A documentation, which this repo has
-never been able to verify (the docs host returns `AccessDenied` to any automated client, and
-still did while this was being fixed). It declared:
+`MStockLoginData` declared:
 
 | Field | DTO declared | mStock actually sends | Result |
 |---|---|---|---|
@@ -65,6 +73,26 @@ arriving where a string was declared, and there is no built-in equivalent that d
 
 So the first of the three flags threw, and eight fields of a successful login became one opaque
 error.
+
+### The documentation and the live API disagree
+
+This is the finding that shaped the whole fix. The official docs show those flags **quoted**:
+
+```json
+"is_kyc": "true", "is_activate": "true", "is_password_reset": "true", "is_error": "false"
+```
+
+A live account sends them **bare**:
+
+```json
+"is_kyc": true, "is_activate": false, "is_password_reset": true, "is_error": false
+```
+
+Both are real. Whatever the reason — a build difference, an undocumented change — a connector
+that trusts either one exclusively is broken against the other half of the time. **So the fix
+could not be "correct the declared types"**; it had to be "accept both", which is what the
+lenient converters below do. Both shapes are pinned by tests: `MStockLoginResponseTests` uses
+the live body, `MStockDocumentedShapeTests` the documented one.
 
 ### The part that makes it a design fault, not a typo
 
@@ -122,6 +150,99 @@ between having that path and not is an afternoon of eyeballing a truncated paylo
 
 ---
 
+---
+
+## The four the documentation then exposed
+
+Reading the docs to confirm fault #1 turned up four more. Each is the same underlying error:
+**a Kite-shaped assumption that mStock does not share.**
+
+### 2. `checksum` is not a checksum — *this one blocked every login*
+
+The connector computed the Kite recipe:
+
+```csharp
+SHA256(api_key + request_token + api_secret)   // 64 hex chars
+```
+
+mStock documents the field as:
+
+| Field | Type | Description |
+|---|---|---|
+| `checksum` | string | A validation string to ensure the integrity of the request (Example: **L**) |
+
+and its own mapping table spells it out: **`checksum` → `source (L)`**. It is a one-character
+*source identifier*, not a hash of anything. We were sending a 64-character digest where the
+broker expects `L`, so `/session/token` would have rejected **every OTP** — the step
+immediately after the login that was already broken.
+
+Now `MStockOptions.SessionSource`, defaulting to `"L"`, so a partner issued a different source
+code changes configuration rather than waiting for a release.
+
+> The name is genuinely misleading, and Kite really does use a SHA-256 checksum here. This was a
+> reasonable guess. It was still wrong.
+
+### 3. Fund summary is an array of flat rows
+
+Expected (Kite):
+
+```json
+{"data": {"equity": {"net": 0, "available": {"cash": 0}}}}
+```
+
+Actual (mStock):
+
+```json
+{"data": [{"AVAILABLE_BALANCE":"299972678840.29","AMOUNT_UTILIZED":"27395824.71","SEG":"A", …}]}
+```
+
+An **array**, of **flat** rows, with **SCREAMING_SNAKE_CASE** keys and every monetary value a
+**quoted string**. Deserialising an array into an object throws, so the fund summary could never
+have worked. `MStockFundRow` now matches the documented shape — including the vendor's
+misspelled `OPT_BUY_PRIMIUM_UTILIZE`, kept verbatim because "correcting" it would silently stop
+it binding.
+
+Two mapping decisions worth knowing:
+
+- **`AVAILABLE_BALANCE`, not `CLEAR_BALANCE`, is "available to trade."** Clear balance excludes
+  collateral and unsettled payins the account can already trade against; showing the smaller
+  number would have a trader believe orders will bounce when they will not.
+- **`UnrealisedPnl` is left null.** mStock reports `MTM_COMBINED`, a *combined* figure.
+  Reporting it as unrealised would double-count realised profit. Null means "this broker does
+  not report it", and the portfolio blender omits it rather than showing a wrong total.
+
+### 4. Logout's `data` is a bare string
+
+```json
+{"status": "success", "data": "Success"}
+```
+
+That was being deserialised into `MStockIgnoredPayload`, an empty class — a JSON string into an
+object, which throws. Every *successful* logout was reported as a malformed response. The route
+now reads into a `JsonElement`, which accepts whatever the vendor puts there, which is the whole
+point of a payload we have decided not to read.
+
+### 5. `"scrip"` matches inside `"subscription"`
+
+Testing the documented `APIKeyException` body found this:
+
+> "API is suspended/expired for use. Please check your API **sub·scrip·tion** and try again."
+
+The error mapper's free-text classifier looked for `"scrip"` (as in scrip code) with a plain
+substring match. So **an expired API key was reported to the user as "instrument not found"** —
+and nothing in that message would ever have led them to renew the key.
+
+`ContainsAny` now requires a word boundary before the needle, so `scrip` still matches "scrips"
+but not "subscription". `APIKeyException` is also now a recognised type mapping to
+`ReauthRequired`, with a message that says what to actually do:
+
+> Your mStock API key has expired or been suspended. Generate a new one in the mStock API portal.
+
+This repository already knew this lesson — `BrokerLeakageRules` word-boundaries its own matches
+precisely because "futu" otherwise matches "future". It was the same bug in a different file.
+
+---
+
 ## The rule this establishes
 
 > **A field the connector does not act on must never be able to fail a request.**
@@ -138,33 +259,54 @@ Concretely, when adding or reviewing a connector DTO:
 4. **Prefer `bool?` over `bool`** for vendor flags. `null` = "the broker did not tell us",
    which is a real and different state from `false`.
 
+And the one the other four faults add:
+
+> **This API resembles Zerodha Kite. It is not Kite.**
+
+`MStockErrorMapper` says so in its own header — "mStock's taxonomy is the Kite lineage" — and
+that is true of the *error types*. It is not true of the session checksum, the fund-summary
+shape, or the logout payload. When a shape here looks familiar from Kite, that is a reason to
+check the mStock docs, not a reason to skip checking them.
+
 ---
 
 ## Known remaining gaps
 
-- **`mobile` is never sent**, so the OTP screen cannot say which number the code went to. The
-  wizard degrades gracefully (it omits the line), but if a build does start sending it, the
-  field is already mapped and it will appear with no code change.
-- **The OTP leg is still unverified against a real account.** The login leg is now confirmed
-  against live output; `/openapi/typea/session/token` and `/session/verifytotp` are not. Their
-  DTOs (`MStockSessionData`) were written from the same unverifiable documentation and are the
-  next most likely place this exact class of fault is hiding. `MStockSessionData` currently
-  declares everything as `string?`/`IReadOnlyList<string>?` — safer than the login DTO was, but
-  a bare `true` on any of them would fail identically.
-- **`ugid` is captured but not yet echoed** on the token call. Some builds reportedly require
-  it; if the OTP step fails with an input error, that is the first thing to try.
+- **`mobile` is never sent.** The documented login response has no such field, so the OTP screen
+  cannot say which number the code went to. The wizard degrades gracefully (it omits the line),
+  and if a build does start sending it, the field is already mapped.
+- **Only the login leg has been seen live.** `/session/token` and `/session/verifytotp` now
+  match the documentation and parse its sample bodies in tests, but no real OTP has been
+  exchanged. That is the next thing to verify with a real account.
+- **`ugid` is captured but not echoed** on the token call — the documented request takes only
+  `api_key`, `request_token` and `checksum`. If the OTP step fails with an input error, adding
+  it is the first thing to try.
+- **`meta` and `silo` in the session response are unmapped.** Harmless (unmapped members are
+  skipped), but `meta` is an *object*, so anyone tempted to map it as a string will get a throw
+  — the lenient converters stop at scalars deliberately.
+- **The order, position and market-data DTOs have not been re-checked against the docs.** Faults
+  2–5 were found by reading one page. The rest of the Type A documentation is very likely to
+  contain more of the same, and this is the obvious next sweep.
 
 ## Diagnosing the next one
 
 1. Read the log line — it now names the JSON path (`$.data.<field>`).
 2. Compare that field's JSON type against its declaration in `MStockDtos.cs`.
 3. If the connector does not read the field: give it the matching lenient converter and move on.
-4. If it does: fix the type, and add the real payload to `MStockLoginResponseTests` so it stays
-   fixed.
+4. If it does: fix the type, and add the real payload to the tests so it stays fixed.
+5. **Check the docs for the surrounding route while you are there.** Every one of faults 2–5
+   was found this way, in code nobody had run yet.
 
 ## Tests
 
-`tests/Akshaya.Connector.MStock.Tests/MStockLoginResponseTests.cs` — 29 cases. The first parses
-the exact body above, verbatim; the rest pin the *tolerance* rather than the three specific
-fields, including that a genuine error envelope is still recognised as a failure and that an
-object where a string belongs still throws.
+| File | Covers |
+|---|---|
+| `MStockLoginResponseTests.cs` | 29 cases. The exact body a **live account** returned, plus the tolerance around it — every shape a flag can arrive in, that a genuine error envelope is still a failure, and that an object where a string belongs still throws. |
+| `MStockDocumentedShapeTests.cs` | 14 cases. Every payload on the **documented** User page, verbatim: login (with its quoted flags), session token, TOTP, fund summary, logout, and all six documented failure envelopes. |
+
+## Source
+
+<https://tradingapi.mstock.com/docs/v1/typeA/User/> — retrieved 2026-09-03.
+
+The host returns `AccessDenied` to `curl` and to `WebFetch`, including with a browser
+user-agent; it loads in a real browser. If you need to re-read it, open it in one.

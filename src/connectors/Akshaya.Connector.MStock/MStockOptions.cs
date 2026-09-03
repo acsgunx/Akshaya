@@ -44,6 +44,16 @@ public sealed record MStockOptions
     /// <summary>IANA id for the venue whose midnight kills the token.</summary>
     public string VenueTimeZoneId { get; init; } = "Asia/Kolkata";
 
+    /// <summary>
+    /// The value sent as the session route's <c>checksum</c> parameter.
+    ///
+    /// Despite the name it is not a hash — mStock documents it as the request SOURCE, with
+    /// <c>L</c> as the value. An option rather than a constant so a partner issued a different
+    /// source code changes configuration instead of waiting for a release. See
+    /// <see cref="MStockAuth.SessionSource"/>.
+    /// </summary>
+    public string SessionSource { get; init; } = "L";
+
     // --- routes -------------------------------------------------------------------------
 
     public string LoginPath { get; init; } = "/openapi/typea/connect/login";

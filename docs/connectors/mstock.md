@@ -13,12 +13,16 @@
 > The response shapes in `MStockDtos.cs` remain the most likely place reality differs from this
 > code.
 >
-> **This has already bitten once.** The first login leg returned a perfectly good
-> `{"status":"success", …}` that the connector rejected, because three flags documented as
-> strings arrive as booleans — and one type mismatch aborts the whole document. The observed
-> payload, the fix, and the parsing rule it forced are written up in
-> [`mstock-login-response.md`](mstock-login-response.md). **Read it before touching any DTO in
-> this connector**; the next unverified leg (`session/token`) is wide open to the same fault.
+> **This has already bitten five times.** A successful login was rejected as unparseable; the
+> session `checksum` was computed as a SHA-256 hash when mStock wants the literal string `L`;
+> the fund summary expected an object where mStock sends an array; logout treated its own
+> success as malformed; and `"scrip"` matching inside `"subscription"` reported an expired API
+> key as "instrument not found". All five are written up, with the documented payloads, in
+> [`mstock-login-response.md`](mstock-login-response.md).
+>
+> **Read it before touching any DTO here.** Every one of those faults came from this connector
+> being shaped like Zerodha Kite, which mStock resembles closely enough to be dangerous. The
+> order, position and market-data DTOs have not yet been re-checked the same way.
 
 ## Endpoints
 

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using Akshaya.Connectors.Abstractions;
 using Akshaya.Connectors.Sdk;
 using Akshaya.SharedKernel;
@@ -200,7 +201,12 @@ internal sealed class MStockApi : IAsyncDisposable
         MStockQuery? query = null,
         CancellationToken ct = default)
     {
-        var result = await GetAsync<MStockIgnoredPayload>(Combine(path, query), query: null, ct)
+        // JsonElement, not a placeholder class: logout answers {"status":"success",
+        // "data":"Success"} — data is a STRING. Deserialising that into an object threw,
+        // so every successful logout was reported as a malformed response. JsonElement
+        // accepts whatever shape the route puts there, which is the point of a route whose
+        // payload we have decided not to read.
+        var result = await GetAsync<JsonElement>(Combine(path, query), query: null, ct)
             .ConfigureAwait(false);
 
         if (result.IsSuccess)
@@ -308,9 +314,6 @@ internal sealed class MStockApi : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 }
-
-/// <summary>Placeholder payload for routes whose envelope has no <c>data</c> node.</summary>
-internal sealed class MStockIgnoredPayload;
 
 /// <summary>
 /// A query-string builder that escapes correctly and supports repeated keys, which mStock's
