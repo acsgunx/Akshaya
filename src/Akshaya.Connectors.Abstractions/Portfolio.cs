@@ -81,6 +81,38 @@ public sealed record BrokerBalance
     public Money? UnrealisedPnl { get; init; }
 }
 
+/// <summary>
+/// Moves an open position from one margin product to another — the intraday-to-delivery
+/// rescue, most often, when a trader decides not to be squared off at the session's end.
+///
+/// This is NOT an order. Nothing trades, the position does not change size, and no fill is
+/// generated; only the settlement basis under it changes, which changes how much margin the
+/// broker blocks. Modelling it as an order would put a phantom fill in the blotter and double
+/// the position in every P&amp;L that reads from trades.
+/// </summary>
+public sealed record ConvertPositionRequest
+{
+    public required InstrumentKey Instrument { get; init; }
+
+    /// <summary>
+    /// The side of the position being converted — BUY for a long, SELL for a short. Brokers
+    /// key the conversion on it because a hedged account can hold both at once.
+    /// </summary>
+    public required Side Side { get; init; }
+
+    /// <summary>
+    /// How much to convert. Partial conversion is allowed and common: a trader may take
+    /// delivery of part of an intraday position and let the rest square off.
+    /// </summary>
+    public required Quantity Quantity { get; init; }
+
+    /// <summary>The product the position is held under now.</summary>
+    public required PositionEffect From { get; init; }
+
+    /// <summary>The product to move it to.</summary>
+    public required PositionEffect To { get; init; }
+}
+
 public interface IConnectorPortfolio
 {
     Task<Result<IReadOnlyList<BrokerPosition>>> GetPositionsAsync(CancellationToken ct = default);
@@ -88,4 +120,11 @@ public interface IConnectorPortfolio
     Task<Result<IReadOnlyList<BrokerHolding>>> GetHoldingsAsync(CancellationToken ct = default);
 
     Task<Result<IReadOnlyList<BrokerBalance>>> GetBalancesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Converts an open position between margin products. Connectors that cannot do this
+    /// return <c>NotSupported</c> and declare <c>positionConversion: false</c> in their
+    /// manifest, so the UI hides the action rather than offering a button that always fails.
+    /// </summary>
+    Task<Result> ConvertPositionAsync(ConvertPositionRequest request, CancellationToken ct = default);
 }

@@ -66,6 +66,7 @@ public static class TradingServiceCollectionExtensions
         services.AddScoped<ModifyOrderHandler>();
         services.AddScoped<CancelOrderHandler>();
         services.AddScoped<CancelAllHandler>();
+        services.AddScoped<ConvertPositionHandler>();
 
         services.TryAddSingleton(new ReconciliationOptions());
         services.AddScoped<ReconciliationService>();

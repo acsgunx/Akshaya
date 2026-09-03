@@ -36,6 +36,15 @@ public static class MStockMaps
     public const string VarietyRegular = "reg";
     public const string VarietyAfterMarket = "amo";
 
+    /// <summary>The margin calculator's spelling of <see cref="VarietyRegular"/>.</summary>
+    public const string MarginVarietyRegular = "regular";
+
+    /// <summary>The margin calculator's spelling of <see cref="VarietyAfterMarket"/>.</summary>
+    public const string MarginVarietyAfterMarket = "amo";
+
+    /// <summary>Position type accepted by the position-conversion route. mStock documents only this one.</summary>
+    public const string PositionTypeDay = "DAY";
+
     public const string TransactionBuy = "BUY";
     public const string TransactionSell = "SELL";
 
@@ -194,6 +203,24 @@ public static class MStockMaps
         _ => Result<string>.Failure(Unsupported("order variety", variety.ToString(), null)),
     };
 
+    /// <summary>
+    /// The variety spelling the MARGIN CALCULATOR wants, which is not the one the placement
+    /// route wants.
+    ///
+    /// Placement takes <c>reg</c>; <c>POST /margins/orders</c> documents <c>regular</c>. Same
+    /// concept, same vendor, two spellings — exactly the sort of thing that gets fixed in one
+    /// call site and missed in the other, which is why it lives here with everything else.
+    ///
+    /// Unlike <see cref="ToNativeVariety"/> this cannot fail: an order that could not be
+    /// placed is never priced, so the placement mapping has already rejected anything
+    /// unsupported by the time this is reached.
+    /// </summary>
+    public static string ToNativeMarginVariety(OrderVariety variety) => variety switch
+    {
+        OrderVariety.AfterMarket => MarginVarietyAfterMarket,
+        _ => MarginVarietyRegular,
+    };
+
     public static Result<OrderVariety> ToCanonicalVariety(string variety) =>
         Normalise(variety) switch
         {
@@ -291,7 +318,20 @@ public static class MStockMaps
                 => OrderStatus.Cancelled,
             "OPEN" or "TRIGGER PENDING" or "AMO MODIFIED" or "MODIFIED" or "OPEN PENDING"
                 or "MODIFY PENDING" or "MODIFY VALIDATION PENDING" or "CANCEL PENDING"
-                or "AFTER MARKET ORDER REQ RECEIVED" => OrderStatus.Open,
+                or "AFTER MARKET ORDER REQ RECEIVED"
+                // Both of these appear in mStock's own /order/details sample and neither was
+                // mapped, so a resting stop-loss read through that route came back Unknown —
+                // which the risk gate refuses to act on, meaning the trader could not cancel
+                // the very order they were looking at.
+                //
+                // "TRIGGERED" is an SL/SL-M whose trigger has fired: it is now a live order
+                // working at the exchange, NOT a filled one. Calling it Filled would book a
+                // position that does not exist yet.
+                //
+                // Bare "PENDING" (status_message "CONFIRMED") is an order confirmed and
+                // resting. Distinct from the "... PENDING" states above, which are in flight
+                // between us and the exchange.
+                or "TRIGGERED" or "PENDING" => OrderStatus.Open,
             "PARTIALLY FILLED" or "PARTIAL" or "PARTIALLY EXECUTED" => OrderStatus.PartiallyFilled,
             "PUT ORDER REQ RECEIVED" or "VALIDATION PENDING" or "AMO REQ RECEIVED"
                 or "TRIGGER PENDING VALIDATION" => OrderStatus.Submitted,

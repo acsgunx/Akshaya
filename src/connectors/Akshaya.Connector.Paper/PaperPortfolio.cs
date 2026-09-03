@@ -1,4 +1,5 @@
 using Akshaya.Connectors.Abstractions;
+using Akshaya.Connectors.Sdk;
 using Akshaya.SharedKernel;
 
 namespace Akshaya.Connector.Paper;
@@ -53,4 +54,19 @@ public sealed class PaperPortfolio(
             ? Result<IReadOnlyList<BrokerBalance>>.Failure(session.Error)
             : Result<IReadOnlyList<BrokerBalance>>.Success(engine.Balances()));
     }
+
+    /// <summary>
+    /// Not simulated. The matching engine models fills and positions, not the margin product
+    /// underneath them, so there is nothing here for a conversion to change.
+    ///
+    /// Worth naming as a REHEARSAL GAP rather than a mere omission: the Paper connector exists
+    /// so a strategy can be exercised against the same contract before it touches real money,
+    /// and mStock does support conversion. A strategy that converts intraday positions to
+    /// delivery therefore cannot be fully rehearsed here, and the manifest says so
+    /// (positionConversion: false) so the UI hides the action rather than failing on it.
+    /// </summary>
+    public Task<Result> ConvertPositionAsync(
+        ConvertPositionRequest request,
+        CancellationToken ct = default) =>
+        NotSupportedFacets.DeclineAsync("position conversion");
 }

@@ -209,6 +209,17 @@ public sealed class GrpcConnectorProxy : IBrokerConnector
             CancellationToken ct = default) =>
             transport.InvokeAsync<object?, IReadOnlyList<BrokerBalance>>(
                 "GetBalances", null, session, ct);
+
+        public async Task<Result> ConvertPositionAsync(
+            ConvertPositionRequest request,
+            CancellationToken ct = default)
+        {
+            var result = await transport
+                .InvokeAsync<ConvertPositionRequest, object?>("ConvertPosition", request, session, ct)
+                .ConfigureAwait(false);
+
+            return result.IsSuccess ? Result.Success() : Result.Failure(result.Error);
+        }
     }
 
     private sealed class RemoteMarketData(IRemoteConnectorTransport transport, BrokerSession? session)

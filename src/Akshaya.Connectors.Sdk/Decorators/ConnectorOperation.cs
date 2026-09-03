@@ -123,6 +123,13 @@ public static class ConnectorOperations
     public static readonly ConnectorOperation GetBalances =
         new(ConnectorFacet.Portfolio, nameof(IConnectorPortfolio.GetBalancesAsync), RateLimitScopes.Data, true, false);
 
+    // A WRITE, and an order-affecting one. It books no trade, but it changes the settlement
+    // basis of a live position — which changes the margin blocked against it and whether the
+    // position survives the intraday square-off. That belongs in the audit trail next to the
+    // orders, and it must never be retried blindly: converting twice converts twice.
+    public static readonly ConnectorOperation ConvertPosition =
+        new(ConnectorFacet.Portfolio, nameof(IConnectorPortfolio.ConvertPositionAsync), RateLimitScopes.Orders, false, true);
+
     // --- market data. The quotes bucket, which brokers meter separately and generously. ---
 
     public static readonly ConnectorOperation GetQuote =

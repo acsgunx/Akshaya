@@ -576,6 +576,23 @@ public sealed class FakeBrokerBook :
         }
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Declined by the shared book. Alpha and Beta exist to prove the contract spans two
+    /// genuinely different brokers, and "this broker cannot do it" is one of the shapes the
+    /// contract has to span — a conformance suite where every capability is supported proves
+    /// nothing about the not-supported path.
+    /// </remarks>
+    public Task<Result> ConvertPositionAsync(
+        ConvertPositionRequest request,
+        CancellationToken ct = default)
+    {
+        var session = _requireSession();
+        return session.IsFailure
+            ? Task.FromResult(Result.Failure(session.Error))
+            : NotSupportedFacets.DeclineAsync("position conversion");
+    }
+
     // -----------------------------------------------------------------------------------
     // IConnectorMarketData
     // -----------------------------------------------------------------------------------

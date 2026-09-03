@@ -270,3 +270,36 @@ public sealed record CancelAllResult(IReadOnlyList<CancelAllLinkResult> Links)
     /// <summary>True when at least one link failed or cancelled fewer orders than it was asked to.</summary>
     public bool IsPartial => Links.Any(l => l.Error is not null || l.Cancelled < l.Requested);
 }
+
+/// <summary>
+/// A request to move an open position between margin products.
+///
+/// Carries the SIDE and the SOURCE product rather than inferring them, because a hedged
+/// account can hold a long and a short in the same instrument under different products at
+/// once, and a conversion that guesses which one the trader meant is a conversion of the
+/// wrong position.
+/// </summary>
+public sealed record ConvertPositionCommand
+{
+    public required string TenantId { get; init; }
+
+    public required string UserId { get; init; }
+
+    public required string BrokerLinkId { get; init; }
+
+    public required InstrumentKey Instrument { get; init; }
+
+    /// <summary>BUY for a long position, SELL for a short one.</summary>
+    public required Side Side { get; init; }
+
+    /// <summary>Partial conversion is legitimate: take delivery of some, let the rest square off.</summary>
+    public required Quantity Quantity { get; init; }
+
+    /// <summary>The product the position is held under now.</summary>
+    public required PositionEffect From { get; init; }
+
+    /// <summary>The product to move it to.</summary>
+    public required PositionEffect To { get; init; }
+
+    public string Actor { get; init; } = OrderActors.User;
+}

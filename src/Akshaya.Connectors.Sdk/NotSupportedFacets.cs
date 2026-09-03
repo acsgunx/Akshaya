@@ -151,6 +151,11 @@ public sealed class NotSupportedPortfolio : IConnectorPortfolio
 
     public Task<Result<IReadOnlyList<BrokerBalance>>> GetBalancesAsync(CancellationToken ct = default) =>
         NotSupportedFacets.DeclineAsync<IReadOnlyList<BrokerBalance>>("balances");
+
+    public Task<Result> ConvertPositionAsync(
+        ConvertPositionRequest request,
+        CancellationToken ct = default) =>
+        NotSupportedFacets.DeclineAsync("position conversion");
 }
 
 /// <summary>Market-data facet for execution-only brokers; prices come from another connector.</summary>

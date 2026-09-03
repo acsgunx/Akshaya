@@ -188,7 +188,8 @@
         "gtt": { "type": "boolean", "default": false },
         "marginEstimate": { "type": "boolean", "default": false },
         "chargesEstimate": { "type": "boolean", "default": false },
-        "cancelAll": { "type": "boolean", "default": false }
+        "cancelAll": { "type": "boolean", "default": false },
+        "positionConversion": { "type": "boolean", "default": false }
       }
     },
     "marketData": {

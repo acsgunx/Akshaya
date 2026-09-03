@@ -275,6 +275,14 @@ public abstract class InterceptingConnector : IBrokerConnector, IConnectorInterc
 
         public Task<Result<IReadOnlyList<BrokerBalance>>> GetBalancesAsync(CancellationToken ct = default) =>
             owner.InterceptAsync(ConnectorOperations.GetBalances, token => inner.GetBalancesAsync(token), ct);
+
+        public Task<Result> ConvertPositionAsync(
+            ConvertPositionRequest request,
+            CancellationToken ct = default) =>
+            owner.InterceptAsync(
+                ConnectorOperations.ConvertPosition,
+                token => inner.ConvertPositionAsync(request, token),
+                ct);
     }
 
     private sealed class InterceptingMarketData(IConnectorMarketData inner, InterceptingConnector owner)

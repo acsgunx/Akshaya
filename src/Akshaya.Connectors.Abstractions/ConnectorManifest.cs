@@ -174,6 +174,13 @@ public sealed record OrderSpec
 
     public bool CancelAll { get; init; }
 
+    /// <summary>
+    /// Whether an open position can be moved between margin products (intraday to delivery and
+    /// back). Not an order type — see <see cref="ConvertPositionRequest"/> — but it belongs
+    /// here because it is the same capability question the order ticket asks.
+    /// </summary>
+    public bool PositionConversion { get; init; }
+
     public bool Supports(OrderType type) => Types.Contains(type);
 
     public bool Supports(TimeInForce tif) => TimeInForce.Contains(tif);
