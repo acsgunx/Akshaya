@@ -37,6 +37,8 @@ export type ConnectionBadgeStatus = 'live' | 'degraded' | 'stale' | 'disconnecte
       }
     </span>
   `,
+  // The four states map straight onto the semantic tokens they mean — there is no
+  // separate `--ak-state-*` alias layer to keep in step with them.
   styles: `
     .ak-conn {
       display: inline-flex;
@@ -47,23 +49,23 @@ export type ConnectionBadgeStatus = 'live' | 'degraded' | 'stale' | 'disconnecte
       white-space: nowrap;
     }
     .ak-conn-dot {
+      flex: none;
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      flex: none;
+      background: var(--dot, var(--ak-text-tertiary));
+    }
+    .ak-conn--live {
+      --dot: var(--ak-success);
     }
     .ak-conn--live .ak-conn-dot {
-      background: var(--ak-state-live);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--ak-state-live) 25%, transparent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--ak-success) 25%, transparent);
     }
-    .ak-conn--degraded .ak-conn-dot {
-      background: var(--ak-state-degraded);
+    .ak-conn--degraded {
+      --dot: var(--ak-warning);
     }
-    .ak-conn--stale .ak-conn-dot {
-      background: var(--ak-state-stale);
-    }
-    .ak-conn--disconnected .ak-conn-dot {
-      background: var(--ak-state-disconnected);
+    .ak-conn--disconnected {
+      --dot: var(--ak-danger);
     }
     .ak-conn-countdown {
       font-variant-numeric: tabular-nums;

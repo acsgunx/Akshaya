@@ -1,8 +1,13 @@
 // =============================================================================
-// AKSHAYA — global styles
+// AKSHAYA — global stylesheet
 // =============================================================================
+// Reset, numeric-safety rules, and the small set of PRIMITIVES every screen is
+// built from. Anything that appeared in more than one feature stylesheet lives
+// here exactly once; a feature's own stylesheet should now only ever contain
+// what is genuinely unique to that screen (in practice: its grid columns).
+// =============================================================================
+
 @use 'theme';
-@use 'tokens' as tok;
 
 // ---- Reset -----------------------------------------------------------------
 *,
@@ -20,11 +25,8 @@ body {
   margin: 0;
   background: var(--ak-bg);
   color: var(--ak-text-primary);
-  font-family: var(--ak-font-ui);
-  font-size: tok.$fs-md;
-  line-height: tok.$lh-normal;
+  font: 400 14px/1.45 var(--mat-sys-plain-font-family, sans-serif);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
 
 h1,
@@ -32,7 +34,8 @@ h2,
 h3,
 h4,
 p,
-figure {
+figure,
+dd {
   margin: 0;
 }
 
@@ -48,59 +51,45 @@ a {
 }
 
 button {
-  font-family: inherit;
+  font: inherit;
 }
 
-// ---- Numerics: tabular figures everywhere a number can update live ----------
-// This is the single rule that keeps a live blotter readable: every digit
-// occupies the same width, so a price tick from 1,482.30 to 1,479.85 does not
-// nudge the decimal point, and a column never visibly "breathes". Applied
-// broadly (table cells, the .ak-num utility) rather than per-component so no
-// new numeric cell can be added without it.
+// ---- Numerics ---------------------------------------------------------------
+// The single rule that keeps a live blotter readable: every digit the same
+// width, so a tick from 1,482.30 to 1,479.85 does not nudge the decimal point.
+// Applied broadly so no new numeric cell can be added without it.
 td,
 th,
-.ak-num {
-  font-variant-numeric: tabular-nums;
-}
-
-.ak-num--mono {
-  font-family: var(--ak-font-mono);
+.ak-num,
+[class^='ak-col-'],
+[class*=' ak-col-'] {
   font-variant-numeric: tabular-nums;
 }
 
 // Fixed-width numeric columns — see DESIGN.md "price cells must never jitter".
-.ak-col-price {
+.ak-col-price,
+.ak-col-qty,
+.ak-col-pnl,
+.ak-col-return {
   display: inline-block;
-  min-width: var(--ak-col-price-width);
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
-.ak-col-qty {
-  display: inline-block;
-  min-width: var(--ak-col-qty-width);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+.ak-col-price { min-width: var(--ak-col-price-width); }
+.ak-col-qty { min-width: var(--ak-col-qty-width); }
+.ak-col-pnl { min-width: var(--ak-col-pnl-width); }
+.ak-col-return { min-width: 5rem; }
 
-.ak-col-pnl {
-  display: inline-block;
-  min-width: var(--ak-col-pnl-width);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+// ---- Direction --------------------------------------------------------------
+.ak-buy-text { color: var(--ak-buy); }
+.ak-sell-text { color: var(--ak-sell); }
 
-// ---- Focus visibility --------------------------------------------------------
-// WCAG 2.2 AA requires a visible, non-colour-only focus indicator with
-// sufficient contrast against BOTH the control and the page — a 2px ring with
-// a 2px offset plus a dark halo satisfies that on every surface token we have,
-// light or dark. :focus-visible so a mouse click never shows the ring, only
-// keyboard/AT navigation does — this app is built to be fully keyboard
-// operable (see DESIGN.md "keyboard model") and the ring is how a keyboard
-// user tracks where they are on a screen full of live-updating numbers.
-:focus {
-  outline: none;
-}
+// ---- Focus ------------------------------------------------------------------
+// WCAG 2.2 AA: a visible, non-colour-only indicator with contrast against BOTH
+// the control and the page. `:focus-visible` so a mouse click never shows the
+// ring — this app is fully keyboard operable and the ring is how a keyboard
+// user tracks position on a screen full of live-updating numbers.
+:focus { outline: none; }
 
 :focus-visible {
   outline: 2px solid var(--ak-brand);
@@ -108,42 +97,20 @@ th,
   border-radius: var(--ak-radius-xs);
 }
 
-// A focus ring on a dark control needs a light halo to read against a dark
-// page background of a similar value to the ring itself.
+// A ring on a dark control needs a halo to read against a page background of
+// similar value to the ring itself.
 .ak-focus-halo:focus-visible {
-  box-shadow: 0 0 0 2px var(--ak-bg), 0 0 0 4px var(--ak-brand);
   outline: none;
+  box-shadow: 0 0 0 2px var(--ak-bg), 0 0 0 4px var(--ak-brand);
 }
 
-// ---- Reduced motion ----------------------------------------------------------
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-// ---- Scrollbars (dark-first, subtle) -----------------------------------------
+// ---- Scrollbars -------------------------------------------------------------
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--ak-surface-4) transparent;
+  scrollbar-color: var(--ak-border-strong) transparent;
 }
 
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-*::-webkit-scrollbar-thumb {
-  background: var(--ak-surface-4);
-  border-radius: var(--ak-radius-sm);
-}
-
-// ---- Visually-hidden but AT-visible ------------------------------------------
+// ---- Screen-reader only -----------------------------------------------------
 .ak-sr-only {
   position: absolute;
   width: 1px;
@@ -151,45 +118,364 @@ th,
   padding: 0;
   margin: -1px;
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
-  border: 0;
 }
 
-// ---- Flash-on-change (watchlist LTP) -----------------------------------------
-// Background-colour flash only — never a size, weight or layout change, so it
-// cannot itself cause the jitter the tabular-nums rule above is preventing.
+// =============================================================================
+// PRIMITIVES
+// =============================================================================
+
+// ---- Page header ------------------------------------------------------------
+// Every screen's title block. Was re-declared, near-identically, in seven
+// feature stylesheets.
+.ak-page-head {
+  --ak-gap: 16px;
+
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ak-gap);
+  margin-bottom: 14px;
+}
+
+.ak-page-head h1 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.ak-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--ak-text-secondary);
+}
+
+// ---- Surfaces ---------------------------------------------------------------
+.ak-card {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border);
+  border-radius: var(--ak-radius-lg);
+  padding: 16px;
+}
+
+.ak-card h2 {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+// A card that owns the middle of the viewport (auth, the link wizard).
+.ak-card--centred {
+  width: 100%;
+  max-width: 460px;
+  margin-inline: auto;
+  box-shadow: var(--ak-shadow-2);
+}
+
+.ak-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-muted {
+  color: var(--ak-text-secondary);
+  font-size: 12px;
+}
+
+// Small print. `.ak-label` is for COLUMN AND FIELD HEADINGS and shouts in caps;
+// `.ak-caption` is for a secondary line of real prose under something, and does not.
+.ak-caption {
+  font-size: 11px;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-danger-text { color: var(--ak-danger); }
+
+// A quiet footnote under a figure: small, tertiary, icon-aligned.
+.ak-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ak-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-gap, 12px);
+}
+
+.ak-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-gap, 8px);
+}
+
+.ak-between { justify-content: space-between; }
+.ak-strong { font-weight: 500; }
+.ak-grow { flex: 1; min-width: 0; }
+
+// ---- Loading ----------------------------------------------------------------
+.ak-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 32px;
+  color: var(--ak-text-secondary);
+}
+
+// ---- Badges -----------------------------------------------------------------
+// One badge, five tints. Replaces the status badges, split badges, capability
+// chips, pledge markers and connector tags each feature used to define itself.
+.ak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--ak-radius-full);
+  background: var(--ak-surface-3);
+  color: var(--ak-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.ak-badge--info { background: color-mix(in srgb, var(--ak-info) 18%, transparent); color: var(--ak-info); }
+.ak-badge--ok { background: color-mix(in srgb, var(--ak-success) 18%, transparent); color: var(--ak-success); }
+.ak-badge--warn { background: color-mix(in srgb, var(--ak-warning) 18%, transparent); color: var(--ak-warning); }
+.ak-badge--bad { background: color-mix(in srgb, var(--ak-danger) 18%, transparent); color: var(--ak-danger); }
+.ak-badge--muted { background: var(--ak-surface-2); color: var(--ak-text-secondary); font-weight: 500; }
+
+// ---- Banners ----------------------------------------------------------------
+.ak-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--ak-radius-md);
+  border: 1px solid var(--ak-border);
+  background: var(--ak-surface-2);
+  color: var(--ak-text-secondary);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.ak-banner mat-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--ak-info);
+}
+
+.ak-banner--warn {
+  background: color-mix(in srgb, var(--ak-warning) 14%, var(--ak-surface-1));
+  border-color: color-mix(in srgb, var(--ak-warning) 40%, transparent);
+  color: var(--ak-text-primary);
+}
+
+.ak-banner--warn mat-icon { color: var(--ak-warning); }
+
+.ak-banner--error {
+  background: color-mix(in srgb, var(--ak-danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ak-danger) 40%, transparent);
+  color: var(--ak-text-primary);
+}
+
+.ak-banner--error mat-icon { color: var(--ak-danger); }
+
+// ---- Grid tables ------------------------------------------------------------
+// Positions, orders, holdings and the watchlist are all the same thing: a
+// virtualised list of CSS-grid rows whose columns must line up with a sticky
+// header. A screen now supplies only `--ak-cols` and inherits the rest.
+.ak-thead,
+.ak-trow,
+.ak-tleg {
+  display: grid;
+  grid-template-columns: var(--ak-cols);
+  gap: 12px;
+  align-items: center;
+  padding-inline: 12px;
+}
+
+.ak-thead {
+  padding-block: 8px;
+  border-bottom: 1px solid var(--ak-border);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-trow {
+  height: 44px;
+  border-bottom: 1px solid var(--ak-border);
+  font-size: 13px;
+}
+
+.ak-trow:hover { background: var(--ak-surface-2); }
+
+// Expanded broker legs deliberately reuse the PARENT grid: a leg's quantity has
+// to sit directly under the Qty heading and under the blended quantity it
+// contributes to. A sub-table with its own widths makes the reader work out
+// which number is which, which is the opposite of what expanding is for.
+.ak-legs {
+  background: var(--ak-surface-2);
+  border-bottom: 1px solid var(--ak-border);
+}
+
+.ak-tleg {
+  height: 36px;
+  font-size: 12px;
+  color: var(--ak-text-secondary);
+}
+
+.ak-viewport {
+  height: var(--ak-viewport-height, calc(100vh - 260px));
+  min-height: 280px;
+}
+
+// Row expander chevron.
+.ak-expand {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ak-radius-xs);
+  background: none;
+  color: var(--ak-text-tertiary);
+  cursor: pointer;
+}
+
+.ak-expand:disabled { cursor: default; }
+
+// A bare icon button that is not a Material button (row actions, close).
+.ak-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ak-text-tertiary);
+  cursor: pointer;
+}
+
+.ak-iconbtn:hover { color: var(--ak-text-primary); }
+
+// ---- Icon sizing ------------------------------------------------------------
+// `mat-icon` is 24px; nearly every use here wanted it smaller, and every
+// feature stylesheet repeated the same three-property incantation to say so.
+.ak-i-sm,
+.ak-i-xs,
+.ak-i-lg {
+  flex: none;
+}
+
+.ak-i-xs { font-size: 14px; width: 14px; height: 14px; }
+.ak-i-sm { font-size: 18px; width: 18px; height: 18px; }
+.ak-i-lg { font-size: 34px; width: 34px; height: 34px; }
+
+// ---- Forms ------------------------------------------------------------------
+// Help and error text is rendered by us, below the field, rather than in
+// Material's subscript wrapper — so the wrapper is hidden once, globally,
+// instead of via an identical `::ng-deep` block in each form screen.
+.ak-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ak-field mat-form-field,
+.ak-block {
+  width: 100%;
+}
+
+.ak-field-msg {
+  padding-inline: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ak-text-tertiary);
+}
+
+.ak-field-msg--error { color: var(--ak-danger); }
+
+.mat-mdc-form-field-subscript-wrapper { display: none; }
+
+.mat-mdc-text-field-wrapper { background: var(--ak-surface-2); }
+
+// A destructive filled button (kill switch engaged, confirm-dialog danger action).
+// `!important` because it has to beat Material's own filled-button token.
+.ak-btn-danger {
+  background: var(--ak-danger) !important;
+  color: #fff !important;
+}
+
+// Material buttons that carry a spinner while pending.
+.mat-mdc-button-base mat-spinner {
+  --mdc-circular-progress-active-indicator-color: currentcolor;
+}
+
+// ---- Overlay panels ----------------------------------------------------------
+// CDK overlays render outside their component, so panel styling has to be global.
+// The appearance menu carries a wrapped explanation under its checkbox and needs more
+// than a menu's default content width to lay it out.
+.ak-appearance-panel {
+  max-width: 280px;
+}
+
+.ak-appearance-panel .ak-menu-section {
+  padding: 4px 14px 10px;
+}
+
+.ak-appearance-panel .ak-menu-help {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ak-text-tertiary);
+  white-space: normal;
+}
+
+// ---- Motion -----------------------------------------------------------------
+// Background-colour flash only — never a size, weight or layout change, so the
+// flash can never cause the jitter the tabular-nums rule above prevents.
 @keyframes ak-flash-up {
-  0% {
-    background-color: var(--ak-buy-surface);
-  }
-  100% {
-    background-color: transparent;
-  }
+  from { background-color: var(--ak-buy-surface); }
 }
 
 @keyframes ak-flash-down {
-  0% {
-    background-color: var(--ak-sell-surface);
-  }
-  100% {
-    background-color: transparent;
-  }
+  from { background-color: var(--ak-sell-surface); }
 }
 
-.ak-flash-up {
-  animation: ak-flash-up var(--ak-motion-flash) var(--ak-ease-standard);
-}
-
-.ak-flash-down {
-  animation: ak-flash-down var(--ak-motion-flash) var(--ak-ease-standard);
-}
+.ak-flash-up { animation: ak-flash-up var(--ak-motion-flash) var(--ak-ease); }
+.ak-flash-down { animation: ak-flash-down var(--ak-motion-flash) var(--ak-ease); }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  // Still communicate the change without motion.
   .ak-flash-up,
   .ak-flash-down {
     animation: none;
-    // Still communicate the change without motion: a brief static border.
     outline: 1px solid var(--ak-border-strong);
   }
 }

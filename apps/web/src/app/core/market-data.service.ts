@@ -93,7 +93,15 @@ export class MarketDataService {
     this._connectionState.set('connecting');
     this.hub
       .start()
-      .then(() => this._connectionState.set('connected'))
+      .then(() => {
+        this._connectionState.set('connected');
+        // Anything that subscribed DURING the handshake has a refcount but no
+        // server-side subscription — `subscribe` can only invoke on a connected
+        // hub. Declare the whole set now, exactly as a reconnect does, so the
+        // first watcher of an instrument is never the one that silently misses
+        // its stream.
+        this.resubscribeAll();
+      })
       .catch(() => this._connectionState.set('disconnected'));
   }
 
@@ -111,6 +119,12 @@ export class MarketDataService {
    * metered resource per `manifest.marketData.maxStreamSubscriptions`.
    */
   subscribe(brokerLinkId: string, instrument: InstrumentKey): () => void {
+    // The socket opens on demand, with the first watcher: a session that never
+    // looks at a price never holds one open. `connect` is idempotent, and the
+    // `resubscribeAll` in its `start()` handler covers everything that
+    // subscribes while this first handshake is still in flight.
+    this.connect();
+
     const key = streamKey(brokerLinkId, instrument);
     const existing = this.refCounts.get(key);
     this.refCounts.set(key, { brokerLinkId, instrument, count: (existing?.count ?? 0) + 1 });

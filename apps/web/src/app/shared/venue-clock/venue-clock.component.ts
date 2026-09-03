@@ -14,9 +14,11 @@ import type { VenueMic } from '../../core/models';
     <span class="ak-venue-clock" [matTooltip]="state().timeZone" role="status">
       <span class="ak-venue-mic">{{ mic() }}</span>
       <span class="ak-venue-time ak-num">{{ state().localTime }}</span>
-      <span class="ak-venue-badge" [class]="'ak-venue-badge--' + state().status">{{ state().label }}</span>
+      <span class="ak-badge ak-venue-badge" [class]="badgeClass()">{{ state().label }}</span>
     </span>
   `,
+  // The open/closed pill is the shared `.ak-badge` primitive; only the two "live" tints
+  // and the monospace clock are specific to this component.
   styles: `
     .ak-venue-clock {
       display: inline-flex;
@@ -31,32 +33,11 @@ import type { VenueMic } from '../../core/models';
     }
     .ak-venue-time {
       font-family: var(--ak-font-mono);
-      font-variant-numeric: tabular-nums;
     }
     .ak-venue-badge {
       padding: 1px 6px;
-      border-radius: var(--ak-radius-full);
       font-size: 10px;
-      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.02em;
-    }
-    .ak-venue-badge--open {
-      background: color-mix(in srgb, var(--ak-success) 20%, transparent);
-      color: var(--ak-success);
-    }
-    .ak-venue-badge--preOpen {
-      background: color-mix(in srgb, var(--ak-warning) 20%, transparent);
-      color: var(--ak-warning);
-    }
-    .ak-venue-badge--closed,
-    .ak-venue-badge--afterHours {
-      background: var(--ak-surface-3);
-      color: var(--ak-text-tertiary);
-    }
-    .ak-venue-badge--unknown {
-      background: var(--ak-surface-3);
-      color: var(--ak-text-disabled);
     }
   `,
 })
@@ -70,6 +51,18 @@ export class VenueClockComponent {
   private readonly perMic = new Map<VenueMic, Signal<VenueSessionState>>();
 
   readonly mic = input.required<VenueMic>();
+
+  /** Open is a success tint, pre-open a warning one; closed/after-hours/unknown stay neutral. */
+  readonly badgeClass = computed(() => {
+    switch (this.state().status) {
+      case 'open':
+        return 'ak-badge--ok';
+      case 'preOpen':
+        return 'ak-badge--warn';
+      default:
+        return '';
+    }
+  });
 
   readonly state: Signal<VenueSessionState> = computed(() => {
     const mic = this.mic();

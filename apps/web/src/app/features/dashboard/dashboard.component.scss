@@ -1,85 +1,38 @@
-.ak-dashboard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.ak-dashboard-header h1 {
-  font-size: 22px;
-  font-weight: 700;
-}
-
+// Only the dashboard's own layout. Cards, banners, the page header, badges and the loading
+// row are primitives from styles.scss.
 .ak-venue-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
   padding: 10px 14px;
+  margin-bottom: 16px;
   background: var(--ak-surface-1);
   border: 1px solid var(--ak-border);
   border-radius: var(--ak-radius-md);
+}
+
+.ak-banner {
   margin-bottom: 16px;
-}
-
-.ak-dashboard-loading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--ak-text-secondary);
-  padding: 32px;
-}
-
-.ak-partial-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  margin-bottom: 16px;
-  background: color-mix(in srgb, var(--ak-warning) 14%, var(--ak-surface-1));
-  border: 1px solid color-mix(in srgb, var(--ak-warning) 40%, transparent);
-  border-radius: var(--ak-radius-sm);
-  font-size: 13px;
-}
-
-.ak-partial-banner mat-icon {
-  color: var(--ak-warning);
-  flex: none;
 }
 
 .ak-dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
   gap: 16px;
 }
 
-.ak-card {
-  background: var(--ak-surface-1);
-  border: 1px solid var(--ak-border);
-  border-radius: var(--ak-radius-lg);
-  padding: 16px;
-}
-
+// Positions and broker accounts want the full width whatever the column count.
 .ak-card--wide {
   grid-column: 1 / -1;
 }
 
-.ak-card h2 {
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 12px;
-}
-
+// ---- P&L card ---------------------------------------------------------------
 .ak-pnl-row {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
+  justify-content: space-between;
   padding: 6px 0;
   border-bottom: 1px solid var(--ak-border);
-}
-
-.ak-pnl-label {
-  font-size: 12px;
-  color: var(--ak-text-secondary);
 }
 
 .ak-pnl-natives {
@@ -89,50 +42,18 @@
   font-weight: 600;
 }
 
-.ak-buy-text {
-  color: var(--ak-buy);
-}
-
-.ak-sell-text {
-  color: var(--ak-sell);
-}
-
-.ak-pnl-empty {
-  color: var(--ak-text-tertiary);
-  font-weight: 400;
-}
-
 .ak-pnl-converted {
   margin-top: 8px;
   font-size: 13px;
   color: var(--ak-text-secondary);
 }
 
-.ak-pnl-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-pnl-note mat-icon {
-  font-size: 14px;
-  width: 14px;
-  height: 14px;
-}
-
-.ak-pnl-warning {
-  font-size: 11px;
-  color: var(--ak-warning);
-  margin-top: 4px;
-}
-
+// ---- Tables inside cards ----------------------------------------------------
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  margin-top: 12px;
 }
 
 th {
@@ -141,12 +62,11 @@ th {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--ak-text-tertiary);
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--ak-border);
 }
 
+th,
 td {
-  padding: 8px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--ak-border);
 }
 
@@ -154,21 +74,11 @@ td {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: 12px;
 }
 
 .ak-source-list li {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.ak-source-error {
-  font-size: 12px;
-  color: var(--ak-danger);
-}
-
-@media (max-width: 900px) {
-  .ak-dashboard-grid {
-    grid-template-columns: 1fr;
-  }
 }

@@ -1,49 +1,20 @@
+// Card surfaces, the page header and the row/stack layout are primitives; what is left is
+// this screen's two lists.
 :host {
   display: block;
 }
 
 .ak-profile {
   max-width: 720px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.ak-profile-header h1 {
-  font-size: 22px;
-  font-weight: 700;
-}
-
-.ak-profile-header p {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--ak-text-secondary);
-}
-
-.ak-card {
-  background: var(--ak-surface-1);
-  border: 1px solid var(--ak-border);
-  border-radius: var(--ak-radius-lg);
-  padding: 18px 20px;
-}
-
-.ak-card h2 {
-  font-size: 14px;
-  font-weight: 700;
 }
 
 .ak-card-sub {
-  margin: 6px 0 14px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--ak-text-tertiary);
+  margin-bottom: 14px;
   max-width: 62ch;
 }
 
 .ak-card-actions {
   margin-top: 14px;
-  display: flex;
-  gap: 8px;
 }
 
 .ak-card-actions button,
@@ -53,18 +24,20 @@
   gap: 6px;
 }
 
-// ---- Profile detail list ---------------------------------------------------
+// ---- Profile detail list -----------------------------------------------------
 .ak-detail-list {
+  --ak-gap: 8px;
+
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 12px 0 0;
+  gap: var(--ak-gap);
+  margin-top: 12px;
+  font-size: 13px;
 }
 
 .ak-detail-list > div {
   display: flex;
   gap: 12px;
-  font-size: 13px;
 }
 
 .ak-detail-list dt {
@@ -72,16 +45,9 @@
   color: var(--ak-text-tertiary);
 }
 
-.ak-detail-list dd {
-  margin: 0;
-  color: var(--ak-text-primary);
-}
-
-// ---- Saved logins ----------------------------------------------------------
+// ---- Saved logins ------------------------------------------------------------
 .ak-saved-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  --ak-gap: 8px;
 }
 
 .ak-saved {
@@ -94,54 +60,25 @@
   border-radius: var(--ak-radius-md);
 }
 
-.ak-saved-main {
-  flex: 1;
-  min-width: 0;
-}
-
 .ak-saved-title {
-  margin: 0;
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px;
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--ak-text-primary);
-}
-
-.ak-saved-broker {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ak-text-tertiary);
 }
 
 .ak-saved-fields {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin: 5px 0 0;
-  font-size: 12px;
-  color: var(--ak-text-secondary);
+  margin-top: 5px;
 }
 
 .ak-saved-fields mat-icon {
-  flex: none;
-  font-size: 14px;
-  width: 14px;
-  height: 14px;
   color: var(--ak-success);
 }
 
 .ak-saved-meta {
-  margin: 3px 0 0;
-  font-size: 11px;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-saved-forget {
-  flex: none;
-  color: var(--ak-text-tertiary);
+  margin-top: 3px;
 }
 
 .ak-saved-forget:hover {

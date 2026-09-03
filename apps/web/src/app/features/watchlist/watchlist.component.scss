@@ -1,36 +1,14 @@
-.ak-watchlist-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
+// The header's controls, and the column layout the header shares with `ak-watchlist-row`.
+:host {
+  --ak-cols: 1fr 60px var(--ak-col-price-width) 90px auto 32px;
 }
 
-.ak-watchlist-header h1 {
-  font-size: 22px;
-  font-weight: 700;
-  /* Keeps the link picker and the search box grouped at the right of the
-     header rather than letting space-between strand the picker in the middle. */
+// Keeps the link picker and search box grouped at the right of the header rather than
+// letting `space-between` strand the picker in the middle.
+.ak-page-head h1 {
   margin-right: auto;
 }
 
-/* Only rendered when the user has more than one usable broker link. */
-.ak-watchlist-link {
-  width: 180px;
-}
-
-.ak-watchlist-search {
-  width: 320px;
-}
-
-.ak-watchlist-table-head {
-  display: grid;
-  grid-template-columns: 1fr 60px var(--ak-col-price-width) 90px auto 32px;
-  gap: 12px;
-  padding: 8px 12px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--ak-text-tertiary);
-  border-bottom: 1px solid var(--ak-border);
-}
+// Only rendered when the user has more than one usable broker link.
+.ak-watchlist-link { width: 180px; }
+.ak-watchlist-search { width: 320px; }

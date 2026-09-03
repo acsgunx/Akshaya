@@ -1,169 +1,113 @@
 // =============================================================================
-// AKSHAYA — Angular Material theme, built FROM the tokens in _tokens.scss.
+// AKSHAYA — theme
 // =============================================================================
-// Dark is the default and only theme most sessions will ever see (a trading
-// desk left open at 2am should not be a floodlight — see DESIGN.md). Light is
-// an explicit opt-in via [data-theme="light"] on <html>, toggled by a user
-// preference stored in localStorage, never by prefers-color-scheme alone —
-// a trader's monitor brightness choice for OTHER apps should not silently
-// flip a trading terminal's chrome underneath them mid-session.
+// One file, one emission. Angular Material 22's CSS-first `mat.theme()` writes
+// the whole design system as `--mat-sys-*` custom properties instead of the
+// ~90kB of per-component rules `mat.all-component-themes()` used to emit for
+// every control in the library, used or not.
+//
+// Light and dark come from ONE set of declarations via the CSS `light-dark()`
+// function, switched by `color-scheme`. There is no second theme block to keep
+// in sync — that is what the old file spent half its length doing.
 // =============================================================================
 
 @use '@angular/material' as mat;
-@use 'sass:map';
-@use 'tokens' as tok;
 
-@include mat.core();
-
-// M3 palettes seeded from our brand indigo/blue rather than Material's stock
-// palettes, so "primary" in every Material control (buttons, checked states,
-// focus rings) matches the same indigo used for links and active nav — one
-// accent hue for the whole chrome, reserving blue/amber exclusively for
-// buy/sell so they are never confused with "this is just a selected button".
-$ak-primary-palette: mat.$violet-palette;
-$ak-tertiary-palette: mat.$blue-palette;
-
-$ak-dark-theme: mat.define-theme((
-  color: (
-    theme-type: dark,
-    primary: $ak-primary-palette,
-    tertiary: $ak-tertiary-palette,
-  ),
-  typography: (
-    brand-family: tok.$font-ui,
-    plain-family: tok.$font-ui,
-    bold-weight: tok.$fw-semibold,
-    medium-weight: tok.$fw-medium,
-    regular-weight: tok.$fw-regular,
-  ),
-  density: (
-    scale: -2, // trading UIs are dense by nature; default M3 spacing wastes rows
-  ),
-));
-
-$ak-light-theme: mat.define-theme((
-  color: (
-    theme-type: light,
-    primary: $ak-primary-palette,
-    tertiary: $ak-tertiary-palette,
-  ),
-  typography: (
-    brand-family: tok.$font-ui,
-    plain-family: tok.$font-ui,
-    bold-weight: tok.$fw-semibold,
-    medium-weight: tok.$fw-medium,
-    regular-weight: tok.$fw-regular,
-  ),
-  density: (
-    scale: -2,
-  ),
-));
-
+// Palette seeds. Indigo/violet is the chrome accent (links, focus, checked
+// states); blue/amber below are reserved exclusively for buy/sell so a
+// direction is never confused with "this control is selected".
 :root {
-  @include mat.all-component-themes($ak-dark-theme);
-  @include mat.system-level-colors($ak-dark-theme);
-  @include mat.system-level-typography($ak-dark-theme);
+  @include mat.theme((
+    color: (
+      primary: mat.$violet-palette,
+      tertiary: mat.$blue-palette,
+      theme-type: color-scheme,
+    ),
+    typography: (
+      plain-family: (Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif),
+      brand-family: (Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif),
+      bold-weight: 600,
+      medium-weight: 500,
+      regular-weight: 400,
+    ),
+    // Trading UIs are dense by nature; stock M3 spacing wastes a row per row.
+    density: -2,
+  ));
 
-  // ---- Token bridge: plain CSS custom properties our OWN components read,
-  // so a feature component never needs to `@use 'tokens'` just to colour a
-  // buy/sell pill — it reads var(--ak-buy) and the theme decides its value.
+  // Dark by default. A trading desk left open at 2am should not be a
+  // floodlight, and `prefers-color-scheme` alone must not flip a terminal's
+  // chrome mid-session — light is an explicit opt-in below.
   color-scheme: dark;
 
-  --ak-bg: #{tok.$grey-900};
-  --ak-surface-1: #{tok.$grey-850};
-  --ak-surface-2: #{tok.$grey-800};
-  --ak-surface-3: #{tok.$grey-700};
-  --ak-surface-4: #{tok.$grey-600};
-  --ak-border: #{tok.$grey-700};
-  --ak-border-strong: #{tok.$grey-600};
+  // ---- App tokens ---------------------------------------------------------
+  // Everything our own components read. `light-dark(light, dark)` resolves
+  // against `color-scheme`, so each token is declared exactly once.
+  --ak-bg: light-dark(#f4f6fa, #14161a);
+  --ak-surface-1: light-dark(#ffffff, #1a1d22);
+  --ak-surface-2: light-dark(#e2e6ee, #20242b);
+  --ak-surface-3: light-dark(#c2c9d6, #2a2f38);
+  --ak-border: light-dark(#c2c9d6, #2a2f38);
+  --ak-border-strong: light-dark(#98a1b3, #383f4b);
 
-  --ak-text-primary: #{tok.$grey-50};
-  --ak-text-secondary: #{tok.$grey-300};
-  --ak-text-tertiary: #{tok.$grey-400};
-  --ak-text-disabled: #{tok.$grey-500};
+  --ak-text-primary: light-dark(#14161a, #f4f6fa);
+  --ak-text-secondary: light-dark(#383f4b, #98a1b3);
+  --ak-text-tertiary: light-dark(#4d5566, #6b7385);
 
-  --ak-brand: #{tok.$brand-500};
-  --ak-brand-strong: #{tok.$brand-600};
+  // The chrome accent IS Material's primary role, aliased rather than re-picked, so a link,
+  // a focus ring and a filled button can never drift to two different violets.
+  --ak-brand: var(--mat-sys-primary);
 
-  --ak-buy: #{tok.$buy-500};
-  --ak-buy-strong: #{tok.$buy-700};
-  --ak-buy-surface: #{tok.$buy-surface};
-  --ak-sell: #{tok.$sell-500};
-  --ak-sell-strong: #{tok.$sell-700};
-  --ak-sell-surface: #{tok.$sell-surface};
+  // DECISION: buy/sell are NOT red/green. ~8% of men are red-green colour
+  // blind, and red-on-dark vs green-on-dark is the worst pair for them — both
+  // desaturate toward the same dull olive. Blue/amber separate on wavelength
+  // AND luminance, so they survive deuteranopia, protanopia and tritanopia.
+  // They darken on light surfaces because the dark values fail 4.5:1 as text.
+  --ak-buy: light-dark(#1d4ed8, #3b82f6);
+  --ak-sell: light-dark(#b45309, #f59e0b);
+  --ak-buy-surface: color-mix(in srgb, var(--ak-buy) 14%, transparent);
+  --ak-sell-surface: color-mix(in srgb, var(--ak-sell) 14%, transparent);
 
-  --ak-success: #{tok.$success-500};
-  --ak-warning: #{tok.$warning-500};
-  --ak-danger: #{tok.$danger-500};
-  --ak-info: #{tok.$info-500};
+  // Non-directional status. `--ak-danger` is destructive/error only, never
+  // "sell"; `--ak-success` is "order acked / link ok", never "up".
+  --ak-success: light-dark(#15803d, #22c55e);
+  --ak-warning: light-dark(#a16207, #eab308);
+  --ak-danger: light-dark(#b91c1c, #ef4444);
+  --ak-info: light-dark(#0369a1, #38bdf8);
 
-  --ak-state-live: #{tok.$state-live};
-  --ak-state-degraded: #{tok.$state-degraded};
-  --ak-state-stale: #{tok.$state-stale};
-  --ak-state-disconnected: #{tok.$state-disconnected};
+  --ak-shadow-1: 0 1px 2px light-dark(rgb(15 23 42 / 8%), rgb(0 0 0 / 40%));
+  --ak-shadow-2: 0 2px 8px light-dark(rgb(15 23 42 / 10%), rgb(0 0 0 / 45%));
 
-  --ak-shadow-1: #{tok.$shadow-1};
-  --ak-shadow-2: #{tok.$shadow-2};
-  --ak-shadow-3: #{tok.$shadow-3};
-  --ak-shadow-4: #{tok.$shadow-4};
+  --ak-radius-xs: 4px;
+  --ak-radius-sm: 6px;
+  --ak-radius-md: 10px;
+  --ak-radius-lg: 16px;
+  --ak-radius-full: 999px;
 
-  --ak-radius-xs: #{tok.$radius-xs};
-  --ak-radius-sm: #{tok.$radius-sm};
-  --ak-radius-md: #{tok.$radius-md};
-  --ak-radius-lg: #{tok.$radius-lg};
+  --ak-font-mono: ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
-  --ak-font-ui: #{tok.$font-ui};
-  --ak-font-mono: #{tok.$font-mono};
+  // Fixed numeric column widths, in `ch`, so an incoming tick can never change
+  // a column's width and shove its neighbours — see DESIGN.md "price cells
+  // must never jitter".
+  --ak-col-price-width: 11ch;
+  --ak-col-qty-width: 9ch;
+  --ak-col-pnl-width: 13ch;
 
-  --ak-col-price-width: #{tok.$col-price-width};
-  --ak-col-qty-width: #{tok.$col-qty-width};
-  --ak-col-pnl-width: #{tok.$col-pnl-width};
-  --ak-col-time-width: #{tok.$col-time-width};
-
-  --ak-motion-fast: #{tok.$motion-fast};
-  --ak-motion-base: #{tok.$motion-base};
-  --ak-motion-flash: #{tok.$motion-flash};
-  --ak-ease-standard: #{tok.$ease-standard};
+  // Flashes fade over 900ms: long enough to register peripherally, short
+  // enough to have finished before the next tick on a liquid instrument.
+  --ak-motion: 180ms;
+  --ak-motion-flash: 900ms;
+  --ak-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
-// Colour-blind-safe alternate mode. A user setting, not a media query, because
-// there is no reliable platform signal for colour-vision deficiency — this is
-// a deliberate opt-in in Settings > Accessibility.
-:root[data-cvd-safe='true'] {
-  --ak-buy: #{tok.$buy-500-cvd};
-  --ak-buy-strong: #{darken(tok.$buy-500-cvd, 15%)};
-  --ak-sell: #{tok.$sell-500-cvd};
-  --ak-sell-strong: #{darken(tok.$sell-500-cvd, 10%)};
-}
-
+// Explicit light opt-in (a stored user preference, not a media query).
 :root[data-theme='light'] {
-  @include mat.all-component-colors($ak-light-theme);
-
   color-scheme: light;
+}
 
-  --ak-bg: #{tok.$grey-50};
-  --ak-surface-1: #{tok.$grey-0};
-  --ak-surface-2: #{tok.$grey-100};
-  --ak-surface-3: #{tok.$grey-200};
-  --ak-surface-4: #{tok.$grey-300};
-  --ak-border: #{tok.$grey-200};
-  --ak-border-strong: #{tok.$grey-300};
-
-  --ak-text-primary: #{tok.$grey-900};
-  --ak-text-secondary: #{tok.$grey-600};
-  --ak-text-tertiary: #{tok.$grey-500};
-  --ak-text-disabled: #{tok.$grey-400};
-
-  // Buy/sell hold their hue across themes but darken slightly for AA contrast
-  // on a light surface — a straight copy of the dark values fails 4.5:1 on
-  // white for text use (they remain fine as fills, which is how they're used).
-  --ak-buy: #{tok.$buy-700};
-  --ak-buy-surface: rgba(29, 78, 216, 0.08);
-  --ak-sell: #{tok.$sell-700};
-  --ak-sell-surface: rgba(180, 83, 9, 0.1);
-
-  --ak-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.08);
-  --ak-shadow-2: 0 2px 8px rgba(15, 23, 42, 0.1);
-  --ak-shadow-3: 0 8px 24px rgba(15, 23, 42, 0.14);
-  --ak-shadow-4: 0 16px 40px rgba(15, 23, 42, 0.18);
+// Colour-vision-deficiency alternate: a luminance-separated pair for the rare
+// viewer who still finds blue/amber close. A setting, not a media query —
+// there is no platform signal for colour vision.
+:root[data-cvd-safe='true'] {
+  --ak-buy: light-dark(#0e7490, #56c2ff);
+  --ak-sell: light-dark(#5b21b6, #7c3aed);
 }

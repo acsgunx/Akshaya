@@ -31,9 +31,9 @@ type FlashDirection = 'up' | 'down' | undefined;
   imports: [DecimalPipe, MatIconModule, MatTooltipModule, MoneyPipe, ConnectionStatusComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="ak-wl-row" role="row">
-      <span class="ak-wl-symbol" role="cell">{{ instrument().name || instrument().key }}</span>
-      <span class="ak-wl-currency" role="cell">{{ instrument().currency }}</span>
+    <div class="ak-trow ak-wl-row" role="row">
+      <span class="ak-truncate ak-strong" role="cell">{{ instrument().name || instrument().key }}</span>
+      <span class="ak-caption" role="cell">{{ instrument().currency }}</span>
 
       <span class="ak-col-price ak-wl-price" role="cell" [class]="flashClass()">
         {{ quote()?.lastPrice | akMoney }}
@@ -49,54 +49,20 @@ type FlashDirection = 'up' | 'down' | undefined;
 
       <button
         type="button"
-        class="ak-wl-remove ak-focus-halo"
+        class="ak-iconbtn ak-focus-halo"
         (click)="remove.emit(instrument().key)"
         [attr.aria-label]="'Remove ' + instrument().key + ' from watchlist'"
         matTooltip="Remove"
       >
-        <mat-icon aria-hidden="true">close</mat-icon>
+        <mat-icon class="ak-i-sm" aria-hidden="true">close</mat-icon>
       </button>
     </div>
   `,
+  // The grid columns come from the parent watchlist (`--ak-cols`), so the row can never
+  // fall out of alignment with the header it sits under. Everything else is a primitive.
   styles: `
-    .ak-wl-row {
-      display: grid;
-      grid-template-columns: 1fr 60px var(--ak-col-price-width) 90px auto 32px;
-      align-items: center;
-      gap: 12px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--ak-border);
-      font-size: 13px;
-      height: 44px;
-      box-sizing: border-box;
-    }
-    .ak-wl-symbol {
-      font-weight: 500;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .ak-wl-currency {
-      color: var(--ak-text-tertiary);
-      font-size: 11px;
-    }
     .ak-wl-price {
       border-radius: var(--ak-radius-xs);
-    }
-    .ak-buy-text {
-      color: var(--ak-buy);
-    }
-    .ak-sell-text {
-      color: var(--ak-sell);
-    }
-    .ak-wl-remove {
-      background: none;
-      border: none;
-      color: var(--ak-text-tertiary);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
   `,
 })

@@ -1,9 +1,35 @@
 # Akshaya design rationale
 
-This document is the "why" behind `_tokens.scss` and `_theme.scss`, and behind
+This document is the "why" behind `_theme.scss` and `styles.scss`, and behind
 a handful of interaction rules that apply across every feature. Read it before
 adding a component — most "why does this look different from the rest of the
 app" questions are answered here.
+
+## Where the styling lives
+
+Two files, and then almost nothing per screen:
+
+- **`_theme.scss`** — one `mat.theme()` call plus the `--ak-*` custom
+  properties. Light and dark come from a single set of `light-dark()`
+  declarations switched by `color-scheme`, so there is no second theme block to
+  keep in step. Dark is the default; light and the colour-blind-safe buy/sell
+  pair are stored preferences, applied by `AppearanceStore` as `[data-theme]`
+  and `[data-cvd-safe]` on `<html>`.
+- **`styles.scss`** — the reset and the PRIMITIVES every screen is built from:
+  `.ak-page-head`, `.ak-card`, `.ak-badge` (+ `--info`/`--ok`/`--warn`/`--bad`/
+  `--muted`), `.ak-banner`, `.ak-loading`, `.ak-field`, the `.ak-thead` /
+  `.ak-trow` / `.ak-tleg` grid-table set, and the small layout utilities
+  (`.ak-row`, `.ak-stack`, `.ak-truncate`, `.ak-caption`, `.ak-i-sm`).
+
+**A feature stylesheet should contain only what is unique to that screen.** For
+the four table screens that is literally one declaration — `--ak-cols`, the
+grid template that the header, the rows and the expanded broker legs all share.
+If you find yourself writing a page header, a card, a status pill or a spinner
+row in a feature file, it already exists above; add a modifier there instead of
+a seventh near-copy.
+
+`.ak-label` is for column and field headings and renders in caps; `.ak-caption`
+is for a secondary line of prose and does not. They are not interchangeable.
 
 ## Why dark by default
 
@@ -78,8 +104,8 @@ to click a row, a misclick hazard at worst. Three rules eliminate it:
    outside tables (the order ticket's estimated value, the dashboard's P&L
    tiles). Every digit then occupies an identical advance width.
 2. **Fixed `min-width` on numeric columns**, in `ch` units
-   (`--ak-col-price-width`, `--ak-col-qty-width`, `--ak-col-pnl-width`,
-   `--ak-col-time-width`), sized for the longest realistic value (a 6-figure
+   (`--ak-col-price-width`, `--ak-col-qty-width`, `--ak-col-pnl-width`),
+   sized for the longest realistic value (a 6-figure
    INR price with grouping, a signed 6-figure P&L). A column can only ever
    get *emptier* padding on a short number, never narrower.
 3. **Flash-on-change is a background-colour animation only** (`.ak-flash-up`
@@ -98,8 +124,9 @@ stream can still deliver ticks late; a `Connected` stream that has not pushed
 anything in ten seconds on a liquid instrument is itself a symptom.
 
 - **`connection-status`** (shared component) renders one of `live` / `degraded`
-  / `stale` / `disconnected` per connector, driving `--ak-state-*` tokens, and
-  is present everywhere that connector's data appears — the watchlist row, the
+  / `stale` / `disconnected` per connector — mapped straight onto the semantic
+  tokens they mean (`--ak-success`, `--ak-warning`, `--ak-danger`), with no
+  intermediate alias layer to fall out of step — and is present everywhere that connector's data appears — the watchlist row, the
   order ticket header, the dashboard's per-venue strip. It never collapses to
   a binary "connected" dot; `degraded` (connected but behind or partially
   subscribed) is visually distinct from both `live` and `disconnected`.

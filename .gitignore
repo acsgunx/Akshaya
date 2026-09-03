@@ -37,3 +37,6 @@ Thumbs.db
 
 # Local data volumes created by deploy/docker-compose.yml
 deploy/.data/
+
+# Claude Code local dev-server launch config
+.claude/

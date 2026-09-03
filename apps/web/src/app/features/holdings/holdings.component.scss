@@ -1,41 +1,13 @@
 // Column widths shared by the header, the rows and the expanded legs, so a value can never
-// drift out of line with its own heading.
-$grid: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-price-width)
-  var(--ak-col-pnl-width) var(--ak-col-pnl-width) 5rem;
-
-.ak-holdings-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
+// drift out of line with its own heading. Everything else this screen needs — the grid
+// mechanics, hover, badges, page header — comes from the primitives in styles.scss.
+:host {
+  --ak-cols: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-price-width)
+    var(--ak-col-pnl-width) var(--ak-col-pnl-width) 5rem;
+  --ak-viewport-height: calc(100vh - 380px);
 }
 
-.ak-holdings-header h1 {
-  font-size: 22px;
-  font-weight: 700;
-}
-
-.ak-holdings-sub {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--ak-text-secondary);
-}
-
-.ak-refresh {
-  flex: none;
-  color: var(--ak-text-secondary);
-}
-
-.ak-holdings-loading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--ak-text-secondary);
-  padding: 32px;
-}
-
-// ---- Totals -----------------------------------------------------------------
+// ---- Per-currency summary cards ---------------------------------------------
 .ak-totals {
   display: flex;
   flex-wrap: wrap;
@@ -46,38 +18,12 @@ $grid: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-p
 .ak-total-card {
   flex: 1 1 260px;
   max-width: 420px;
-  background: var(--ak-surface-1);
-  border: 1px solid var(--ak-border);
-  border-radius: var(--ak-radius-lg);
-  padding: 14px 16px;
-}
-
-.ak-total-card header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.ak-total-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-total-currency {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ak-text-secondary);
 }
 
 .ak-total-value {
-  margin: 2px 0 0;
+  margin-top: 2px;
   font-size: 22px;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--ak-text-primary);
 }
 
 .ak-total-split {
@@ -89,166 +35,21 @@ $grid: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-p
 }
 
 .ak-total-secondary {
-  margin: 2px 0 0;
+  margin-top: 2px;
   font-size: 14px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.ak-total-return {
-  margin-left: 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-// ---- Table ------------------------------------------------------------------
-.ak-holdings-table-head {
-  display: grid;
-  grid-template-columns: $grid;
-  gap: 12px;
-  padding: 8px 12px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--ak-text-tertiary);
-  border-bottom: 1px solid var(--ak-border);
-}
-
-.ak-holdings-viewport {
-  height: calc(100vh - 380px);
-  min-height: 280px;
-}
-
-.ak-holding-row {
-  display: grid;
-  grid-template-columns: $grid;
-  gap: 12px;
-  align-items: center;
-  padding: 0 12px;
-  height: 44px;
-  border-bottom: 1px solid var(--ak-border);
-  font-size: 13px;
-}
-
-.ak-holding-row:hover {
-  background: var(--ak-surface-2);
-}
-
-.ak-holding-instrument {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ak-expand-btn {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--ak-radius-xs);
-  background: transparent;
-  color: var(--ak-text-tertiary);
-  cursor: pointer;
-}
-
-.ak-expand-btn:disabled {
-  cursor: default;
-}
-
-.ak-expand-btn mat-icon {
-  font-size: 18px;
-  width: 18px;
-  height: 18px;
-}
-
-.ak-split-badge {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: var(--ak-radius-full);
-  background: var(--ak-surface-3);
-  color: var(--ak-text-secondary);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-// Pledged stock is collateral and not freely sellable — worth its own visual weight.
-.ak-pledge-badge {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 6px;
-  border-radius: var(--ak-radius-full);
-  background: color-mix(in srgb, var(--ak-warning) 16%, transparent);
-  color: var(--ak-warning);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.ak-pledge-badge mat-icon {
-  font-size: 11px;
-  width: 11px;
-  height: 11px;
-}
-
-.ak-col-return {
-  display: inline-block;
-  min-width: 5rem;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-// ---- Expanded per-broker legs -----------------------------------------------
-.ak-legs {
-  background: var(--ak-surface-2);
-  border-bottom: 1px solid var(--ak-border);
-}
-
-// THE SAME GRID AS THE PARENT ROW, deliberately. A leg's quantity has to sit directly under
-// the QTY heading and under the blended quantity it contributes to — a sub-table with its own
-// column widths makes the reader work out which number is which, which is the opposite of what
-// expanding a row is for.
-.ak-leg-row {
-  display: grid;
-  grid-template-columns: $grid;
-  gap: 12px;
-  align-items: center;
-  padding: 0 12px;
-  height: 36px;
-  font-size: 12px;
-  color: var(--ak-text-secondary);
-}
-
-// Indented into the instrument column without disturbing the grid — the empty first cell in
-// the markup occupies the chevron column.
-.ak-leg-broker {
-  padding-left: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 @media (max-width: 900px) {
   // Drop the two widest numeric columns rather than letting the grid squeeze every cell into
-  // illegibility. Value and return are recoverable by expanding a row.
-  $narrow: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-pnl-width);
-
-  .ak-holdings-table-head,
-  .ak-holding-row,
-  .ak-leg-row {
-    grid-template-columns: $narrow;
+  // illegibility. Value and return stay recoverable by expanding a row.
+  :host {
+    --ak-cols: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-pnl-width);
   }
 
-  .ak-holdings-table-head > :nth-child(n + 6),
-  .ak-holding-row > :nth-child(n + 6),
-  .ak-leg-row > :nth-child(n + 6) {
+  .ak-thead > :nth-child(n + 6),
+  .ak-trow > :nth-child(n + 6),
+  .ak-tleg > :nth-child(n + 6) {
     display: none;
   }
 }

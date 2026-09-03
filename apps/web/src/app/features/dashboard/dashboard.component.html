@@ -1,5 +1,5 @@
-<section class="ak-dashboard">
-  <header class="ak-dashboard-header">
+<section>
+  <header class="ak-page-head ak-row">
     <h1>Dashboard</h1>
     <button mat-icon-button (click)="refresh()" [disabled]="store.loading()" aria-label="Refresh portfolio">
       <mat-icon>refresh</mat-icon>
@@ -15,10 +15,10 @@
   }
 
   @if (store.loading() && !store.snapshot()) {
-    <div class="ak-dashboard-loading"><mat-spinner diameter="28" /> Loading portfolio…</div>
+    <div class="ak-loading"><mat-spinner diameter="28" /> Loading portfolio…</div>
   } @else if (store.snapshot(); as snapshot) {
     @if (snapshot.isPartial) {
-      <div class="ak-partial-banner" role="alert">
+      <div class="ak-banner ak-banner--warn" role="alert">
         <mat-icon aria-hidden="true">error_outline</mat-icon>
         <span>
           {{ snapshot.failedSources.length }} of {{ snapshot.sources.length }} broker
@@ -30,38 +30,38 @@
 
     <div class="ak-dashboard-grid">
       <!-- Blended, multi-currency P&L -->
-      <section class="ak-card ak-pnl-card">
+      <section class="ak-card">
         <h2>P&amp;L</h2>
         <div class="ak-pnl-row">
-          <span class="ak-pnl-label">Unrealised</span>
+          <span class="ak-muted">Unrealised</span>
           <div class="ak-pnl-natives">
             @for (m of snapshot.pnl.unrealisedNative; track m.currency) {
               <span class="ak-num" [class.ak-buy-text]="+m.amount >= 0" [class.ak-sell-text]="+m.amount < 0">{{ m | akMoney }}</span>
             } @empty {
-              <span class="ak-num ak-pnl-empty">—</span>
+              <span class="ak-num ak-muted">—</span>
             }
           </div>
         </div>
         <div class="ak-pnl-row">
-          <span class="ak-pnl-label">Realised</span>
+          <span class="ak-muted">Realised</span>
           <div class="ak-pnl-natives">
             @for (m of snapshot.pnl.realisedNative; track m.currency) {
               <span class="ak-num" [class.ak-buy-text]="+m.amount >= 0" [class.ak-sell-text]="+m.amount < 0">{{ m | akMoney }}</span>
             } @empty {
-              <span class="ak-num ak-pnl-empty">—</span>
+              <span class="ak-num ak-muted">—</span>
             }
           </div>
         </div>
         @if (snapshot.pnl.unrealisedConverted; as converted) {
           <p class="ak-pnl-converted ak-num">≈ {{ converted | akMoney }} unrealised, converted</p>
         } @else {
-          <p class="ak-pnl-note">
-            <mat-icon aria-hidden="true">info</mat-icon>
+          <p class="ak-note">
+            <mat-icon class="ak-i-xs" aria-hidden="true">info</mat-icon>
             No converted total — see conversion notes below.
           </p>
         }
         @for (warning of snapshot.pnl.conversionWarnings; track warning) {
-          <p class="ak-pnl-warning">{{ warning }}</p>
+          <p class="ak-note ak-danger-text">{{ warning }}</p>
         }
       </section>
 
@@ -71,7 +71,7 @@
         @if (snapshot.balances.length === 0) {
           <ak-empty-state icon="account_balance_wallet" title="No balances reported" [compact]="true" />
         } @else {
-          <table class="ak-funds-table">
+          <table>
             <thead>
               <tr>
                 <th scope="col">Currency</th>
@@ -98,7 +98,7 @@
         @if (snapshot.positions.length === 0) {
           <ak-empty-state icon="show_chart" title="No open positions" [compact]="true" />
         } @else {
-          <table class="ak-positions-table">
+          <table>
             <thead>
               <tr>
                 <th scope="col">Instrument</th>
@@ -138,7 +138,7 @@
                 [streamState]="source.isComplete ? 'connected' : 'disconnected'"
               />
               @if (!source.isComplete && source.error) {
-                <span class="ak-source-error">{{ source.error.detail }}</span>
+                <span class="ak-muted ak-danger-text">{{ source.error.detail }}</span>
               }
             </li>
           }

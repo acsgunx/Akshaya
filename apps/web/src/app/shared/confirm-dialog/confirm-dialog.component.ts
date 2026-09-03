@@ -85,10 +85,6 @@ export interface ConfirmDialogData {
       color: var(--ak-text-primary);
       font: inherit;
     }
-    .ak-btn-danger {
-      background: var(--ak-danger) !important;
-      color: white !important;
-    }
   `,
 })
 export class ConfirmDialogComponent {

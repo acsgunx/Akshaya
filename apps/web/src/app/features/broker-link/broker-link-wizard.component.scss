@@ -1,53 +1,34 @@
+// The card, banners, fields, badges, stacked actions and fine print are all primitives from
+// styles.scss. What is left here is the wizard's own header, its saved-login picker and the
+// four step panels.
 :host {
   display: block;
   padding: 24px 16px 48px;
 }
 
-// ---- Card --------------------------------------------------------------------
+// ---- Card head ---------------------------------------------------------------
 .ak-card {
-  width: 100%;
-  max-width: 460px;
-  margin-inline: auto;
-  background: var(--ak-surface-1);
-  border: 1px solid var(--ak-border);
-  border-radius: var(--ak-radius-lg);
-  box-shadow: var(--ak-shadow-2);
+  padding: 0; // the head and body own their own padding, and the head has a rule under it
   overflow: hidden;
 }
 
-.ak-card--loading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 28px 24px;
-  color: var(--ak-text-secondary);
-  font-size: 14px;
-}
-
 .ak-card-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+  --ak-gap: 14px;
+
   padding: 20px 24px;
   border-bottom: 1px solid var(--ak-border);
-}
-
-.ak-card-head-text {
-  min-width: 0;
 }
 
 .ak-card-head h1 {
   font-size: 17px;
   font-weight: 700;
   line-height: 1.25;
-  color: var(--ak-text-primary);
 }
 
 .ak-card-sub {
-  display: flex;
-  align-items: center;
+  --ak-gap: 8px;
+
   flex-wrap: wrap;
-  gap: 8px;
   margin-top: 3px;
   font-size: 12px;
   color: var(--ak-text-tertiary);
@@ -62,44 +43,27 @@
   border-radius: var(--ak-radius-md);
   background: var(--ak-surface-3);
   color: var(--ak-brand);
-  font-weight: 700;
   font-size: 15px;
-  letter-spacing: 0.02em;
+  font-weight: 700;
 }
 
-.ak-tag {
-  padding: 1px 7px;
-  border-radius: var(--ak-radius-full);
-  background: var(--ak-surface-3);
-  color: var(--ak-text-secondary);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-}
-
-// ---- Body ------------------------------------------------------------------
 .ak-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  --ak-gap: 18px;
+
   padding: 22px 24px 24px;
 }
 
-// ---- Saved-login picker ----------------------------------------------------
+// ---- Saved-login picker --------------------------------------------------------
 .ak-saved-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  --ak-gap: 6px;
 }
 
 .ak-saved-option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  --ak-gap: 10px;
+
   width: 100%;
   padding: 10px 12px;
   text-align: left;
-  font: inherit;
   color: var(--ak-text-secondary);
   background: var(--ak-surface-2);
   border: 1px solid var(--ak-border);
@@ -119,10 +83,6 @@
 }
 
 .ak-saved-option mat-icon {
-  flex: none;
-  font-size: 20px;
-  width: 20px;
-  height: 20px;
   color: var(--ak-brand);
 }
 
@@ -130,55 +90,12 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-}
-
-.ak-saved-option-name {
   font-size: 13px;
-  font-weight: 600;
 }
 
-.ak-saved-option-keys {
-  font-size: 11px;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-remember {
-  margin-top: 2px;
-  font-size: 12px;
-}
-
-.ak-remember ::ng-deep .mdc-form-field > label {
-  font-size: 12px;
-  color: var(--ak-text-tertiary);
-  padding-left: 4px;
-}
-
+// ---- Fields --------------------------------------------------------------------
 .ak-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.ak-field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.ak-field mat-form-field {
-  width: 100%;
-}
-
-.ak-field-msg {
-  margin: 0;
-  padding-inline: 2px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-field-msg--error {
-  color: var(--ak-danger);
+  --ak-gap: 16px;
 }
 
 .ak-label-opt {
@@ -186,106 +103,34 @@
   font-weight: 400;
 }
 
-// ---- Banners (info / error) ----------------------------------------------
-.ak-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--ak-radius-md);
-  font-size: 12.5px;
-  line-height: 1.45;
+.ak-remember {
+  margin-top: 2px;
+  font-size: 12px;
 }
 
-.ak-banner mat-icon {
-  flex: none;
-  font-size: 18px;
-  width: 18px;
-  height: 18px;
-  margin-top: 1px;
-}
-
-.ak-banner--info {
-  background: var(--ak-surface-2);
-  border: 1px solid var(--ak-border);
-  color: var(--ak-text-secondary);
-}
-
-.ak-banner--info mat-icon {
-  color: var(--ak-info);
-}
-
-.ak-banner--error {
-  background: color-mix(in srgb, var(--ak-danger) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ak-danger) 40%, transparent);
-  color: var(--ak-text-primary);
-}
-
-.ak-banner--error mat-icon {
-  color: var(--ak-danger);
-}
-
-// ---- Actions ------------------------------------------------------------
+// ---- Actions -------------------------------------------------------------------
 .ak-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  --ak-gap: 8px;
 }
 
-.ak-btn-block {
-  width: 100%;
-}
-
-.ak-btn-block ::ng-deep .mat-mdc-button-touch-target {
-  width: 100%;
-}
-
-button[mat-flat-button],
-button[mat-stroked-button] {
+.ak-actions .mat-mdc-button-base {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
 }
 
-button[mat-flat-button] mat-spinner,
-button[mat-stroked-button] mat-spinner {
-  --mdc-circular-progress-active-indicator-color: currentColor;
-}
-
-.ak-fineprint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-size: 11px;
-  color: var(--ak-text-tertiary);
-}
-
-.ak-fineprint mat-icon {
-  font-size: 14px;
-  width: 14px;
-  height: 14px;
-}
-
-// ---- Sub-state panels (completed / challenge / redirect / gateway) ------
+// ---- Step panels (completed / challenge / redirect / gateway) -------------------
 .ak-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  --ak-gap: 10px;
 }
 
-.ak-panel > h2 {
+.ak-panel h2 {
   font-size: 16px;
   font-weight: 700;
-  color: var(--ak-text-primary);
 }
 
 .ak-panel-icon {
-  font-size: 34px;
-  width: 34px;
-  height: 34px;
   color: var(--ak-info);
 }
 
@@ -299,60 +144,19 @@ button[mat-stroked-button] mat-spinner {
 }
 
 .ak-panel-line {
-  margin: 0;
   font-size: 13px;
   color: var(--ak-text-secondary);
 }
 
 .ak-panel-muted {
-  margin: 0;
   font-size: 13px;
   line-height: 1.5;
   color: var(--ak-text-tertiary);
 }
 
-.ak-panel .ak-actions {
-  margin-top: 4px;
-}
-
-// ---- Countdown --------------------------------------------------------
-.ak-countdown {
-  font-weight: 500;
-}
-
+// The one-time-code timer. Urgent at <30s because that is roughly the point past which
+// re-reading a code off a phone and typing it will not beat the expiry.
 .ak-countdown--urgent {
   color: var(--ak-danger);
   font-weight: 600;
-}
-
-// ---- Material form-field: keep the outline calm in the dark theme -----
-:host ::ng-deep {
-  .mat-mdc-form-field-subscript-wrapper {
-    display: none; // we render help/errors ourselves, outside the field
-  }
-
-  .mat-mdc-text-field-wrapper {
-    background: var(--ak-surface-2);
-  }
-
-  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
-    .mdc-notched-outline__leading,
-  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
-    .mdc-notched-outline__notch,
-  .mdc-text-field--outlined:not(.mdc-text-field--focused):not(.mdc-text-field--invalid)
-    .mdc-notched-outline__trailing {
-    border-color: var(--ak-border-strong);
-  }
-
-  .mat-mdc-form-field-required-marker {
-    margin-left: 3px;
-    color: var(--ak-text-tertiary);
-  }
-
-  .mat-mdc-form-field-icon-suffix mat-icon {
-    font-size: 18px;
-    width: 18px;
-    height: 18px;
-    color: var(--ak-text-tertiary);
-  }
 }

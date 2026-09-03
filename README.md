@@ -17,7 +17,7 @@ about a broker comes from a declarative capability manifest and one interface.
 ## Quick start
 
 ```bash
-# 1. Prerequisites: .NET 10 SDK, Node 22+, Docker
+# 1. Prerequisites: .NET 10 SDK, Node 22.22+, Docker
 scripts/bootstrap.sh          # checks toolchain, restores packages, installs web deps
 
 # 2. Infrastructure (Postgres+TimescaleDB, Redis, OpenTelemetry collector, Seq)
@@ -93,7 +93,7 @@ src/
     Portfolio/                     Multi-currency blended portfolio
     Identity/                      Accounts, sessions, and the encrypted saved-login vault
   Akshaya.Api/                     Minimal APIs, SignalR hub, composition root
-apps/web/                          Angular app — renders itself from connector manifests
+apps/web/                          Angular 22 app (zoneless, signals) — renders itself from connector manifests
 tests/
   Akshaya.Connectors.TestKit/      Conformance suite + two deliberately different fake brokers
   Akshaya.Architecture.Tests/      The rules that keep the design honest
@@ -169,7 +169,7 @@ Once you have the SDK, the real gates are:
 dotnet build                                  # the check that has never been run
 dotnet test tests/Akshaya.Architecture.Tests  # the design's own guardrails
 dotnet test                                   # everything
-cd apps/web && npm run lint && npm test
+cd apps/web && npm run lint && npm test -- --no-watch   # ESLint + Vitest
 ```
 
 ---

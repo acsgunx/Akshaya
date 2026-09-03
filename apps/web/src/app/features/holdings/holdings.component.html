@@ -1,13 +1,13 @@
-<section class="ak-holdings">
-  <header class="ak-holdings-header">
+<section>
+  <header class="ak-page-head">
     <div>
       <h1>Holdings</h1>
-      <p class="ak-holdings-sub">Delivery stock settled in your demat account, blended across every linked broker.</p>
+      <p class="ak-sub">Delivery stock settled in your demat account, blended across every linked broker.</p>
     </div>
     <button
       mat-icon-button
       type="button"
-      class="ak-refresh ak-focus-halo"
+      class="ak-focus-halo"
       aria-label="Refresh holdings"
       [disabled]="store.loading()"
       (click)="store.refresh(undefined)"
@@ -17,7 +17,7 @@
   </header>
 
   @if (store.loading() && !store.snapshot()) {
-    <div class="ak-holdings-loading"><mat-spinner diameter="28" /> Loading holdings…</div>
+    <div class="ak-loading"><mat-spinner diameter="28" /> Loading holdings…</div>
   } @else if (holdings().length === 0) {
     <ak-empty-state
       icon="account_balance_wallet"
@@ -31,22 +31,22 @@
     -->
     <div class="ak-totals">
       @for (total of totals(); track total.currency) {
-        <article class="ak-total-card">
-          <header>
-            <span class="ak-total-label">Invested</span>
+        <article class="ak-card ak-total-card">
+          <header class="ak-row ak-between">
+            <span class="ak-label">Invested</span>
             @if (totals().length > 1) {
-              <span class="ak-total-currency">{{ total.currency }}</span>
+              <span class="ak-label">{{ total.currency }}</span>
             }
           </header>
           <p class="ak-total-value ak-num">{{ total.invested | akMoney }}</p>
 
           <div class="ak-total-split">
             <div>
-              <span class="ak-total-label">Current</span>
+              <span class="ak-label">Current</span>
               <p class="ak-total-secondary ak-num">{{ total.current | akMoney }}</p>
             </div>
             <div>
-              <span class="ak-total-label">Unrealised</span>
+              <span class="ak-label">Unrealised</span>
               <p
                 class="ak-total-secondary ak-num"
                 [class.ak-buy-text]="+total.unrealisedPnl.amount >= 0"
@@ -54,7 +54,7 @@
               >
                 {{ total.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
                 @if (total.returnFraction !== undefined) {
-                  <span class="ak-total-return">({{ total.returnFraction | percent: '1.2-2' }})</span>
+                  <span class="ak-muted">({{ total.returnFraction | percent: '1.2-2' }})</span>
                 }
               </p>
             </div>
@@ -63,7 +63,7 @@
       }
     </div>
 
-    <div class="ak-holdings-table-head" role="row">
+    <div class="ak-thead" role="row">
       <span></span>
       <span>Instrument</span>
       <span class="ak-col-qty">Qty</span>
@@ -75,26 +75,28 @@
     </div>
 
     <!-- Virtualised: only visible rows render, even with a few thousand holdings. -->
-    <cdk-virtual-scroll-viewport itemSize="44" class="ak-holdings-viewport">
-      <div *cdkVirtualFor="let holding of holdings(); trackBy: trackByGroupKey" class="ak-holding-row-wrap">
-        <div class="ak-holding-row" role="row">
+    <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport">
+      <div *cdkVirtualFor="let holding of holdings(); trackBy: trackByGroupKey">
+        <div class="ak-trow" role="row">
           <button
             type="button"
-            class="ak-expand-btn ak-focus-halo"
+            class="ak-expand ak-focus-halo"
             [attr.aria-expanded]="isExpanded(holding.groupKey)"
             [attr.aria-label]="'Toggle brokers holding ' + holding.instrument"
             (click)="toggle(holding.groupKey)"
             [disabled]="holding.legs.length <= 1"
           >
             @if (holding.legs.length > 1) {
-              <mat-icon aria-hidden="true">{{ isExpanded(holding.groupKey) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+              <mat-icon class="ak-i-sm" aria-hidden="true">{{
+                isExpanded(holding.groupKey) ? 'expand_more' : 'chevron_right'
+              }}</mat-icon>
             }
           </button>
 
-          <span class="ak-holding-instrument">
+          <span class="ak-row ak-truncate ak-strong">
             {{ holding.instrument }}
             @if (holding.legs.length > 1) {
-              <span class="ak-split-badge">{{ holding.legs.length }} brokers</span>
+              <span class="ak-badge">{{ holding.legs.length }} brokers</span>
             }
             @if (isPledged(holding)) {
               <!--
@@ -103,10 +105,10 @@
                 broker rejects the order.
               -->
               <span
-                class="ak-pledge-badge"
+                class="ak-badge ak-badge--warn"
                 [attr.title]="(holding.pledgedQuantity | akQuantity: { fractional: true }) + ' pledged as collateral'"
               >
-                <mat-icon aria-hidden="true">lock</mat-icon>
+                <mat-icon class="ak-i-xs" aria-hidden="true">lock</mat-icon>
                 {{ holding.pledgedQuantity | akQuantity: { fractional: true } }} pledged
               </span>
             }
@@ -124,7 +126,7 @@
             {{ holding.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
           </span>
           <span
-            class="ak-col-return ak-num"
+            class="ak-col-return"
             [class.ak-buy-text]="(returnFor(holding) ?? 0) >= 0"
             [class.ak-sell-text]="(returnFor(holding) ?? 0) < 0"
           >
@@ -139,9 +141,9 @@
         @if (isExpanded(holding.groupKey)) {
           <div class="ak-legs">
             @for (leg of holding.legs; track leg.brokerLinkId) {
-              <div class="ak-leg-row" role="row">
-                <span class="ak-leg-spacer"></span>
-                <span class="ak-leg-broker">{{ leg.displayName }}</span>
+              <div class="ak-tleg" role="row">
+                <span></span>
+                <span class="ak-truncate">{{ leg.displayName }}</span>
                 <span class="ak-col-qty">{{ leg.quantity | akQuantity: { fractional: true } }}</span>
                 <span class="ak-col-price">{{ leg.averagePrice | akMoney }}</span>
                 <span class="ak-col-price">{{ leg.lastPrice | akMoney }}</span>
