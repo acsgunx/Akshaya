@@ -120,6 +120,52 @@ internal sealed class LenientBoolConverter : JsonConverter<bool?>
 }
 
 /// <summary>
+/// Reads a field that is a string on one route and an array of them on another.
+///
+/// <c>tag</c> is the case that forced this. The order-placement request documents it as a
+/// string; the order book returns <c>"tag": []</c>, an ARRAY; and <c>/order/details</c> returns
+/// <c>"tag": null</c>. All three are the same field. An array is joined with commas, which
+/// keeps a multi-tag order readable without inventing a collection type for a value nothing
+/// branches on.
+/// </summary>
+internal sealed class LenientStringOrArrayConverter : JsonConverter<string?>
+{
+    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray)
+        {
+            // Delegate every scalar shape to the converter that already handles them.
+            return new LenientStringConverter().Read(ref reader, typeToConvert, options);
+        }
+
+        var parts = new List<string>();
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        {
+            if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+            {
+                // Nested structure in a tag list is beyond anything worth guessing at.
+                reader.Skip();
+                continue;
+            }
+
+            var part = new LenientStringConverter().Read(ref reader, typeof(string), options);
+            if (!string.IsNullOrEmpty(part))
+            {
+                parts.Add(part);
+            }
+        }
+
+        return parts.Count == 0 ? null : string.Join(',', parts);
+    }
+
+    public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        writer.WriteStringValue(value);
+    }
+}
+
+/// <summary>
 /// Reads an integer from a number, a numeric string, a boolean, or null.
 ///
 /// Same rationale as the two above: these are status/sequence fields nothing branches on, and

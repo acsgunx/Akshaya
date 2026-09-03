@@ -1,13 +1,13 @@
 # mStock Type A — where this connector disagreed with the API
 
-**Status:** resolved. Five faults, each verified against
-[the official Type A User documentation](https://tradingapi.mstock.com/docs/v1/typeA/User/)
-(retrieved 2026-09-03) and pinned by tests.
+**Status:** resolved. Eleven faults, each verified against
+[the official Type A documentation](https://tradingapi.mstock.com/docs/v1/typeA/User/)
+(User, Orders, Portfolio and Position pages, retrieved 2026-09-03) and pinned by tests.
 
-This started as one bug — a successful login rejected as unparseable — but the documentation
-showed the same *kind* of mistake in four more places, three of them in code paths the user had
-not reached yet. They share one cause: **the connector was written to Zerodha Kite's shapes**,
-which mStock resembles closely enough to be dangerous and differs from in specifics.
+This started as one bug — a successful login rejected as unparseable — but reading the
+documentation showed the same *kind* of mistake in ten more places, nearly all in code paths
+nobody had run yet. They share one cause: **the connector was written to Zerodha Kite's
+shapes**, which mStock resembles closely enough to be dangerous and differs from in specifics.
 
 | # | What broke | Where | Would have surfaced as |
 |---|---|---|---|
@@ -16,6 +16,12 @@ which mStock resembles closely enough to be dangerous and differs from in specif
 | 3 | Fund summary expected Kite's `{"equity":{…}}`; mStock sends an **array** of flat rows | fund summary | balances never loaded |
 | 4 | Logout `data` is the string `"Success"`, deserialised into a class | logout | every logout reported failed |
 | 5 | `"scrip"` matched inside `"subscription"` | error mapping | expired API key reported as *"instrument not found"* |
+| 6 | Order book returns `product: "INTRADAY"`; only `CNC`/`MIS`/`MTF`/`NRML` were mapped | order book, positions | every row unmappable |
+| 7 | `tag` typed `string?`; the order book sends `[]` | order book | whole order book failed to parse |
+| 8 | `/order/details` stamps times `"23-01-2025 02:55:55 PM"` (12-hour); no such format was accepted | order details | orders with no usable timestamp |
+| 9 | `/tradebook` is `SCREAMING_SNAKE`, read as snake_case | trade book | all-null rows, "trade_id is missing", working fallback never ran |
+| 10 | Holdings send the **company name** as `tradingsymbol` with `exchange: null` | holdings | every holding unidentifiable |
+| 11 | Positions send `product: ""`, holdings `product: null` | positions, holdings | every row rejected |
 
 ---
 
@@ -150,9 +156,7 @@ between having that path and not is an afternoon of eyeballing a truncated paylo
 
 ---
 
----
-
-## The four the documentation then exposed
+## The four the User page then exposed
 
 Reading the docs to confirm fault #1 turned up four more. Each is the same underlying error:
 **a Kite-shaped assumption that mStock does not share.**
@@ -243,6 +247,71 @@ precisely because "futu" otherwise matches "future". It was the same bug in a di
 
 ---
 
+---
+
+## The second sweep: Orders, Portfolio, Position
+
+Reading the remaining pages found six more, all the same shape of mistake. The unifying finding
+is worth stating plainly:
+
+> **mStock is not internally consistent. The same logical field arrives with a different name, a
+> different type, or a different vocabulary depending on which route answered.**
+
+Three concrete demonstrations, each of which broke something:
+
+**One field, two vocabularies.** An order placed with `product=MIS` comes back from the order
+book as `"product": "INTRADAY"` — and the *same order* read through `/order/details` comes back
+as `"CNC"`. Only the four glossary codes are valid on the way in; the aliases only ever appear
+on the way out. `ToNativeProduct` must therefore keep emitting the strict set while
+`ToCanonicalPositionEffect` accepts both.
+
+**One field, three types.** `tag` is a string in the placement request, `[]` in the order book,
+and `null` in `/order/details`. `modified` is `"false"` (string) in the order book and `0`
+(number) in `/order/details`.
+
+**One field, three date formats.** `order_timestamp` is `"30-09-2024 15:45:46"` in the order
+book, `"2024-02-14 14:48:23"` in trade history, and `"23-01-2025 02:55:55 PM"` in
+`/order/details`. Day-first 24-hour, ISO-ish, and day-first 12-hour with a meridiem.
+
+### The trade book: two wrong shapes cancelling out
+
+`/tradebook` and `/trades` both return "the day's fills" and share not one field name:
+
+| `/trades` | `/tradebook` |
+|---|---|
+| `trade_id` | `TRADE_NUMBER` |
+| `tradingsymbol` | `SYMBOL` (ticker) / `FULL_SYMBOL` (company name) |
+| `average_price` | `PRICE` |
+| `transaction_type`: `"SELL"` | `BUY_SELL`: `"Sell"` |
+
+Both were read into the same snake_case DTO. That did not throw — unmapped members simply bind
+to null — so the call **reported success** with a list of empty rows, mapping then failed on the
+first one with "trade_id is missing", and **the `/trades` fallback that would have worked never
+ran**, because nothing had reported a failure. Two wrong shapes cancelling into a
+plausible-looking error is the worst kind of bug to chase, which is why the tests now pin the
+null-binding behaviour explicitly.
+
+### Holdings identify instruments by company name
+
+```json
+{"tradingsymbol": "BANK OF MAHARASHTRA", "exchange": null, "instrument_token": 11377, "isin": "INE457A01014"}
+```
+
+`tradingsymbol` holds the **company name**, not a ticker, and `exchange` is null — so neither
+the script master nor the structural fallback can identify it, and every holding a user owns
+failed to resolve. `instrument_token` is unambiguous and present on every row, so resolution now
+tries the token first and falls back to symbol+exchange. (`isin` is also present and is the
+obvious second fallback; the cache has no ISIN index yet.)
+
+### An unstated product
+
+Positions document `"product": ""` and holdings `"product": null`. `PositionEffect` is required
+and non-nullable, so something has to be chosen. It falls back to **Delivery**, which is the
+conservative reading rather than the neutral one: guessing "intraday" would tell the risk engine
+and the UI that the exposure disappears at the square-off, and a trader who believes a position
+will close itself and is wrong is in a far worse place than one who believes it will persist and
+is wrong.
+
 ## The rule this establishes
 
 > **A field the connector does not act on must never be able to fail a request.**
@@ -284,9 +353,13 @@ check the mStock docs, not a reason to skip checking them.
 - **`meta` and `silo` in the session response are unmapped.** Harmless (unmapped members are
   skipped), but `meta` is an *object*, so anyone tempted to map it as a string will get a throw
   — the lenient converters stop at scalars deliberately.
-- **The order, position and market-data DTOs have not been re-checked against the docs.** Faults
-  2–5 were found by reading one page. The rest of the Type A documentation is very likely to
-  contain more of the same, and this is the obvious next sweep.
+- **Market data, historical, option chain and basket routes are still unchecked.** Faults 6–11
+  came from the Orders, Portfolio and Position pages. The remaining pages are the last sweep.
+- **One bad row still fails a whole list.** `GetPositionsAsync` and `GetHoldingsAsync` return on
+  the first mapping failure, so a single unrecognised instrument hides every other position.
+  Left alone deliberately — silently dropping a position from a portfolio view would let a
+  trader believe they are flat when they are not — but it means fault 6 or 11 blanked the entire
+  screen rather than one row.
 
 ## Diagnosing the next one
 

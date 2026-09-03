@@ -82,16 +82,41 @@ public static class MStockMaps
         };
     }
 
-    /// <summary>mStock's product code to canonical position effect.</summary>
-    public static Result<PositionEffect> ToCanonicalPositionEffect(string product) =>
-        Normalise(product) switch
+    /// <summary>
+    /// mStock's product code to canonical position effect.
+    ///
+    /// MSTOCK SENDS BACK A DIFFERENT VOCABULARY FROM THE ONE IT ACCEPTS. An order placed with
+    /// <c>product=MIS</c> comes back from the order book as <c>"product": "INTRADAY"</c>, and
+    /// the same order read through <c>/order/details</c> comes back as <c>"CNC"</c>. Only the
+    /// four codes in the glossary are valid on the way IN — see
+    /// <see cref="ToNativeProduct"/>, which must never emit any of the aliases below — but all
+    /// of them turn up on the way out, and rejecting them made every row of the order book and
+    /// the positions list unmappable.
+    ///
+    /// An EMPTY product is not an error either. The positions route documents
+    /// <c>"product": ""</c> and holdings documents <c>"product": null</c>; the broker simply
+    /// does not say. Falling back to <see cref="PositionEffect.Delivery"/> is the conservative
+    /// choice rather than the neutral one: guessing "intraday" would tell the risk engine and
+    /// the UI that this exposure disappears at the intraday square-off, and a trader who
+    /// believes a position will close itself and is wrong is in a far worse place than one who
+    /// believes it will persist and is wrong.
+    /// </summary>
+    public static Result<PositionEffect> ToCanonicalPositionEffect(string? product)
+    {
+        if (string.IsNullOrWhiteSpace(product))
         {
-            ProductCnc => PositionEffect.Delivery,
-            ProductMis => PositionEffect.Intraday,
+            return PositionEffect.Delivery;
+        }
+
+        return Normalise(product) switch
+        {
+            ProductCnc or "DELIVERY" => PositionEffect.Delivery,
+            ProductMis or "INTRADAY" => PositionEffect.Intraday,
             ProductMtf => PositionEffect.Margin,
-            ProductNrml => PositionEffect.CarryForward,
+            ProductNrml or "CARRYFORWARD" or "CARRY FORWARD" => PositionEffect.CarryForward,
             _ => Result<PositionEffect>.Failure(Unrecognised("product", product)),
         };
+    }
 
     // --- OrderType <-> order_type --------------------------------------------------------
 

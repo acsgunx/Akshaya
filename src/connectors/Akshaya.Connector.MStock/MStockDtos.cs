@@ -242,8 +242,22 @@ internal sealed class MStockPlaceOrderRequest
     /// mStock's only free-text correlation field, and it is short. See
     /// <see cref="MStockOrders"/> for how the platform's ClientOrderId is folded into it.
     /// </summary>
+    /// <summary>
+    /// Client tag. A string in the placement request, <c>[]</c> in the order book and
+    /// <c>null</c> in /order/details — see LenientStringOrArrayConverter.
+    /// </summary>
     [JsonPropertyName("tag")]
+    [JsonConverter(typeof(LenientStringOrArrayConverter))]
     public string? Tag { get; init; }
+
+    /// <summary>
+    /// Whether the order has been modified. <c>"false"</c> (a string) from the order book and
+    /// <c>0</c> (a number) from /order/details, for the same field. Nothing branches on it;
+    /// mapped leniently so neither shape can fail the parse.
+    /// </summary>
+    [JsonPropertyName("modified")]
+    [JsonConverter(typeof(LenientBoolConverter))]
+    public bool? Modified { get; init; }
 }
 
 internal sealed class MStockModifyOrderRequest
@@ -366,8 +380,118 @@ internal sealed class MStockOrderDto
     [JsonPropertyName("exchange_update_timestamp")]
     public string? ExchangeUpdateTimestamp { get; init; }
 
+    /// <summary>
+    /// Client tag. A string in the placement request, <c>[]</c> in the order book and
+    /// <c>null</c> in /order/details — see LenientStringOrArrayConverter.
+    /// </summary>
     [JsonPropertyName("tag")]
+    [JsonConverter(typeof(LenientStringOrArrayConverter))]
     public string? Tag { get; init; }
+
+    /// <summary>
+    /// Whether the order has been modified. <c>"false"</c> (a string) from the order book and
+    /// <c>0</c> (a number) from /order/details, for the same field. Nothing branches on it;
+    /// mapped leniently so neither shape can fail the parse.
+    /// </summary>
+    [JsonPropertyName("modified")]
+    [JsonConverter(typeof(LenientBoolConverter))]
+    public bool? Modified { get; init; }
+}
+
+/// <summary>
+/// One row of <c>/openapi/typea/tradebook</c>.
+///
+/// A SECOND, COMPLETELY DIFFERENT TRADE SHAPE. <c>/trades</c> returns snake_case
+/// (<c>trade_id</c>, <c>tradingsymbol</c>, <c>average_price</c>) and is modelled by
+/// <see cref="MStockTradeDto"/>; <c>/tradebook</c> returns SCREAMING_SNAKE_CASE with entirely
+/// different names (<c>TRADE_NUMBER</c>, <c>SYMBOL</c>, <c>PRICE</c>) for the same concepts.
+///
+/// Reading the tradebook into the snake_case DTO did not throw — every member simply bound to
+/// null — so the call SUCCEEDED with a list of empty rows, mapping then failed on the first
+/// one with "trade_id is missing", and the fallback to <c>/trades</c> that would have worked
+/// never ran because the first call had not reported failure. Two wrong shapes cancelling out
+/// into a plausible-looking error is exactly why this now has its own type.
+/// </summary>
+internal sealed class MStockTradeBookRow
+{
+    [JsonPropertyName("TRADE_NUMBER")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? TradeNumber { get; init; }
+
+    [JsonPropertyName("ORDER_NUMBER")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? OrderNumber { get; init; }
+
+    [JsonPropertyName("EXCH_ORDER_NUMBER")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? ExchangeOrderNumber { get; init; }
+
+    /// <summary>Ticker, e.g. "IDEA". <c>FULL_SYMBOL</c> carries the company name instead.</summary>
+    [JsonPropertyName("SYMBOL")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? Symbol { get; init; }
+
+    [JsonPropertyName("FULL_SYMBOL")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? FullSymbol { get; init; }
+
+    [JsonPropertyName("EXCHANGE")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? Exchange { get; init; }
+
+    /// <summary>"Buy" / "Sell" — title case here, "BUY" / "SELL" everywhere else.</summary>
+    [JsonPropertyName("BUY_SELL")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? BuySell { get; init; }
+
+    [JsonPropertyName("PRODUCT")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? Product { get; init; }
+
+    [JsonPropertyName("ORDER_TYPE")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? OrderType { get; init; }
+
+    [JsonPropertyName("QUANTITY")]
+    public decimal? Quantity { get; init; }
+
+    [JsonPropertyName("PRICE")]
+    public decimal? Price { get; init; }
+
+    [JsonPropertyName("TRADE_VALUE")]
+    public decimal? TradeValue { get; init; }
+
+    /// <summary>"10-06-2025 13:08:42" — day-first, 24-hour.</summary>
+    [JsonPropertyName("ORDER_DATE_TIME")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? OrderDateTime { get; init; }
+
+    /// <summary>Numeric instrument id, as a quoted string.</summary>
+    [JsonPropertyName("SEC_ID")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? SecurityId { get; init; }
+
+    /// <summary>"E" equity / "D" derivative.</summary>
+    [JsonPropertyName("SEGMENT")]
+    [JsonConverter(typeof(LenientStringConverter))]
+    public string? Segment { get; init; }
+
+    /// <summary>Projects onto the shape the rest of the connector already maps.</summary>
+    public MStockTradeDto ToTrade() => new()
+    {
+        TradeId = TradeNumber,
+        OrderId = OrderNumber,
+        ExchangeOrderId = ExchangeOrderNumber,
+        TradingSymbol = Symbol,
+        Exchange = Exchange,
+        TransactionType = BuySell,
+        Product = Product,
+        Quantity = Quantity,
+        AveragePrice = Price,
+        Price = Price,
+        FillTimestamp = OrderDateTime,
+        TradeTimestamp = OrderDateTime,
+    };
 }
 
 internal sealed class MStockTradeDto
