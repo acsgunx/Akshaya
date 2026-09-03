@@ -68,7 +68,7 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
 
         AuthFacet = new MStockAuth(options, Errors, Clock);
         OrdersFacet = new MStockOrders(_api, options, Symbols, Clock);
-        PortfolioFacet = new MStockPortfolio(_api, options, Symbols);
+        PortfolioFacet = new MStockPortfolio(_api, options, Symbols, _instruments);
         MarketDataFacet = new MStockMarketData(_api, options, Symbols, Clock, _instruments);
         ReferenceFacet = new MStockReference(_api, options, _instruments);
 

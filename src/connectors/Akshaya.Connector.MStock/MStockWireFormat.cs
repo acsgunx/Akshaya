@@ -29,6 +29,18 @@ internal static class MStockTime
         "dd-MM-yyyy HH:mm:ss",
         "dd/MM/yyyy HH:mm:ss",
         "dd-MMM-yyyy",
+
+        // TWELVE-HOUR, WITH A MERIDIEM. /order/details stamps its orders
+        // "23-01-2025 02:55:55 PM" while the order book stamps the very same field
+        // "30-09-2024 15:45:46". Both routes, one API. Without this an order read through
+        // /order/details has no usable timestamp at all.
+        "dd-MM-yyyy hh:mm:ss tt",
+        "dd/MM/yyyy hh:mm:ss tt",
+        "yyyy-MM-dd hh:mm:ss tt",
+
+        // Trade history's fill_timestamp is a bare time of day ("14:48:23"), with the date
+        // carried separately on order_timestamp.
+        "HH:mm:ss",
     ];
 
     /// <summary>

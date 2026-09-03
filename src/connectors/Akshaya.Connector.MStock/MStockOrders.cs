@@ -318,26 +318,41 @@ public sealed class MStockOrders : IConnectorOrders
         OrderQuery query,
         CancellationToken ct = default)
     {
-        var response = await _api
-            .GetAsync<IReadOnlyList<MStockTradeDto>>(_options.TradeBookPath, query: null, ct)
+        // /tradebook and /trades return DIFFERENT SHAPES for the same concept — SCREAMING_SNAKE
+        // versus snake_case, with different field names — so each needs its own type. Reading
+        // the tradebook with the snake_case one bound every member to null, which looked like a
+        // successful call full of empty rows and meant the /trades fallback never ran.
+        var book = await _api
+            .GetAsync<IReadOnlyList<MStockTradeBookRow>>(_options.TradeBookPath, query: null, ct)
             .ConfigureAwait(false);
 
-        if (response.IsFailure)
+        IReadOnlyList<MStockTradeDto> rows;
+
+        // Empty is treated the same as failed: some builds serve the day's fills only from
+        // /trades and answer /tradebook with an empty list rather than an error.
+        if (book.IsSuccess && book.Value.Count > 0)
         {
-            // Some mStock builds serve the day's fills from /trades rather than /tradebook.
-            // Falling back costs one call on a route that was going to fail anyway.
-            response = await _api
+            rows = [.. book.Value.Select(r => r.ToTrade())];
+        }
+        else
+        {
+            var fallback = await _api
                 .GetAsync<IReadOnlyList<MStockTradeDto>>(_options.TradesPath, query: null, ct)
                 .ConfigureAwait(false);
 
-            if (response.IsFailure)
+            if (fallback.IsFailure)
             {
-                return Result<IReadOnlyList<BrokerTrade>>.Failure(response.Error);
+                // Report the tradebook's own error when it had one — it is the route the
+                // caller asked for, and its message is the more useful of the two.
+                return Result<IReadOnlyList<BrokerTrade>>.Failure(
+                    book.IsFailure ? book.Error : fallback.Error);
             }
+
+            rows = fallback.Value;
         }
 
-        var trades = new List<BrokerTrade>(response.Value.Count);
-        foreach (var dto in response.Value)
+        var trades = new List<BrokerTrade>(rows.Count);
+        foreach (var dto in rows)
         {
             var mapped = MapTrade(dto);
             if (mapped.IsFailure)

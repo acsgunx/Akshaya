@@ -17,13 +17,19 @@ public sealed class MStockPortfolio : IConnectorPortfolio
     private readonly MStockApi _api;
     private readonly MStockOptions _options;
     private readonly ISymbolTranslator _symbols;
+    private readonly IMStockInstrumentLookup? _instruments;
 
     /// <summary>Creates the portfolio facet.</summary>
-    internal MStockPortfolio(MStockApi api, MStockOptions options, ISymbolTranslator symbols)
+    internal MStockPortfolio(
+        MStockApi api,
+        MStockOptions options,
+        ISymbolTranslator symbols,
+        IMStockInstrumentLookup? instruments = null)
     {
         _api = api;
         _options = options;
         _symbols = symbols;
+        _instruments = instruments;
     }
 
     /// <inheritdoc />
@@ -147,7 +153,7 @@ public sealed class MStockPortfolio : IConnectorPortfolio
 
     private Result<BrokerPosition> MapPosition(MStockPositionDto dto)
     {
-        var instrument = Resolve(dto.TradingSymbol, dto.Exchange, _options.PositionsPath);
+        var instrument = Resolve(dto.TradingSymbol, dto.Exchange, _options.PositionsPath, dto.InstrumentToken);
         if (instrument.IsFailure)
         {
             return Result<BrokerPosition>.Failure(instrument.Error);
@@ -184,7 +190,7 @@ public sealed class MStockPortfolio : IConnectorPortfolio
 
     private Result<BrokerHolding> MapHolding(MStockHoldingDto dto)
     {
-        var instrument = Resolve(dto.TradingSymbol, dto.Exchange, _options.HoldingsPath);
+        var instrument = Resolve(dto.TradingSymbol, dto.Exchange, _options.HoldingsPath, dto.InstrumentToken);
         if (instrument.IsFailure)
         {
             return Result<BrokerHolding>.Failure(instrument.Error);
@@ -212,8 +218,26 @@ public sealed class MStockPortfolio : IConnectorPortfolio
         };
     }
 
-    private Result<InstrumentKey> Resolve(string? tradingSymbol, string? exchange, string route)
+    private Result<InstrumentKey> Resolve(
+        string? tradingSymbol,
+        string? exchange,
+        string route,
+        long? instrumentToken = null)
     {
+        // THE NUMERIC TOKEN FIRST, when the script master is loaded.
+        //
+        // Holdings do not send a trading symbol at all — they send the COMPANY NAME
+        // ("BANK OF MAHARASHTRA", "RASHTRIYA CHEMICALS & FER") in the tradingsymbol field, with
+        // "exchange": null beside it. Neither the master nor the structural fallback can
+        // identify a position from that, so resolving by symbol alone failed for every holding
+        // a user owns. instrument_token is unambiguous and is on every row.
+        if (instrumentToken is > 0 and <= uint.MaxValue
+            && _instruments is not null
+            && _instruments.TryGetByToken((uint)instrumentToken.Value, out var byToken))
+        {
+            return byToken;
+        }
+
         if (string.IsNullOrWhiteSpace(tradingSymbol))
         {
             return Result<InstrumentKey>.Failure(MStockErrors.MissingField(route, "tradingsymbol"));
