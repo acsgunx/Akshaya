@@ -9,6 +9,14 @@
 .ak-watchlist-header h1 {
   font-size: 22px;
   font-weight: 700;
+  /* Keeps the link picker and the search box grouped at the right of the
+     header rather than letting space-between strand the picker in the middle. */
+  margin-right: auto;
+}
+
+/* Only rendered when the user has more than one usable broker link. */
+.ak-watchlist-link {
+  width: 180px;
 }
 
 .ak-watchlist-search {

@@ -26,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Modules\Trading\Akshaya.Modules.Trading.csproj" />
     <ProjectReference Include="..\Modules\Portfolio\Akshaya.Modules.Portfolio.csproj" />
+    <ProjectReference Include="..\Modules\MarketData\Akshaya.Modules.MarketData.csproj" />
     <ProjectReference Include="..\Modules\Identity\Akshaya.Modules.Identity.csproj" />
     <ProjectReference Include="..\Akshaya.Connectors.Host\Akshaya.Connectors.Host.csproj" />
     <ProjectReference Include="..\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />

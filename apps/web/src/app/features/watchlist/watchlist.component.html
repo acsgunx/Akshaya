@@ -1,9 +1,26 @@
 <section class="ak-watchlist">
   <header class="ak-watchlist-header">
     <h1>Watchlist</h1>
+
+    @if (usableLinks().length > 1) {
+      <mat-form-field appearance="outline" class="ak-watchlist-link">
+        <mat-label>Through</mat-label>
+        <mat-select [value]="store.brokerLinkId()" (valueChange)="selectBrokerLink($event)">
+          @for (link of usableLinks(); track link.id) {
+            <mat-option [value]="link.id">{{ link.nickname || link.connectorId }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    }
+
     <mat-form-field appearance="outline" class="ak-watchlist-search">
       <mat-label>Add instrument</mat-label>
-      <input matInput [formControl]="searchControl" [matAutocomplete]="auto" placeholder="Search by symbol or name" />
+      <input
+        matInput
+        [formControl]="searchControl"
+        [matAutocomplete]="auto"
+        placeholder="Search by symbol or name"
+      />
       <mat-autocomplete #auto="matAutocomplete" (optionSelected)="addInstrument($event.option.value)">
         @for (result of store.searchResults(); track result.key) {
           <mat-option [value]="result">{{ result.name }} · {{ result.key }}</mat-option>
@@ -12,7 +29,13 @@
     </mat-form-field>
   </header>
 
-  @if (store.watched().length === 0) {
+  @if (hasNoUsableLink()) {
+    <ak-empty-state
+      icon="link_off"
+      title="No broker connected"
+      description="Instrument search and live prices are answered by a broker. Link an account under Brokers, then come back."
+    />
+  } @else if (store.watched().length === 0) {
     <ak-empty-state icon="visibility" title="Your watchlist is empty" description="Search above to add an instrument." />
   } @else {
     <div class="ak-watchlist-table-head" role="row">
@@ -25,7 +48,11 @@
     </div>
     <div role="table" aria-label="Watchlist">
       @for (instrument of store.watched(); track instrument.key) {
-        <ak-watchlist-row [instrument]="instrument" (remove)="removeInstrument($event)" />
+        <ak-watchlist-row
+          [instrument]="instrument"
+          [brokerLinkId]="store.brokerLinkId() ?? ''"
+          (remove)="removeInstrument($event)"
+        />
       }
     </div>
   }

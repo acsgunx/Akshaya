@@ -33,12 +33,12 @@ import type {
  * against the backend contracts fails to compile instead of surfacing as an
  * `undefined` deep in a template at runtime.
  *
- * ENDPOINT NOTE: routes below follow the shape of the DTOs in
- * `Akshaya.Api.Contracts` (`PlaceOrderRequestDto`, `BeginLinkRequestDto`,
- * `AuthStepDto`, `BrokerLinkDto`, …) since the API project has not yet wired
- * up its minimal-API endpoints at the time this frontend was built; adjust
- * the string literals below, not the method signatures or call sites, if the
- * backend lands on different paths.
+ * ENDPOINT NOTE: the paths below must match the minimal-API routes in
+ * `Akshaya.Api/Endpoints` exactly. They are plain strings on both sides, so
+ * nothing catches a drift at compile time — a wrong path is a 404 at runtime,
+ * which surfaces as a feature that silently does nothing (an autocomplete
+ * that never populates, a detail panel stuck loading). If you change a route
+ * on the backend, change it here in the same commit.
  */
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -171,17 +171,41 @@ export class ApiService {
 
   // ---- Instruments / market data (REST fallback; live prices come over SignalR) --
 
-  searchInstruments(query: string, limit = 20): Observable<readonly InstrumentDefinition[]> {
-    const params = new HttpParams().set('q', query).set('limit', String(limit));
-    return this.http.get<readonly InstrumentDefinition[]>('/api/instruments/search', { params });
+  /**
+   * Instrument search, ALWAYS through one specific broker link. There is no
+   * standalone instrument master yet — `MarketDataEndpoints` answers this out
+   * of the connector's own reference facet — so "which broker" is a required
+   * question here, not an optional filter.
+   */
+  searchInstruments(
+    brokerLinkId: string,
+    query: string,
+    limit = 20,
+  ): Observable<readonly InstrumentDefinition[]> {
+    const params = new HttpParams()
+      .set('brokerLinkId', brokerLinkId)
+      .set('query', query)
+      .set('limit', String(limit));
+    return this.http.get<readonly InstrumentDefinition[]>('/api/market-data/instruments/search', { params });
   }
 
-  getInstrument(instrument: string): Observable<InstrumentDefinition> {
-    return this.http.get<InstrumentDefinition>(`/api/instruments/${encodeURIComponent(instrument)}`);
+  /**
+   * Full definition for one canonical key. Served from the shared instrument
+   * master, so this is a dictionary hit rather than a broker round trip once
+   * the master is warm.
+   */
+  getInstrument(brokerLinkId: string, instrument: string): Observable<InstrumentDefinition> {
+    const params = new HttpParams().set('brokerLinkId', brokerLinkId).set('instrument', instrument);
+    return this.http.get<InstrumentDefinition>('/api/market-data/instruments/resolve', { params });
   }
 
-  getQuote(instrument: string): Observable<Quote> {
-    return this.http.get<Quote>(`/api/market-data/quotes/${encodeURIComponent(instrument)}`);
+  /**
+   * One-shot quote. The live equivalent is the SignalR hub — prefer that for
+   * anything that stays on screen, and keep this for a single point-in-time read.
+   */
+  getQuote(brokerLinkId: string, instrument: string): Observable<Quote> {
+    const params = new HttpParams().set('brokerLinkId', brokerLinkId).set('instrument', instrument);
+    return this.http.get<Quote>('/api/market-data/quote', { params });
   }
 
   // ---- Kill switch (per-tenant global trading halt) ---------------------------
