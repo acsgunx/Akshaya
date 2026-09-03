@@ -1,6 +1,6 @@
 # mStock Type A — where this connector disagreed with the API
 
-**Status:** resolved. Eleven faults, each verified against
+**Status:** resolved. Twelve faults, each verified against
 [the official Type A documentation](https://tradingapi.mstock.com/docs/v1/typeA/User/)
 (User, Orders, Portfolio and Position pages, retrieved 2026-09-03) and pinned by tests.
 
@@ -22,6 +22,7 @@ shapes**, which mStock resembles closely enough to be dangerous and differs from
 | 9 | `/tradebook` is `SCREAMING_SNAKE`, read as snake_case | trade book | all-null rows, "trade_id is missing", working fallback never ran |
 | 10 | Holdings send the **company name** as `tradingsymbol` with `exchange: null` | holdings | every holding unidentifiable |
 | 11 | Positions send `product: ""`, holdings `product: null` | positions, holdings | every row rejected |
+| 12 | Holdings quantity computed as `quantity + t1_quantity` | holdings | ✅ reported — **a 400-share holding shown as 800** |
 
 ---
 
@@ -311,6 +312,49 @@ conservative reading rather than the neutral one: guessing "intraday" would tell
 and the UI that the exposure disappears at the square-off, and a trader who believes a position
 will close itself and is wrong is in a far worse place than one who believes it will persist and
 is wrong.
+
+---
+
+## 12. The holding that doubled
+
+Reported from a live account, and the only fault so far that reached a user as a *wrong number*
+rather than an error — which makes it the worst of the twelve.
+
+An account holding **400** HAPPSTMNDS was shown as **800**:
+
+| | Shown | Actual |
+|---|---|---|
+| Quantity | 800 | **400** |
+| Value | ₹2,84,640 | **₹1,42,320** |
+| Unrealised | −₹22,480 | −₹22,480 ✅ |
+| Return | −6.82% | **−13.64%** |
+
+The P&L was right and everything derived from the quantity was doubled, because the P&L comes
+straight from the broker's own `pnl` field while value and return are computed from the
+quantity. **A position disagreeing with its own percentage is what gave it away** — had the
+connector also derived the P&L, all four numbers would have been consistently wrong and far
+harder to spot.
+
+The cause, once again, is Kite:
+
+```csharp
+Quantity = new Quantity(quantity + t1);   // right for Kite, wrong for mStock
+```
+
+In Kite the two are disjoint — `quantity` is settled demat stock, `t1_quantity` the unsettled
+tranche, and the total is their sum. mStock does not split them that way: the same account's own
+console reported **"Unsettled Qty 0, DP Qty 400"**, so there was no second tranche to add, and
+`t1_quantity` was carrying the same 400.
+
+Using `quantity` alone reproduces the account exactly — 400 × 412.00 = 164,800 invested,
+400 × 355.80 = 142,320 current, −22,480 = −13.64%. Four independent reconciliations, which is
+what made the diagnosis certain rather than plausible.
+
+**On being wrong in the safe direction.** If some other mStock account *does* report a separate
+unsettled tranche, this now under-reports it. That is deliberately the better way to be wrong: a
+trader who believes they hold 800 and sells 800 goes short or gets rejected, whereas one who
+believes they hold 400 and actually hold more has merely left stock unsold.
+
 
 ## The rule this establishes
 
