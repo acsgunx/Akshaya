@@ -25,6 +25,12 @@ off (see `Directory.Build.props`); CI turns it on.
 - CI (`.github/workflows/ci.yml`) runs the full suite on every push, so local
   full runs are rarely needed for correctness gating.
 
+A `PreToolUse` hook in `.claude/settings.json` enforces this: any assistant Bash
+call containing `dotnet test` is blocked with a pointer to `scripts/t.sh`. It
+matches the literal string `dotnet test`, so a command that only *mentions* it
+(an `echo`, a `grep`) is blocked too — reword or run it in a plain terminal.
+Running `dotnet test` yourself outside the assistant is unaffected.
+
 ## Running the app
 
 `scripts/rerun.sh` (or `.ps1` / `.py`) — clean-build + run API (:5080) and
