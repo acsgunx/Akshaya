@@ -73,7 +73,15 @@ public sealed class MStockOrders : IConnectorOrders
 
         var path = string.Format(CultureInfo.InvariantCulture, _options.PlaceOrderPathFormat, variety.Value);
 
-        var response = await _api.PostJsonAsync<MStockOrderIdData>(path, body.Value, ct).ConfigureAwait(false);
+        // FORM-ENCODED, NOT JSON. mStock documents placement as
+        // application/x-www-form-urlencoded. Because it also reports business failures as an
+        // HTTP 200 carrying status:"error", a JSON body here does not fail loudly — it comes
+        // back as a 200 InputException that reads like a rejected order rather than like a
+        // malformed request, which is a genuinely nasty thing to debug at 09:15.
+        var response = await _api
+            .PostFormAsync<MStockOrderIdData>(path, body.Value.ToForm(), ct)
+            .ConfigureAwait(false);
+
         if (response.IsFailure)
         {
             return Result<OrderAck>.Failure(response.Error);
@@ -150,17 +158,84 @@ public sealed class MStockOrders : IConnectorOrders
             return Result<OrderAck>.Failure(trigger.Error);
         }
 
+        // THE LIVE ORDER IS READ FIRST, and this is not an optimisation to remove.
+        //
+        // mStock's modify route is a REPLACE, not a patch: it documents the full order context
+        // — variety, tradingsymbol, exchange, transaction_type, product — alongside the fields
+        // being changed. Sending only the deltas leaves the broker to fill the rest from its
+        // own defaults, and the default product is not necessarily the one the order was
+        // placed with. A trader amending the price of a CNC (delivery) order and silently
+        // getting an MIS (intraday) order back would find it auto-squared-off at 15:20 with no
+        // warning, having never asked for an intraday position.
+        //
+        // The read costs one extra call on an operation that happens a handful of times a
+        // session, and is the only way to preserve what the trader did not ask to change.
+        var existing = await GetOrderAsync(request.BrokerOrderId, ct).ConfigureAwait(false);
+        if (existing.IsFailure)
+        {
+            return Result<OrderAck>.Failure(existing.Error);
+        }
+
+        var current = existing.Value;
+
+        if (current.Status.IsTerminal())
+        {
+            return Result<OrderAck>.Failure(new Error(
+                ConnectorErrorCodes.InvalidRequest,
+                $"Order {request.BrokerOrderId} is {current.Status} and can no longer be modified.",
+                VendorCode: null,
+                VendorMessage: current.StatusMessage,
+                Context: new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["brokerOrderId"] = request.BrokerOrderId,
+                    ["status"] = current.Status.ToString(),
+                }));
+        }
+
+        var context = BuildModifyContext(current);
+        if (context.IsFailure)
+        {
+            return Result<OrderAck>.Failure(context.Error);
+        }
+
+        var carried = context.Value;
+
+        // The effective order type after the amendment decides which prices are legal to send:
+        // amending a LIMIT order down to a MARKET order must drop the price, not carry the old
+        // one through.
+        var effectiveType = request.OrderType ?? current.OrderType;
+
+        var effectiveLimit = limit.Value
+                             ?? (request.OrderType is null ? current.LimitPrice?.Amount : null);
+        var effectiveTrigger = trigger.Value
+                               ?? (request.OrderType is null ? current.TriggerPrice?.Amount : null);
+
+        var newQuantity = request.Quantity?.Value ?? current.Quantity.Value;
+
         var body = new MStockModifyOrderRequest
         {
             OrderId = request.BrokerOrderId,
-            Quantity = request.Quantity is { } q ? MStockNumber.Quantity(q.Value) : null,
-            OrderType = orderType,
-            Price = limit.Value is { } lp ? MStockNumber.Price(lp) : null,
-            TriggerPrice = trigger.Value is { } tp ? MStockNumber.Price(tp) : null,
+            Variety = carried.Variety,
+            TradingSymbol = carried.TradingSymbol,
+            Exchange = carried.Exchange,
+            TransactionType = carried.TransactionType,
+            Product = carried.Product,
+            OrderType = orderType ?? carried.OrderType,
+            Quantity = MStockNumber.Quantity(newQuantity),
+            Price = effectiveType is OrderType.Limit or OrderType.StopLimit && effectiveLimit is { } lp
+                ? MStockNumber.Price(lp)
+                : null,
+            TriggerPrice = effectiveType is OrderType.Stop or OrderType.StopLimit && effectiveTrigger is { } tp
+                ? MStockNumber.Price(tp)
+                : null,
             DisclosedQuantity = request.DisclosedQuantity is { } dq
                 ? MStockNumber.Quantity(dq.Value)
                 : null,
-            Validity = validity,
+            Validity = validity ?? carried.Validity,
+            // Remaining, not total: on a part-filled order mStock wants to know how much is
+            // still working. Derived here rather than taken from the caller, who has no way to
+            // know what filled between their read and this call.
+            RemainingQuantity = MStockNumber.Quantity(current.PendingQuantity.Value),
         };
 
         var path = string.Format(
@@ -168,7 +243,10 @@ public sealed class MStockOrders : IConnectorOrders
             _options.ModifyOrderPathFormat,
             Uri.EscapeDataString(request.BrokerOrderId));
 
-        var response = await _api.PutJsonAsync<MStockOrderIdData>(path, body, ct).ConfigureAwait(false);
+        var response = await _api
+            .PutFormAsync<MStockOrderIdData>(path, body.ToForm(), ct)
+            .ConfigureAwait(false);
+
         if (response.IsFailure)
         {
             return Result<OrderAck>.Failure(response.Error);
@@ -215,10 +293,30 @@ public sealed class MStockOrders : IConnectorOrders
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// mStock's cancel-all acknowledges the sweep but DOES NOT REPORT HOW MANY orders it
+    /// reached — the documented success payload is a single <c>{"order_id": "..."}</c>.
+    ///
+    /// Reading a count out of that shape yields zero, and "0 orders cancelled" after a
+    /// successful panic-button press is the single most dangerous thing this connector could
+    /// say: it reads exactly like "the sweep did nothing", and a trader who believes that is
+    /// about to go hunting for orders that are already gone — or, worse, to conclude the
+    /// button is broken and start cancelling by hand while the sweep is still settling.
+    ///
+    /// So when the broker declines to say, we count instead: read the book before and after,
+    /// and report how many working orders actually stopped working. That number is derived
+    /// from the order book, which is the source of truth anyway.
+    /// </remarks>
     public async Task<Result<int>> CancelAllAsync(CancellationToken ct = default)
     {
+        // Snapshot first — after the sweep there is nothing left to count.
+        var before = await GetOrdersAsync(new OrderQuery { OpenOnly = true }, ct).ConfigureAwait(false);
+        var workingBefore = before.IsSuccess
+            ? before.Value.Where(o => o.Status.IsWorking()).Select(o => o.BrokerOrderId).ToHashSet(StringComparer.Ordinal)
+            : null;
+
         var response = await _api
-            .PostJsonAsync<MStockCancelAllData>(_options.CancelAllPath, new { }, ct)
+            .PostFormAsync<MStockCancelAllData>(_options.CancelAllPath, [], ct)
             .ConfigureAwait(false);
 
         if (response.IsFailure)
@@ -226,7 +324,34 @@ public sealed class MStockOrders : IConnectorOrders
             return Result<int>.Failure(response.Error);
         }
 
-        return response.Value.Count ?? response.Value.CancelledOrders?.Count ?? 0;
+        var reported = response.Value.ReportedCount;
+        if (reported != MStockCancelAllData.UnknownCount)
+        {
+            return reported;
+        }
+
+        if (workingBefore is null || workingBefore.Count == 0)
+        {
+            // Either nothing was working, or we could not read the book. Both mean the honest
+            // answer is zero-known-cancelled; the caller's own reconciliation covers the rest.
+            return 0;
+        }
+
+        var after = await GetOrdersAsync(new OrderQuery { OpenOnly = true }, ct).ConfigureAwait(false);
+        if (after.IsFailure)
+        {
+            // The sweep was acknowledged but we cannot verify it. Reporting the number we
+            // ASKED to cancel is the safe overstatement: it keeps the caller looking at the
+            // orders it thought were live rather than assuming none of them mattered.
+            return workingBefore.Count;
+        }
+
+        var stillWorking = after.Value
+            .Where(o => o.Status.IsWorking())
+            .Select(o => o.BrokerOrderId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return workingBefore.Count(id => !stillWorking.Contains(id));
     }
 
     /// <inheritdoc />
@@ -322,9 +447,19 @@ public sealed class MStockOrders : IConnectorOrders
         // versus snake_case, with different field names — so each needs its own type. Reading
         // the tradebook with the snake_case one bound every member to null, which looked like a
         // successful call full of empty rows and meant the /trades fallback never ran.
-        var book = await _api
-            .GetAsync<IReadOnlyList<MStockTradeBookRow>>(_options.TradeBookPath, query: null, ct)
-            .ConfigureAwait(false);
+        //
+        // WHICH ROUTE ANSWERS DEPENDS ON THE WINDOW. /tradebook is today's fills only;
+        // /trades takes fromdate/todate and reaches back. A query that asks for a date range
+        // beyond today therefore has to go to /trades FIRST — answering it from the tradebook
+        // would silently return only today's rows and look like "you made no trades last
+        // week", which is the kind of wrong answer someone reconciles a tax return against.
+        var wantsHistory = AsksBeyondToday(query);
+
+        Result<IReadOnlyList<MStockTradeBookRow>> book = wantsHistory
+            ? Result<IReadOnlyList<MStockTradeBookRow>>.Success([])
+            : await _api
+                .GetAsync<IReadOnlyList<MStockTradeBookRow>>(_options.TradeBookPath, query: null, ct)
+                .ConfigureAwait(false);
 
         IReadOnlyList<MStockTradeDto> rows;
 
@@ -336,8 +471,26 @@ public sealed class MStockOrders : IConnectorOrders
         }
         else
         {
+            // /trades is a HISTORY route and takes a date window; /tradebook is today only.
+            // Sending no window at all was why this fallback returned the day's fills at best
+            // and an empty list at worst — a trader looking for last week's contract note got
+            // silence rather than data. mStock wants yyyy-MM-dd, in venue-local terms.
+            var window = new MStockQuery();
+            if (query.From is { } from)
+            {
+                window.Add("fromdate", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            }
+
+            if (query.To is { } to)
+            {
+                window.Add("todate", to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            }
+
             var fallback = await _api
-                .GetAsync<IReadOnlyList<MStockTradeDto>>(_options.TradesPath, query: null, ct)
+                .GetAsync<IReadOnlyList<MStockTradeDto>>(
+                    _options.TradesPath,
+                    window.IsEmpty ? null : window,
+                    ct)
                 .ConfigureAwait(false);
 
             if (fallback.IsFailure)
@@ -419,29 +572,161 @@ public sealed class MStockOrders : IConnectorOrders
 
     /// <inheritdoc />
     /// <remarks>
-    /// mStock's Type A surface publishes no margin calculator. The manifest declares
-    /// <c>marginEstimate: false</c> so the order ticket hides the field rather than showing a
-    /// number we invented.
+    /// Answered by <c>POST /openapi/typea/margins/orders</c>, which returns the margin the
+    /// broker will block for this exact order.
+    ///
+    /// It reports what is REQUIRED but not what is AVAILABLE, so
+    /// <see cref="MarginEstimate.Available"/> is left null and
+    /// <see cref="MarginEstimate.IsSufficient"/> consequently reads true. That is the contract's
+    /// documented meaning of a null availability ("unknown, do not block the trader"), not an
+    /// assertion that the funds are there. The account's real buying power comes from the fund
+    /// summary, which is a different route and belongs to the portfolio facet.
     /// </remarks>
-    public Task<Result<MarginEstimate>> EstimateMarginAsync(
+    public async Task<Result<MarginEstimate>> EstimateMarginAsync(
         PlaceOrderRequest request,
-        CancellationToken ct = default) =>
-        Task.FromResult(Result<MarginEstimate>.Failure(
-            ConnectorErrors.NotSupported("margin estimation")));
+        CancellationToken ct = default)
+    {
+        var margin = await CalculateAsync(request, ct).ConfigureAwait(false);
+        if (margin.IsFailure)
+        {
+            return Result<MarginEstimate>.Failure(margin.Error);
+        }
+
+        if (margin.Value.Total is not { } total)
+        {
+            return Result<MarginEstimate>.Failure(
+                MStockErrors.MissingField(_options.OrderMarginPath, "total"));
+        }
+
+        return new MarginEstimate
+        {
+            Required = new Money(total, Currency.Inr),
+            Available = null,
+        };
+    }
 
     /// <inheritdoc />
     /// <remarks>
-    /// Likewise no charges calculator. Estimating Indian charges is entirely possible — the
-    /// Paper connector ships an itemised SEBI/STT/GST schedule — but doing it HERE would mean
-    /// this connector quietly reporting our own arithmetic as the broker's. The platform's
-    /// charge-schedule service is where that estimate belongs, and it is labelled as an
-    /// estimate when it is shown.
+    /// The SAME route as <see cref="EstimateMarginAsync"/> — mStock returns the margin and an
+    /// itemised charge schedule in one reply — so a ticket that asks for both makes two calls
+    /// for one answer. That is deliberate: the contract keeps them separate because most
+    /// brokers do, and the cost is one extra request on a screen the trader is reading anyway.
+    ///
+    /// The charges are the BROKER'S OWN arithmetic, which is the point. The Paper connector
+    /// ships a local SEBI/STT/GST schedule for backtesting, but reporting that here would mean
+    /// showing our estimate under mStock's name — and the two will diverge the moment a rate
+    /// changes.
+    ///
+    /// Zero-valued lines are dropped. mStock returns the full schedule with zeros for the
+    /// charges that do not apply (no stamp duty on a sell, no CTT on equity), and a
+    /// confirmation screen listing six charges of ₹0.00 buries the one that is real.
     /// </remarks>
-    public Task<Result<ChargesEstimate>> EstimateChargesAsync(
+    public async Task<Result<ChargesEstimate>> EstimateChargesAsync(
         PlaceOrderRequest request,
-        CancellationToken ct = default) =>
-        Task.FromResult(Result<ChargesEstimate>.Failure(
-            ConnectorErrors.NotSupported("charge estimation")));
+        CancellationToken ct = default)
+    {
+        var margin = await CalculateAsync(request, ct).ConfigureAwait(false);
+        if (margin.IsFailure)
+        {
+            return Result<ChargesEstimate>.Failure(margin.Error);
+        }
+
+        if (margin.Value.Charges is not { } charges)
+        {
+            return Result<ChargesEstimate>.Failure(
+                MStockErrors.MissingField(_options.OrderMarginPath, "charges"));
+        }
+
+        var lines = new List<ChargeLine>(7);
+
+        void Add(string name, decimal? amount, string? note = null)
+        {
+            if (amount is { } value && value != 0m)
+            {
+                lines.Add(new ChargeLine(name, new Money(value, Currency.Inr), note));
+            }
+        }
+
+        Add("Brokerage", charges.Brokerage);
+
+        // The transaction tax is STT on equity and CTT on commodities, and mStock says which
+        // in a sibling field. Labelling it with the broker's own word avoids showing a
+        // commodity trader a line that says "STT".
+        Add(
+            charges.TransactionTaxType is { Length: > 0 } taxType
+                ? taxType.ToUpperInvariant()
+                : "Transaction tax",
+            charges.TransactionTax);
+
+        Add("Exchange turnover charge", charges.ExchangeTurnoverCharge);
+        Add("SEBI turnover charge", charges.SebiTurnoverCharge);
+        Add("Stamp duty", charges.StampDuty);
+
+        if (charges.Gst is { } gst)
+        {
+            // GST arrives split into its inter- and intra-state halves, of which exactly one
+            // set is ever non-zero for a given account. Presenting the total is what a
+            // contract note does; the split is an accounting detail the trader cannot act on.
+            var gstTotal = gst.Total ?? ((gst.Igst ?? 0m) + (gst.Cgst ?? 0m) + (gst.Sgst ?? 0m));
+            Add("GST", gstTotal);
+        }
+
+        // The broker's own total, when it gives one, rather than our sum of the lines: if the
+        // two disagree, mStock's figure is the one that will appear on the contract note.
+        var total = charges.Total ?? lines.Sum(l => l.Amount.Amount);
+
+        return new ChargesEstimate
+        {
+            Lines = lines,
+            Total = new Money(total, Currency.Inr),
+        };
+    }
+
+    /// <summary>
+    /// The shared call behind the margin and charges estimates.
+    ///
+    /// JSON, not form-encoded — this route is the documented exception to mStock's otherwise
+    /// form-encoded write surface.
+    /// </summary>
+    private async Task<Result<MStockMarginData>> CalculateAsync(
+        PlaceOrderRequest request,
+        CancellationToken ct)
+    {
+        var body = BuildPlaceBody(request);
+        if (body.IsFailure)
+        {
+            return Result<MStockMarginData>.Failure(body.Error);
+        }
+
+        var variety = MStockMaps.ToNativeVariety(request.Variety);
+        if (variety.IsFailure)
+        {
+            return Result<MStockMarginData>.Failure(variety.Error);
+        }
+
+        var placement = body.Value;
+
+        var margin = new MStockMarginRequest
+        {
+            Exchange = placement.Exchange,
+            TradingSymbol = placement.TradingSymbol,
+            TransactionType = placement.TransactionType,
+            // This route spells the variety out in full where placement uses "reg". Mapped
+            // through MStockMaps rather than hardcoded so the vocabulary stays in one file.
+            Variety = MStockMaps.ToNativeMarginVariety(request.Variety),
+            Product = placement.Product,
+            OrderType = placement.OrderType,
+            Quantity = request.Quantity.Value,
+            // Unlike placement, this route wants the price fields PRESENT and zero rather than
+            // absent — mStock's own sample sends "price": 0 on a MARKET order.
+            Price = request.LimitPrice?.Amount ?? 0m,
+            TriggerPrice = request.TriggerPrice?.Amount ?? 0m,
+        };
+
+        return await _api
+            .PostJsonAsync<MStockMarginData>(_options.OrderMarginPath, margin, ct)
+            .ConfigureAwait(false);
+    }
 
     // --- request building -----------------------------------------------------------------
 
@@ -533,6 +818,69 @@ public sealed class MStockOrders : IConnectorOrders
             // exchange-registered strategy attached to the API key, not through an order tag.
             Tag = MStockOrderTags.Encode(request.ClientOrderId),
         };
+    }
+
+    /// <summary>
+    /// The fields a modify must carry through unchanged, translated back into mStock's
+    /// vocabulary from the order as it currently stands at the broker.
+    ///
+    /// Every one of these is a round-trip through <see cref="MStockMaps"/> rather than a
+    /// remembered copy of what we sent: the order may have been amended in mStock's own web
+    /// UI since we placed it, and the broker's current view is the one that has to be
+    /// preserved.
+    /// </summary>
+    private Result<MStockModifyContext> BuildModifyContext(BrokerOrder current)
+    {
+        var symbol = _symbols.ToNative(current.Instrument);
+        if (symbol.IsFailure)
+        {
+            return Result<MStockModifyContext>.Failure(symbol.Error);
+        }
+
+        var exchange = MStockMaps.ToNativeExchange(current.Instrument.Venue, current.Instrument.AssetClass);
+        if (exchange.IsFailure)
+        {
+            return Result<MStockModifyContext>.Failure(exchange.Error);
+        }
+
+        var side = MStockMaps.ToNativeSide(current.Side);
+        if (side.IsFailure)
+        {
+            return Result<MStockModifyContext>.Failure(side.Error);
+        }
+
+        var product = MStockMaps.ToNativeProduct(current.PositionEffect);
+        if (product.IsFailure)
+        {
+            return Result<MStockModifyContext>.Failure(product.Error);
+        }
+
+        var variety = MStockMaps.ToNativeVariety(current.Variety);
+        if (variety.IsFailure)
+        {
+            return Result<MStockModifyContext>.Failure(variety.Error);
+        }
+
+        var orderType = MStockMaps.ToNativeOrderType(current.OrderType);
+        if (orderType.IsFailure)
+        {
+            return Result<MStockModifyContext>.Failure(orderType.Error);
+        }
+
+        var validity = MStockMaps.ToNativeValidity(current.TimeInForce);
+        if (validity.IsFailure)
+        {
+            return Result<MStockModifyContext>.Failure(validity.Error);
+        }
+
+        return new MStockModifyContext(
+            symbol.Value,
+            exchange.Value,
+            side.Value,
+            product.Value,
+            variety.Value,
+            orderType.Value,
+            validity.Value);
     }
 
     private static Result ValidatePrices(PlaceOrderRequest request)
@@ -798,7 +1146,37 @@ public sealed class MStockOrders : IConnectorOrders
         return (query.From is not { } from || date >= from)
                && (query.To is not { } to || date <= to);
     }
+
+    /// <summary>
+    /// Whether the query reaches back past today, and therefore needs the history route rather
+    /// than the tradebook. "Today" is measured at the VENUE — a query issued at 21:00 in London
+    /// is asking about a session that ended hours ago in Mumbai, and a UTC "today" would send
+    /// it to the wrong route for a third of the day.
+    /// </summary>
+    private bool AsksBeyondToday(OrderQuery query)
+    {
+        if (query.From is not { } from)
+        {
+            return false;
+        }
+
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_clock.UtcNow, _venueZone).DateTime);
+        return from < today;
+    }
 }
+
+/// <summary>
+/// The order context a modify has to send back to mStock unchanged, already in the broker's
+/// own vocabulary. See <c>MStockOrders.BuildModifyContext</c>.
+/// </summary>
+internal readonly record struct MStockModifyContext(
+    string TradingSymbol,
+    string Exchange,
+    string TransactionType,
+    string Product,
+    string Variety,
+    string OrderType,
+    string Validity);
 
 /// <summary>
 /// Folds the platform's <c>ClientOrderId</c> into mStock's short free-text <c>tag</c>.

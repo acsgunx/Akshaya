@@ -185,9 +185,17 @@ internal sealed class MStockApi : IAsyncDisposable
         SendAsync((uri, token) => _client.PostJsonAsync<MStockEnvelope<TData>>(uri, body, token), path, path, ct);
 
     /// <summary>
-    /// Form-encoded POST. The login and session routes — and only those — take
-    /// <c>application/x-www-form-urlencoded</c>; sending them JSON produces a 400 that does
-    /// not say why.
+    /// Form-encoded POST — the default shape for mStock's WRITE routes.
+    ///
+    /// This is most of the Type A surface, not a login-only special case. Order placement,
+    /// order modification and position conversion are all documented as
+    /// <c>application/x-www-form-urlencoded</c>, alongside login and session. The one
+    /// documented exception is the margin calculator, which takes JSON (see
+    /// <see cref="PostJsonAsync{TData}"/> and <c>MStockOrders.EstimateMarginAsync</c>).
+    ///
+    /// Sending JSON to a form route produces a 400 that does not say why — or, worse, a 200
+    /// carrying an <c>InputException</c> envelope, because mStock reports business failures
+    /// with an HTTP 200.
     /// </summary>
     public Task<Result<TData>> PostFormAsync<TData>(
         string path,
@@ -200,6 +208,16 @@ internal sealed class MStockApi : IAsyncDisposable
         object body,
         CancellationToken ct = default) =>
         SendAsync((uri, token) => _client.PutJsonAsync<MStockEnvelope<TData>>(uri, body, token), path, path, ct);
+
+    /// <summary>
+    /// Form-encoded PUT. Order modification is the route that needs it; see
+    /// <see cref="PostFormAsync{TData}"/> for why form rather than JSON.
+    /// </summary>
+    public Task<Result<TData>> PutFormAsync<TData>(
+        string path,
+        IReadOnlyList<KeyValuePair<string, string>> form,
+        CancellationToken ct = default) =>
+        SendAsync((uri, token) => _client.PutFormAsync<MStockEnvelope<TData>>(uri, form, token), path, path, ct);
 
     public Task<Result<TData>> DeleteAsync<TData>(
         string path,
@@ -231,6 +249,30 @@ internal sealed class MStockApi : IAsyncDisposable
         }
 
         // A missing `data` node is expected here and is not a failure; anything else is.
+        return result.Error.Code == ConnectorErrorCodes.Unknown
+               && result.Error.Context?.GetValueOrDefault("field") == "data"
+            ? Result.Success()
+            : Result.Failure(result.Error);
+    }
+
+    /// <summary>
+    /// A form-encoded POST whose envelope carries no <c>data</c> payload — position conversion
+    /// being the case that matters. The counterpart of <see cref="GetVoidAsync"/>, and there
+    /// for the same reason: a route that answers <c>{"status":"success"}</c> with nothing
+    /// under <c>data</c> must not be reported as a malformed response.
+    /// </summary>
+    public async Task<Result> PostVoidFormAsync(
+        string path,
+        IReadOnlyList<KeyValuePair<string, string>> form,
+        CancellationToken ct = default)
+    {
+        var result = await PostFormAsync<JsonElement>(path, form, ct).ConfigureAwait(false);
+
+        if (result.IsSuccess)
+        {
+            return Result.Success();
+        }
+
         return result.Error.Code == ConnectorErrorCodes.Unknown
                && result.Error.Context?.GetValueOrDefault("field") == "data"
             ? Result.Success()

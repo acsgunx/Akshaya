@@ -6,7 +6,7 @@ import { tapResponse } from '@ngrx/operators';
 
 import { ApiService } from '../../core/api.service';
 import { MarketDataService } from '../../core/market-data.service';
-import type { OrderRecord } from '../../core/models';
+import type { CancelAllRequest, CancelAllResult, ModifyOrderRequest, OrderRecord } from '../../core/models';
 
 interface State {
   readonly orders: readonly OrderRecord[];
@@ -14,6 +14,9 @@ interface State {
   readonly error: string | undefined;
   readonly openOnly: boolean;
   readonly cancellingIds: ReadonlySet<string>;
+  readonly cancelAllInFlight: boolean;
+  /** Outcome of the last cancel-all, held until dismissed so a partial sweep cannot scroll away. */
+  readonly lastSweep: CancelAllResult | undefined;
 }
 
 const initialState: State = {
@@ -22,6 +25,8 @@ const initialState: State = {
   error: undefined,
   openOnly: false,
   cancellingIds: new Set(),
+  cancelAllInFlight: false,
+  lastSweep: undefined,
 };
 
 /**
@@ -69,16 +74,75 @@ export const OrdersStore = signalStore(
                 patchState(store, { cancellingIds: remaining });
                 store.refresh();
               },
-              error: () => {
+              error: (err: unknown) => {
                 const remaining = new Set(store.cancellingIds());
                 remaining.delete(orderId);
-                patchState(store, { cancellingIds: remaining });
+                // The failure is SURFACED, not swallowed. A cancel that
+                // silently does nothing leaves the trader believing they are
+                // flat when the order is still working — the single worst
+                // thing this screen can get wrong.
+                patchState(store, {
+                  cancellingIds: remaining,
+                  error: err instanceof Error ? err.message : 'The broker refused the cancel. The order is still live.',
+                });
+                store.refresh();
               },
             }),
           ),
         ),
       ),
     ),
+
+    modify: rxMethod<{ orderId: string; request: ModifyOrderRequest }>(
+      pipe(
+        tap(() => patchState(store, { error: undefined })),
+        switchMap(({ orderId, request }) =>
+          api.modifyOrder(orderId, request).pipe(
+            tapResponse({
+              next: () => store.refresh(),
+              error: (err: unknown) =>
+                patchState(store, {
+                  error: err instanceof Error ? err.message : 'The broker refused the amendment.',
+                }),
+            }),
+          ),
+        ),
+      ),
+    ),
+
+    /**
+     * The panic button.
+     *
+     * `isPartial` is kept on the store rather than shown and forgotten: a
+     * sweep that only cleared four of nine orders must keep saying so until
+     * the trader acts on it. See `CancelAllResult.isPartial`.
+     */
+    cancelAll: rxMethod<CancelAllRequest>(
+      pipe(
+        tap(() => patchState(store, { cancelAllInFlight: true, error: undefined, lastSweep: undefined })),
+        switchMap((request) =>
+          api.cancelAll(request).pipe(
+            tapResponse({
+              next: (lastSweep) => {
+                patchState(store, { cancelAllInFlight: false, lastSweep });
+                store.refresh();
+              },
+              error: (err: unknown) => {
+                patchState(store, {
+                  cancelAllInFlight: false,
+                  error: err instanceof Error ? err.message : 'Cancel-all failed. Orders may still be live.',
+                });
+                store.refresh();
+              },
+            }),
+          ),
+        ),
+      ),
+    ),
+
+    dismissSweep(): void {
+      patchState(store, { lastSweep: undefined });
+    },
   })),
   withHooks({
     onInit(store) {

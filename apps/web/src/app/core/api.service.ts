@@ -11,6 +11,7 @@ import type {
   CandleSeries,
   ConnectorHealth,
   ConnectorManifest,
+  ConvertPositionRequest,
   InstrumentDefinition,
   KillSwitchState,
   ModifyOrderRequest,
@@ -25,6 +26,8 @@ import type {
   SavedCredential,
   SignInRequest,
   TimeFrame,
+  TradeQuery,
+  TradesResult,
   UserProfile,
 } from './models';
 
@@ -135,12 +138,21 @@ export class ApiService {
     return this.http.post<OrderActionResult>('/api/orders', request);
   }
 
+  /**
+   * POST to `/{id}/modify`, NOT `PUT /{id}`.
+   *
+   * These two were previously a `PUT` and a `DELETE` on the bare `/{id}`
+   * route, which the API does not expose — so every cancel from the blotter
+   * returned a 405 and the order stayed live. The verb is a POST because an
+   * amendment is not idempotent at the broker: replaying it can re-price an
+   * order that has since been amended by someone else.
+   */
   modifyOrder(orderId: string, request: ModifyOrderRequest): Observable<OrderActionResult> {
-    return this.http.put<OrderActionResult>(`/api/orders/${encodeURIComponent(orderId)}`, request);
+    return this.http.post<OrderActionResult>(`/api/orders/${encodeURIComponent(orderId)}/modify`, request);
   }
 
   cancelOrder(orderId: string): Observable<OrderActionResult> {
-    return this.http.delete<OrderActionResult>(`/api/orders/${encodeURIComponent(orderId)}`);
+    return this.http.post<OrderActionResult>(`/api/orders/${encodeURIComponent(orderId)}/cancel`, {});
   }
 
   cancelAll(request: CancelAllRequest): Observable<CancelAllResult> {
@@ -162,6 +174,29 @@ export class ApiService {
 
   getOrder(orderId: string): Observable<OrderRecord> {
     return this.http.get<OrderRecord>(`/api/orders/${encodeURIComponent(orderId)}`);
+  }
+
+  /**
+   * Fills, not orders. One order can produce many — the exchange fills in
+   * whatever chunks the book offers — so this is the only view that answers
+   * "what price did I actually get" for a partially filled order.
+   */
+  getTrades(query: TradeQuery = {}): Observable<TradesResult> {
+    let params = new HttpParams();
+    if (query.brokerLinkId) params = params.set('brokerLinkId', query.brokerLinkId);
+    if (query.from) params = params.set('from', query.from);
+    if (query.to) params = params.set('to', query.to);
+    if (query.instrument) params = params.set('instrument', query.instrument);
+    return this.http.get<TradesResult>('/api/orders/trades', { params });
+  }
+
+  /**
+   * Moves an open position between margin products. Returns 204 with no body
+   * — the broker acknowledges but reports nothing, so the caller confirms by
+   * re-reading positions.
+   */
+  convertPosition(request: ConvertPositionRequest): Observable<void> {
+    return this.http.post<void>('/api/portfolio/positions/convert', request);
   }
 
   // ---- Portfolio -----------------------------------------------------------

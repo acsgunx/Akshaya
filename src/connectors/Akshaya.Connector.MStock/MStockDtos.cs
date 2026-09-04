@@ -258,12 +258,68 @@ internal sealed class MStockPlaceOrderRequest
     [JsonPropertyName("modified")]
     [JsonConverter(typeof(LenientBoolConverter))]
     public bool? Modified { get; init; }
+
+    /// <summary>
+    /// The wire form. Placement is documented as <c>application/x-www-form-urlencoded</c>, so
+    /// this — not the JSON attributes above — is what actually goes to mStock. The attributes
+    /// stay because the same type is bound back from recorded fixtures in the tests, and
+    /// because keeping one field-name declaration is the whole point of this file.
+    ///
+    /// Null members are OMITTED rather than sent empty. A <c>price=</c> on a MARKET order is
+    /// not the same as no price at all: some exchange gateways read an empty protection price
+    /// as zero and reject the order.
+    /// </summary>
+    public IReadOnlyList<KeyValuePair<string, string>> ToForm()
+    {
+        var form = new List<KeyValuePair<string, string>>(11)
+        {
+            new("tradingsymbol", TradingSymbol),
+            new("exchange", Exchange),
+            new("transaction_type", TransactionType),
+            new("order_type", OrderType),
+            new("quantity", Quantity),
+            new("product", Product),
+            new("validity", Validity),
+        };
+
+        MStockForm.AddIfPresent(form, "price", Price);
+        MStockForm.AddIfPresent(form, "trigger_price", TriggerPrice);
+        MStockForm.AddIfPresent(form, "disclosed_quantity", DisclosedQuantity);
+        MStockForm.AddIfPresent(form, "tag", Tag);
+
+        return form;
+    }
 }
 
+/// <summary>
+/// Order amendment body.
+///
+/// WIDER THAN THE FIELDS BEING CHANGED, ON PURPOSE. mStock's modify route documents the full
+/// order context — variety, tradingsymbol, exchange, transaction_type, product — alongside the
+/// mutable fields, and it is a replace rather than a patch. Sending only the changed fields
+/// invites the broker to fill the rest from its own defaults, which is how a CNC order becomes
+/// an MIS order on a price amendment. <see cref="MStockOrders.ModifyAsync"/> therefore reads
+/// the live order first and carries the unchanged values through verbatim.
+/// </summary>
 internal sealed class MStockModifyOrderRequest
 {
     [JsonPropertyName("order_id")]
     public required string OrderId { get; init; }
+
+    [JsonPropertyName("variety")]
+    public string? Variety { get; init; }
+
+    [JsonPropertyName("tradingsymbol")]
+    public string? TradingSymbol { get; init; }
+
+    [JsonPropertyName("exchange")]
+    public string? Exchange { get; init; }
+
+    [JsonPropertyName("transaction_type")]
+    public string? TransactionType { get; init; }
+
+    [JsonPropertyName("product")]
+    public string? Product { get; init; }
 
     [JsonPropertyName("quantity")]
     public string? Quantity { get; init; }
@@ -282,6 +338,46 @@ internal sealed class MStockModifyOrderRequest
 
     [JsonPropertyName("validity")]
     public string? Validity { get; init; }
+
+    /// <summary>
+    /// Remaining (unfilled) quantity, which mStock wants alongside the new total on a
+    /// part-filled order. Derived from the order book rather than from the caller.
+    /// </summary>
+    [JsonPropertyName("modqty_remng")]
+    public string? RemainingQuantity { get; init; }
+
+    /// <summary>Form-encoded wire shape; see <see cref="MStockPlaceOrderRequest.ToForm"/>.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> ToForm()
+    {
+        var form = new List<KeyValuePair<string, string>>(12);
+
+        MStockForm.AddIfPresent(form, "variety", Variety);
+        MStockForm.AddIfPresent(form, "tradingsymbol", TradingSymbol);
+        MStockForm.AddIfPresent(form, "exchange", Exchange);
+        MStockForm.AddIfPresent(form, "transaction_type", TransactionType);
+        MStockForm.AddIfPresent(form, "product", Product);
+        MStockForm.AddIfPresent(form, "order_type", OrderType);
+        MStockForm.AddIfPresent(form, "quantity", Quantity);
+        MStockForm.AddIfPresent(form, "price", Price);
+        MStockForm.AddIfPresent(form, "trigger_price", TriggerPrice);
+        MStockForm.AddIfPresent(form, "disclosed_quantity", DisclosedQuantity);
+        MStockForm.AddIfPresent(form, "validity", Validity);
+        MStockForm.AddIfPresent(form, "modqty_remng", RemainingQuantity);
+
+        return form;
+    }
+}
+
+/// <summary>Shared helper so no DTO invents its own "skip the nulls" rule.</summary>
+internal static class MStockForm
+{
+    public static void AddIfPresent(List<KeyValuePair<string, string>> form, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            form.Add(new KeyValuePair<string, string>(key, value));
+        }
+    }
 }
 
 internal sealed class MStockOrderIdData
@@ -297,13 +393,219 @@ internal sealed class MStockOrderIdData
     public string? Any => OrderId ?? OrderNo;
 }
 
+/// <summary>
+/// The cancel-all response.
+///
+/// mStock DOES NOT REPORT A COUNT. The documented success payload is a single
+/// <c>{"order_id": "..."}</c> — the same shape as an ordinary cancel — and says nothing about
+/// how many orders the sweep actually reached. <c>cancelled_orders</c> and <c>count</c> are
+/// kept because some builds have been seen to send them, but neither may be relied on.
+///
+/// This matters more than it looks. <see cref="MStockOrders.CancelAllAsync"/> previously read
+/// only those two fields, so a *successful* sweep of nine orders deserialised to zero and was
+/// reported to the trader as "0 cancelled" — indistinguishable from a sweep that did nothing.
+/// The connector now returns <see cref="UnknownCount"/> when the broker declines to say, and
+/// the caller counts the working orders that actually disappeared from the book instead.
+/// </summary>
 internal sealed class MStockCancelAllData
 {
+    /// <summary>Sentinel for "the broker acknowledged the sweep but did not say how many".</summary>
+    public const int UnknownCount = -1;
+
     [JsonPropertyName("cancelled_orders")]
     public IReadOnlyList<string>? CancelledOrders { get; init; }
 
     [JsonPropertyName("count")]
     public int? Count { get; init; }
+
+    /// <summary>The documented shape: one order id, no count.</summary>
+    [JsonPropertyName("order_id")]
+    public string? OrderId { get; init; }
+
+    /// <summary>
+    /// How many orders the broker claims to have cancelled, or <see cref="UnknownCount"/>
+    /// when it did not say. Never silently zero — see the type's remarks.
+    /// </summary>
+    [JsonIgnore]
+    public int ReportedCount => Count
+                                ?? CancelledOrders?.Count
+                                ?? UnknownCount;
+}
+
+// --- margin and charges -----------------------------------------------------------------
+
+/// <summary>
+/// Body for <c>POST /openapi/typea/margins/orders</c>.
+///
+/// JSON, not form-encoded — this is the one documented write route on the Type A surface that
+/// takes a JSON body, and mStock's own cURL sample sets <c>Content-Type: application/json</c>
+/// even though the surrounding prose says otherwise.
+/// </summary>
+internal sealed class MStockMarginRequest
+{
+    [JsonPropertyName("exchange")]
+    public required string Exchange { get; init; }
+
+    [JsonPropertyName("tradingsymbol")]
+    public required string TradingSymbol { get; init; }
+
+    [JsonPropertyName("transaction_type")]
+    public required string TransactionType { get; init; }
+
+    [JsonPropertyName("variety")]
+    public required string Variety { get; init; }
+
+    [JsonPropertyName("product")]
+    public required string Product { get; init; }
+
+    [JsonPropertyName("order_type")]
+    public required string OrderType { get; init; }
+
+    [JsonPropertyName("quantity")]
+    public required decimal Quantity { get; init; }
+
+    /// <summary>Zero on a market order — this route wants the field present, unlike placement.</summary>
+    [JsonPropertyName("price")]
+    public decimal Price { get; init; }
+
+    [JsonPropertyName("trigger_price")]
+    public decimal TriggerPrice { get; init; }
+}
+
+/// <summary>
+/// The margin calculator's reply: a margin breakdown plus a full itemised charge schedule.
+///
+/// <c>total</c> is the capital the broker will block. It is NOT the sum of the charges — the
+/// charge lines are a separate, additional estimate, and adding the two together would
+/// overstate the cost of every trade.
+/// </summary>
+internal sealed class MStockMarginData
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
+    [JsonPropertyName("tradingsymbol")]
+    public string? TradingSymbol { get; init; }
+
+    [JsonPropertyName("exchange")]
+    public string? Exchange { get; init; }
+
+    [JsonPropertyName("span")]
+    public decimal? Span { get; init; }
+
+    [JsonPropertyName("exposure")]
+    public decimal? Exposure { get; init; }
+
+    [JsonPropertyName("option_premium")]
+    public decimal? OptionPremium { get; init; }
+
+    [JsonPropertyName("additional")]
+    public decimal? Additional { get; init; }
+
+    [JsonPropertyName("bo")]
+    public decimal? BracketOrder { get; init; }
+
+    [JsonPropertyName("cash")]
+    public decimal? Cash { get; init; }
+
+    [JsonPropertyName("var")]
+    public decimal? Var { get; init; }
+
+    [JsonPropertyName("leverage")]
+    public decimal? Leverage { get; init; }
+
+    [JsonPropertyName("charges")]
+    public MStockChargesDto? Charges { get; init; }
+
+    /// <summary>Total margin blocked.</summary>
+    [JsonPropertyName("total")]
+    public decimal? Total { get; init; }
+}
+
+internal sealed class MStockChargesDto
+{
+    [JsonPropertyName("transaction_tax")]
+    public decimal? TransactionTax { get; init; }
+
+    /// <summary>"stt" on equity, "ctt" on commodities — the label for the line above.</summary>
+    [JsonPropertyName("transaction_tax_type")]
+    public string? TransactionTaxType { get; init; }
+
+    [JsonPropertyName("exchange_turnover_charge")]
+    public decimal? ExchangeTurnoverCharge { get; init; }
+
+    [JsonPropertyName("sebi_turnover_charge")]
+    public decimal? SebiTurnoverCharge { get; init; }
+
+    [JsonPropertyName("brokerage")]
+    public decimal? Brokerage { get; init; }
+
+    [JsonPropertyName("stamp_duty")]
+    public decimal? StampDuty { get; init; }
+
+    [JsonPropertyName("gst")]
+    public MStockGstDto? Gst { get; init; }
+
+    [JsonPropertyName("total")]
+    public decimal? Total { get; init; }
+}
+
+internal sealed class MStockGstDto
+{
+    [JsonPropertyName("igst")]
+    public decimal? Igst { get; init; }
+
+    [JsonPropertyName("cgst")]
+    public decimal? Cgst { get; init; }
+
+    [JsonPropertyName("sgst")]
+    public decimal? Sgst { get; init; }
+
+    [JsonPropertyName("total")]
+    public decimal? Total { get; init; }
+}
+
+// --- position conversion ------------------------------------------------------------------
+
+/// <summary>
+/// Body for <c>POST /openapi/typea/portfolio/convertposition</c>: moves an open position from
+/// one margin product to another (the intraday-to-delivery rescue, most often).
+/// </summary>
+internal sealed class MStockConvertPositionRequest
+{
+    [JsonPropertyName("tradingsymbol")]
+    public required string TradingSymbol { get; init; }
+
+    [JsonPropertyName("exchange")]
+    public required string Exchange { get; init; }
+
+    [JsonPropertyName("transaction_type")]
+    public required string TransactionType { get; init; }
+
+    /// <summary>mStock documents exactly one value here: <c>DAY</c>.</summary>
+    [JsonPropertyName("position_type")]
+    public required string PositionType { get; init; }
+
+    [JsonPropertyName("quantity")]
+    public required string Quantity { get; init; }
+
+    [JsonPropertyName("old_product")]
+    public required string OldProduct { get; init; }
+
+    [JsonPropertyName("new_product")]
+    public required string NewProduct { get; init; }
+
+    /// <summary>Form-encoded wire shape; see <see cref="MStockPlaceOrderRequest.ToForm"/>.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> ToForm() =>
+    [
+        new("tradingsymbol", TradingSymbol),
+        new("exchange", Exchange),
+        new("transaction_type", TransactionType),
+        new("position_type", PositionType),
+        new("quantity", Quantity),
+        new("old_product", OldProduct),
+        new("new_product", NewProduct),
+    ];
 }
 
 internal sealed class MStockOrderDto

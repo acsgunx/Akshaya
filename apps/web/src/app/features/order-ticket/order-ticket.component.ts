@@ -10,6 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { Router, RouterLink } from '@angular/router';
 
 import { BrokerLinksStore } from '../../core/broker-links.store';
+import { VenueStateService } from '../../core/venue-state.service';
 import { ConnectorStore } from '../../core/connector.store';
 import { MarketDataService } from '../../core/market-data.service';
 import { MoneyPipe } from '../../core/money.pipe';
@@ -23,7 +24,7 @@ import {
   timeInForceLabel,
 } from '../../core/labels';
 import type { InstrumentKey, Money, OrderType, OrderVariety, PlaceOrderRequest, PositionEffect, Side, TimeInForce } from '../../core/models';
-import { formatInstrumentLabel } from '../../core/models';
+import { canModifyField, formatInstrumentLabel, parseInstrumentKey } from '../../core/models';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
 import { OrderTicketStore } from './order-ticket.store';
 
@@ -86,6 +87,7 @@ export class OrderTicketComponent {
   private readonly connectorStore = inject(ConnectorStore);
   private readonly brokerLinksStore = inject(BrokerLinksStore);
   private readonly marketData = inject(MarketDataService);
+  private readonly venueState = inject(VenueStateService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly store = inject(OrderTicketStore);
@@ -96,6 +98,18 @@ export class OrderTicketComponent {
   // is resolved FROM it below, never assumed to equal it.
   readonly brokerLinkId = input.required<string>();
   readonly instrument = input.required<InstrumentKey>();
+
+  // Query-param prefill, bound by `withComponentInputBinding()`. These let
+  // another screen open a ticket already pointed the right way — the
+  // positions table's square-off is the main caller — WITHOUT that screen
+  // needing to know anything about how a ticket is built.
+  //
+  // They prefill, they never submit. A square-off is a real trade at a real
+  // price, so the review-then-confirm flow still applies; see the "no
+  // optimistic UI" note in order-ticket.store.ts.
+  readonly side = input<string | undefined>(undefined);
+  readonly quantity = input<string | undefined>(undefined);
+  readonly product = input<string | undefined>(undefined);
 
   protected readonly link = computed(() => this.brokerLinksStore.linkFor(this.brokerLinkId()));
   protected readonly manifest = computed(() => {
@@ -126,6 +140,18 @@ export class OrderTicketComponent {
   private readonly sideValue = toSignal(this.form.controls.side.valueChanges, {
     initialValue: this.form.controls.side.value,
   });
+  private readonly varietyValue = toSignal(this.form.controls.variety.valueChanges, {
+    initialValue: this.form.controls.variety.value,
+  });
+  private readonly quantityValue = toSignal(this.form.controls.quantity.valueChanges, {
+    initialValue: this.form.controls.quantity.value,
+  });
+  private readonly limitPriceValue = toSignal(this.form.controls.limitPrice.valueChanges, {
+    initialValue: this.form.controls.limitPrice.value,
+  });
+  private readonly disclosedQuantityValue = toSignal(this.form.controls.disclosedQuantity.valueChanges, {
+    initialValue: this.form.controls.disclosedQuantity.value,
+  });
 
   protected readonly showLimitPrice = computed(() => orderTypeNeedsLimitPrice(this.orderType()));
   protected readonly showTriggerPrice = computed(() => orderTypeNeedsTriggerPrice(this.orderType()));
@@ -141,6 +167,112 @@ export class OrderTicketComponent {
   protected readonly positionEffectLabel = positionEffectLabel;
   protected readonly orderVarietyLabel = orderVarietyLabel;
   protected readonly sideLabel = sideLabel;
+
+  // --- exchange rules -------------------------------------------------------
+  //
+  // These are checked HERE as well as at the broker, and that is not
+  // duplication for its own sake. A rejection that arrives from the exchange
+  // costs a round trip, arrives as vendor text nobody can act on ("RMS rule:
+  // quantity"), and — on a fast-moving instrument — arrives after the price
+  // the trader wanted has gone. Catching them in the form turns a rejected
+  // order into a corrected one.
+
+  /** Session state at the instrument's OWN venue, not the user's wall clock. */
+  private readonly venueSession = computed(() => {
+    const parsed = parseInstrumentKey(this.instrument());
+    return parsed ? this.venueState.stateFor(parsed.venue)() : undefined;
+  });
+
+  protected readonly isVenueClosed = computed(() => {
+    const status = this.venueSession()?.status;
+    return status === 'closed' || status === 'afterHours';
+  });
+
+  /** Whether this broker offers an after-market variety to fall back on. */
+  protected readonly supportsAfterMarket = computed(
+    () => this.manifest()?.orders.varieties.includes('afterMarket') ?? false,
+  );
+
+  /**
+   * The venue is shut and the ticket is still set to a regular order.
+   *
+   * Worth a prompt rather than a silent rejection: an AMO placed at 16:00
+   * queues for the next open, which is almost always what someone filling in
+   * a ticket after the bell actually wants.
+   */
+  protected readonly shouldSuggestAfterMarket = computed(
+    () => this.isVenueClosed() && this.supportsAfterMarket() && this.varietyValue() === 'regular',
+  );
+
+  /**
+   * Quantity must be a whole multiple of the lot size.
+   *
+   * Binding on derivatives, where the lot is the contract size — an NFO
+   * order for 30 when the lot is 25 is rejected outright, not rounded down.
+   */
+  protected readonly lotSizeError = computed<string | undefined>(() => {
+    const lotSize = this.store.instrument()?.lotSize ?? 1;
+    const quantity = Number(this.quantityValue());
+    if (lotSize <= 1 || !quantity || !Number.isFinite(quantity)) {
+      return undefined;
+    }
+    if (quantity % lotSize !== 0) {
+      const nearest = Math.max(lotSize, Math.round(quantity / lotSize) * lotSize);
+      return `This instrument trades in lots of ${lotSize}. Try ${nearest}.`;
+    }
+    return undefined;
+  });
+
+  /**
+   * Prices must sit on the venue's tick.
+   *
+   * Checked with integer arithmetic rather than a modulo on floats: at a
+   * tick of 0.05, `1250.15 % 0.05` is not zero in IEEE-754, and a validator
+   * that rejects a perfectly good price is worse than no validator at all.
+   */
+  protected readonly tickSizeError = computed<string | undefined>(() => {
+    const tickSize = this.store.instrument()?.tickSize ?? 0;
+    const price = Number(this.limitPriceValue());
+    if (!this.showLimitPrice() || tickSize <= 0 || !price || !Number.isFinite(price)) {
+      return undefined;
+    }
+
+    const scale = 100_000;
+    const priceTicks = Math.round(price * scale);
+    const tickTicks = Math.round(tickSize * scale);
+    if (tickTicks > 0 && priceTicks % tickTicks !== 0) {
+      const nearest = (Math.round(priceTicks / tickTicks) * tickTicks) / scale;
+      return `This venue quotes in ticks of ${tickSize}. Try ${nearest}.`;
+    }
+    return undefined;
+  });
+
+  /**
+   * Indian exchanges require a disclosed quantity to be at least 30% of the
+   * order — mStock's own modify documentation says so in as many words.
+   *
+   * A warning rather than a hard block: the rule is venue policy and can
+   * change, and the broker is the authority. Blocking on our copy of someone
+   * else's rule is how a UI ends up refusing an order the exchange would
+   * have accepted.
+   */
+  protected readonly disclosedQuantityWarning = computed<string | undefined>(() => {
+    const disclosed = Number(this.disclosedQuantityValue());
+    const quantity = Number(this.quantityValue());
+    if (!disclosed || !quantity || !Number.isFinite(disclosed) || !Number.isFinite(quantity)) {
+      return undefined;
+    }
+    if (disclosed > quantity) {
+      return 'The disclosed quantity cannot exceed the order quantity.';
+    }
+    if (disclosed < quantity * 0.3) {
+      return `Most Indian venues require at least 30% of the order to be disclosed (${Math.ceil(quantity * 0.3)}).`;
+    }
+    return undefined;
+  });
+
+  /** Hard blocks only. Warnings above do not gate the button. */
+  protected readonly blockingError = computed(() => this.lotSizeError() ?? this.tickSizeError());
 
   /** Estimated notional (qty × best-known price), in the instrument's own currency — shown pre-confirm. */
   protected readonly estimatedValue = computed<Money | undefined>(() => {
@@ -182,6 +314,50 @@ export class OrderTicketComponent {
       const unsubscribe = this.marketData.subscribe(this.brokerLinkId(), key);
       this.destroyRef.onDestroy(unsubscribe);
     });
+
+    // Query-param prefill, applied AFTER the manifest defaults above so an
+    // explicit request from the calling screen wins over the broker default.
+    // Each value is validated against the manifest before it is applied —
+    // a stale bookmark carrying a product this broker does not offer must
+    // leave the ticket on a supported one rather than in an unplaceable state.
+    effect(() => {
+      const manifest = this.manifest();
+      if (!manifest) {
+        return;
+      }
+
+      const side = this.side();
+      if (side === 'buy' || side === 'sell') {
+        this.form.controls.side.setValue(side);
+      }
+
+      const quantity = this.quantity();
+      if (quantity && Number(quantity) > 0) {
+        this.form.controls.quantity.setValue(quantity);
+      }
+
+      const product = this.product() as PositionEffect | undefined;
+      if (product && manifest.orders.positionEffects.includes(product)) {
+        this.form.controls.positionEffect.setValue(product);
+      }
+    });
+  }
+
+  /** Switches the ticket to an after-market order — see `shouldSuggestAfterMarket`. */
+  protected useAfterMarket(): void {
+    this.form.controls.variety.setValue('afterMarket');
+  }
+
+  /**
+   * Whether the broker accepts this field on an order.
+   *
+   * Goes through `canModifyField` rather than `.includes()`: the manifest
+   * ships these values PascalCased, so the direct comparison this replaced
+   * never matched and the disclosed-quantity field never rendered at all.
+   */
+  protected canModify(field: string): boolean {
+    const manifest = this.manifest();
+    return manifest ? canModifyField(manifest, field) : false;
   }
 
   protected stageSide(side: Side): void {

@@ -151,6 +151,95 @@ public sealed class MStockPortfolio : IConnectorPortfolio
         return Result<IReadOnlyList<BrokerBalance>>.Success(balances);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// <c>POST /openapi/typea/portfolio/convertposition</c>, form-encoded.
+    ///
+    /// The route answers with an EMPTY 200 on success — no order id, no confirmation payload,
+    /// nothing to bind. That is why this returns a bare <see cref="Result"/>: there is no ack
+    /// to hand back, and inventing one would be a claim the broker never made. The caller's
+    /// next positions read is what confirms the conversion actually happened.
+    ///
+    /// mStock accepts only <c>DAY</c> as the position type, which is the only kind of position
+    /// that can be converted at all — an overnight position has already settled into its
+    /// product.
+    /// </remarks>
+    public async Task<Result> ConvertPositionAsync(
+        ConvertPositionRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Quantity.Value <= 0m)
+        {
+            return Result.Failure(new Error(
+                ConnectorErrorCodes.InvalidRequest,
+                "The quantity to convert must be positive."));
+        }
+
+        if (request.Quantity.IsFractional)
+        {
+            return Result.Failure(new Error(
+                ConnectorErrorCodes.InvalidRequest,
+                $"mStock trades whole units only; {request.Quantity} is fractional."));
+        }
+
+        if (request.From == request.To)
+        {
+            return Result.Failure(new Error(
+                ConnectorErrorCodes.InvalidRequest,
+                $"The position is already held as {request.From}; there is nothing to convert."));
+        }
+
+        var symbol = _symbols.ToNative(request.Instrument);
+        if (symbol.IsFailure)
+        {
+            return Result.Failure(symbol.Error);
+        }
+
+        var exchange = MStockMaps.ToNativeExchange(request.Instrument.Venue, request.Instrument.AssetClass);
+        if (exchange.IsFailure)
+        {
+            return Result.Failure(exchange.Error);
+        }
+
+        var side = MStockMaps.ToNativeSide(request.Side);
+        if (side.IsFailure)
+        {
+            return Result.Failure(side.Error);
+        }
+
+        var oldProduct = MStockMaps.ToNativeProduct(request.From);
+        if (oldProduct.IsFailure)
+        {
+            return Result.Failure(oldProduct.Error);
+        }
+
+        var newProduct = MStockMaps.ToNativeProduct(request.To);
+        if (newProduct.IsFailure)
+        {
+            return Result.Failure(newProduct.Error);
+        }
+
+        var body = new MStockConvertPositionRequest
+        {
+            TradingSymbol = symbol.Value,
+            Exchange = exchange.Value,
+            TransactionType = side.Value,
+            PositionType = MStockMaps.PositionTypeDay,
+            Quantity = MStockNumber.Quantity(request.Quantity.Value),
+            OldProduct = oldProduct.Value,
+            NewProduct = newProduct.Value,
+        };
+
+        // PostVoidFormAsync, not PostFormAsync: the success envelope carries no data member,
+        // and demanding one would report every successful conversion as a malformed response —
+        // the same fault that logout hit, written up in mstock-login-response.md.
+        return await _api
+            .PostVoidFormAsync(_options.ConvertPositionPath, body.ToForm(), ct)
+            .ConfigureAwait(false);
+    }
+
     private Result<BrokerPosition> MapPosition(MStockPositionDto dto)
     {
         var instrument = Resolve(dto.TradingSymbol, dto.Exchange, _options.PositionsPath, dto.InstrumentToken);

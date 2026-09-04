@@ -102,6 +102,7 @@ tests/
   Akshaya.Identity.Tests/          Password hashing, the credential cipher, vault isolation
 scripts/                           Dev and verification scripts (see scripts/README.md)
 docs/                              Architecture, internals, ADRs, per-connector notes, compliance
+  features/orders.md               Buy/sell orders end to end — options, mStock mapping, failure modes
 ```
 
 ---
@@ -138,6 +139,10 @@ field — never a conditional.
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it fits together,
 [`docs/INTERNALS.md`](docs/INTERNALS.md) for the theory and mechanism behind every decision
 (backend and Angular), and [`docs/ADDING-A-BROKER.md`](docs/ADDING-A-BROKER.md) for the checklist.
+
+[`docs/features/orders.md`](docs/features/orders.md) is the worked example of that idea from
+end to end: every order option the platform exposes, exactly which of them mStock accepts and
+why, and the failure mode each one has.
 
 ---
 

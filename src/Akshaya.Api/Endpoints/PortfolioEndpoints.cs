@@ -1,5 +1,10 @@
+using Akshaya.Api.Contracts;
+using Akshaya.Api.Infrastructure;
 using Akshaya.Modules.Portfolio;
+using Akshaya.Modules.Trading.Application;
+using Akshaya.Modules.Trading.Domain;
 using Akshaya.SharedKernel;
+using FluentValidation;
 using Microsoft.Extensions.Options;
 
 namespace Akshaya.Api.Endpoints;
@@ -28,6 +33,27 @@ public static class PortfolioEndpoints
                 user.TenantId, user.UserId, ResolveCurrency(currency, options), PortfolioParts.All, ct);
 
             return Results.Ok(snapshot);
+        });
+
+        // Moves a live position between margin products (intraday to delivery, most often).
+        // It sits under /portfolio rather than /orders because it books no trade — see
+        // ConvertPositionHandler for why that distinction is load-bearing.
+        group.MapPost("/positions/convert", async (
+            ConvertPositionRequestDto request,
+            ICurrentUserAccessor user,
+            IValidator<ConvertPositionRequestDto> validator,
+            ConvertPositionHandler handler,
+            CancellationToken ct) =>
+        {
+            var validation = await validator.ValidateAsync(request, ct);
+            if (!validation.IsValid)
+            {
+                return ProblemDetailsMapper.ValidationProblem(validation.Errors.Select(e => e.ErrorMessage));
+            }
+
+            var command = request.ToCommand(user.TenantId, user.UserId, OrderActors.User);
+            var result = await handler.HandleAsync(command, ct);
+            return result.ToHttp();
         });
 
         group.MapGet("/positions", async (

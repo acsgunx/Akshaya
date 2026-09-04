@@ -95,11 +95,18 @@ public static class OrderEndpoints
             return result.ToHttp(CancelAllResponse.From);
         });
 
+        // NULLABLE bools, not bare ones. A non-nullable `bool` parameter is a REQUIRED query
+        // string value in minimal APIs, so `GET /api/orders?openOnly=false` — exactly what the
+        // web client sends — threw "Required parameter bool unresolvedOnly was not provided"
+        // and returned a 500. The blotter showed "Could not load orders" and nothing else.
+        //
+        // Filters are optional by nature: omitting one means "do not filter", not "reject the
+        // request". Both default to false below.
         group.MapGet("/", async (
             string? brokerLinkId,
             string? instrument,
-            bool openOnly,
-            bool unresolvedOnly,
+            bool? openOnly,
+            bool? unresolvedOnly,
             DateTimeOffset? from,
             DateTimeOffset? to,
             int? limit,
@@ -124,8 +131,8 @@ public static class OrderEndpoints
                 UserId = user.UserId,
                 BrokerLinkId = brokerLinkId,
                 Instrument = instrumentKey,
-                OpenOnly = openOnly,
-                UnresolvedOnly = unresolvedOnly,
+                OpenOnly = openOnly ?? false,
+                UnresolvedOnly = unresolvedOnly ?? false,
                 From = from,
                 To = to,
                 Limit = limit is > 0 ? limit.Value : 200,
@@ -133,6 +140,80 @@ public static class OrderEndpoints
 
             var found = await orders.ListAsync(filter, ct);
             return Results.Ok(found.Select(o => OrderDto.From(o)).ToArray());
+        });
+
+        // Fills, not orders. Deliberately BEFORE the "/{id:guid}" route below — a literal
+        // segment and a route constraint do not collide in ASP.NET's matcher, but keeping the
+        // literal first makes the intent unambiguous to the next person reading the file.
+        group.MapGet("/trades", async (
+            string? brokerLinkId,
+            DateOnly? from,
+            DateOnly? to,
+            string? instrument,
+            ICurrentUserAccessor user,
+            IBrokerLinkStore links,
+            BrokerLinkResolver linkResolver,
+            CancellationToken ct) =>
+        {
+            InstrumentKey? instrumentKey = null;
+            if (instrument is { Length: > 0 })
+            {
+                if (!InstrumentKey.TryParse(instrument, out var parsed))
+                {
+                    return ProblemDetailsMapper.ValidationProblem([$"'{instrument}' is not a valid instrument key."]);
+                }
+
+                instrumentKey = parsed;
+            }
+
+            IReadOnlyList<BrokerLink> targets;
+            if (brokerLinkId is { Length: > 0 })
+            {
+                var one = await linkResolver.GetLinkAsync(user.TenantId, brokerLinkId, ct);
+                if (one.IsFailure)
+                {
+                    return ProblemDetailsMapper.ToProblem(one.Error);
+                }
+
+                targets = [one.Value];
+            }
+            else
+            {
+                targets = [.. (await links.ListAsync(user.TenantId, user.UserId, ct)).Where(l => l.IsUsable)];
+            }
+
+            var query = new OrderQuery { From = from, To = to, Instrument = instrumentKey };
+
+            var trades = new List<TradeDto>();
+            var warnings = new List<string>();
+
+            foreach (var link in targets)
+            {
+                var connectorResult = await linkResolver.ConnectAsync(link, ct);
+                if (connectorResult.IsFailure)
+                {
+                    warnings.Add($"{link.Id}: {connectorResult.Error.Message}");
+                    continue;
+                }
+
+                await using var connector = connectorResult.Value;
+
+                var found = await connector.Orders.GetTradesAsync(query, ct);
+                if (found.IsFailure)
+                {
+                    // Named and skipped, never fatal. See TradesResponse.Warnings.
+                    warnings.Add($"{connector.Manifest.DisplayName}: {found.Error.Message}");
+                    continue;
+                }
+
+                trades.AddRange(found.Value.Select(t => TradeDto.From(t, link.Id, link.ConnectorId)));
+            }
+
+            // Newest first: a fills list is read from the top, and the most recent execution is
+            // the one someone checking "did that go through" is looking for.
+            trades.Sort((a, b) => b.ExecutedAt.CompareTo(a.ExecutedAt));
+
+            return Results.Ok(new TradesResponse(trades, warnings, warnings.Count > 0));
         });
 
         group.MapGet("/{id:guid}", async (

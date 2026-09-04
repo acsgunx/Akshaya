@@ -149,7 +149,26 @@
                 <span class="ak-col-price">{{ leg.lastPrice | akMoney }}</span>
                 <span class="ak-col-pnl">{{ leg.currentValue | akMoney }}</span>
                 <span class="ak-col-pnl">{{ leg.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}</span>
-                <span class="ak-col-return"></span>
+                <!--
+                  Sell hangs off the LEG, because only a leg names the account
+                  that actually holds the stock. It opens the ticket staged to
+                  sell the FREE quantity — pledged stock is collateral and the
+                  broker will refuse an order against it, so offering the full
+                  holding here would set the trader up for a rejection.
+                -->
+                <span class="ak-col-return flex items-center justify-end">
+                  @if (sellableOf(leg) > 0) {
+                    <a
+                      class="ak-iconbtn ak-focus-halo ak-sell-text"
+                      [routerLink]="['/trade', leg.brokerLinkId, holding.instrument]"
+                      [queryParams]="{ side: 'sell', quantity: sellableOf(leg), product: 'delivery' }"
+                      [attr.aria-label]="'Sell ' + holding.instrument + ' at ' + leg.displayName"
+                      matTooltip="Sell from this account"
+                    >
+                      <mat-icon class="ak-i-sm" aria-hidden="true">remove_circle_outline</mat-icon>
+                    </a>
+                  }
+                </span>
               </div>
             }
           </div>

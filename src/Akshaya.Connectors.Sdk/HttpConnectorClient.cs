@@ -167,6 +167,26 @@ public sealed class HttpConnectorClient
     }
 
     /// <summary>
+    /// Form-encoded PUT. The counterpart of <see cref="PostFormAsync{T}"/>, and needed for the
+    /// same reason: a broker that accepts orders as a form generally accepts amendments the
+    /// same way, and sending JSON to such a route is silently accepted-and-ignored far more
+    /// often than it is rejected.
+    /// </summary>
+    public Task<Result<T>> PutFormAsync<T>(
+        string path,
+        IEnumerable<KeyValuePair<string, string>> form,
+        CancellationToken ct = default)
+    {
+        var materialised = form as IList<KeyValuePair<string, string>> ?? [.. form];
+        return SendAsync<T>(
+            () => new HttpRequestMessage(HttpMethod.Put, path)
+            {
+                Content = new FormUrlEncodedContent(materialised),
+            },
+            ct);
+    }
+
+    /// <summary>
     /// The general form. Takes a FACTORY rather than a message because an
     /// <see cref="HttpRequestMessage"/> cannot be sent twice, and the host's resilience
     /// decorator may call the enclosing operation again.

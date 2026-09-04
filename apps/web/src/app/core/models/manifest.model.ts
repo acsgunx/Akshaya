@@ -91,6 +91,13 @@ export interface OrderSpec {
   readonly marginEstimate: boolean;
   readonly chargesEstimate: boolean;
   readonly cancelAll: boolean;
+  /**
+   * Whether an open position can be moved between margin products (intraday
+   * to delivery and back). Not an order type, but the same capability
+   * question — the positions screen hides the action when this is false
+   * rather than offering a button that always fails.
+   */
+  readonly positionConversion: boolean;
 }
 
 export interface MarketDataSpec {
@@ -162,4 +169,29 @@ export function connectorHealthBadgeSeverity(manifest: ConnectorManifest): 'info
   // Gateway-hosted connectors have an extra failure mode (the local daemon
   // itself) worth flagging distinctly in a catalogue view.
   return manifest.hosting === 'gateway' ? 'warning' : 'info';
+}
+
+/**
+ * Whether the broker will accept a change to `field` on an amendment.
+ *
+ * CASE-INSENSITIVE, AND THAT IS THE ENTIRE POINT. `orders.modifiable` is a
+ * list of VALUES, not property names, so the API's camelCase policy does not
+ * touch it — the manifests ship `"LimitPrice"` and it arrives as
+ * `"LimitPrice"`, while every call site here naturally reaches for
+ * `'limitPrice'`. The mismatch does not throw and does not warn: the field
+ * simply never renders, and a trader quietly loses the ability to amend a
+ * price.
+ *
+ * That is not hypothetical. It is the exact failure `docs/STATUS.md` records
+ * being caught once already ("the UI disables fields by that name, so the
+ * mismatch would have silently disabled the wrong controls on the order
+ * ticket") — and it was still live on the order ticket's disclosed-quantity
+ * field until this helper replaced the raw `.includes()` calls.
+ *
+ * Every read of `modifiable` goes through here. Never call `.includes()` on
+ * it directly.
+ */
+export function canModifyField(manifest: ConnectorManifest, field: string): boolean {
+  const wanted = field.toLowerCase();
+  return manifest.orders.modifiable.some((name) => name.toLowerCase() === wanted);
 }

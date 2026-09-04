@@ -1,3 +1,4 @@
+using Akshaya.Connectors.Abstractions;
 using Akshaya.Modules.Trading.Application;
 using Akshaya.Modules.Trading.Domain;
 using Akshaya.SharedKernel;
@@ -384,3 +385,128 @@ public sealed record OrderEstimateResponse(
 /// <param name="Amount">How much.</param>
 /// <param name="Note">Any qualification the broker attached.</param>
 public sealed record ChargeLineDto(string Name, Money Amount, string? Note);
+
+/// <summary>
+/// One execution, as the API exposes it.
+///
+/// A FILL, not an order. One order can produce many of these — the exchange fills in whatever
+/// chunks the book offers — and the difference matters to anyone reconciling a contract note
+/// or computing a realised cost basis, which is why the blotter's average price is not a
+/// substitute for the list.
+/// </summary>
+/// <param name="TradeId">The broker's id for this execution.</param>
+/// <param name="BrokerOrderId">The order it came from.</param>
+/// <param name="BrokerLinkId">Which linked account.</param>
+/// <param name="ConnectorId">Opaque connector id, for the account label. Never branch on it.</param>
+/// <param name="Instrument">What traded.</param>
+/// <param name="Side">Which way.</param>
+/// <param name="Quantity">How much filled in THIS execution, not the order's total.</param>
+/// <param name="Price">The price THIS chunk filled at.</param>
+/// <param name="ExecutedAt">When the exchange stamped it.</param>
+/// <param name="Charges">Populated only when the broker reports charges per trade.</param>
+public sealed record TradeDto(
+    string TradeId,
+    string BrokerOrderId,
+    string BrokerLinkId,
+    string ConnectorId,
+    InstrumentKey Instrument,
+    Side Side,
+    Quantity Quantity,
+    Money Price,
+    DateTimeOffset ExecutedAt,
+    Money? Charges)
+{
+    public static TradeDto From(BrokerTrade trade, string brokerLinkId, string connectorId)
+    {
+        ArgumentNullException.ThrowIfNull(trade);
+
+        return new TradeDto(
+            trade.TradeId,
+            trade.BrokerOrderId,
+            brokerLinkId,
+            connectorId,
+            trade.Instrument,
+            trade.Side,
+            trade.Quantity,
+            trade.Price,
+            trade.ExecutedAt,
+            trade.Charges);
+    }
+}
+
+/// <summary>
+/// Fills across one link or every link, plus whichever links could not be read.
+/// </summary>
+/// <param name="Trades">The executions, newest first.</param>
+/// <param name="Warnings">
+/// One line per link that failed. The list is returned ANYWAY rather than replaced by an
+/// error: a trader reconciling five accounts is better served by four of them plus a named
+/// gap than by a single error page that hides the four that worked.
+/// </param>
+/// <param name="IsPartial">True when at least one link could not be read.</param>
+public sealed record TradesResponse(
+    IReadOnlyList<TradeDto> Trades,
+    IReadOnlyList<string> Warnings,
+    bool IsPartial);
+
+/// <summary>
+/// A request to move an open position between margin products.
+///
+/// The source product is REQUIRED rather than looked up. A hedged account can hold the same
+/// instrument under two products at once, and a conversion that guesses which one the trader
+/// meant converts the wrong position — so the client has to name what it is looking at.
+/// </summary>
+public sealed record ConvertPositionRequestDto
+{
+    public required string BrokerLinkId { get; init; }
+
+    public required InstrumentKey Instrument { get; init; }
+
+    /// <summary>BUY for a long position, SELL for a short one.</summary>
+    public required Side Side { get; init; }
+
+    public required Quantity Quantity { get; init; }
+
+    /// <summary>The product the position is held under now.</summary>
+    public required PositionEffect From { get; init; }
+
+    /// <summary>The product to move it to.</summary>
+    public required PositionEffect To { get; init; }
+
+    public ConvertPositionCommand ToCommand(string tenantId, string userId, string actor) => new()
+    {
+        TenantId = tenantId,
+        UserId = userId,
+        BrokerLinkId = BrokerLinkId,
+        Instrument = Instrument,
+        Side = Side,
+        Quantity = Quantity,
+        From = From,
+        To = To,
+        Actor = actor,
+    };
+}
+
+public sealed class ConvertPositionRequestDtoValidator : AbstractValidator<ConvertPositionRequestDto>
+{
+    public ConvertPositionRequestDtoValidator()
+    {
+        RuleFor(r => r.BrokerLinkId).NotEmpty().WithMessage("A broker link id is required.");
+
+        RuleFor(r => r.Quantity.Value)
+            .GreaterThan(0m)
+            .WithMessage("The quantity to convert must be greater than zero.");
+
+        RuleFor(r => r.From)
+            .NotEqual(PositionEffect.None)
+            .WithMessage("The position's current product is required.");
+
+        RuleFor(r => r.To)
+            .NotEqual(PositionEffect.None)
+            .WithMessage("The product to convert to is required.");
+
+        RuleFor(r => r)
+            .Must(r => r.From != r.To)
+            .WithMessage("The position is already held under that product; there is nothing to convert.");
+    }
+}

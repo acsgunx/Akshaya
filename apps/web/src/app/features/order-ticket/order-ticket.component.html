@@ -71,6 +71,28 @@
             </button>
           </div>
 
+          @if (shouldSuggestAfterMarket()) {
+            <!--
+              The venue is shut. A regular order sent now is rejected; an AMO
+              queues for the next open, which is almost always what someone
+              filling in a ticket after the bell actually wants.
+            -->
+            <div class="flex items-start gap-2 rounded-sm border border-warning/40 bg-surface-2 p-2.5 text-xs text-warning">
+              <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">schedule</mat-icon>
+              <div class="flex-1">
+                <p>This market is closed. A regular order will be rejected.</p>
+                <button
+                  mat-button
+                  type="button"
+                  class="mt-1 !px-2 !py-0 !text-xs"
+                  (click)="useAfterMarket()"
+                >
+                  Place as an after-market order instead
+                </button>
+              </div>
+            </div>
+          }
+
           <mat-form-field appearance="outline" class="w-full">
             <mat-label>Order type</mat-label>
             <mat-select formControlName="orderType">
@@ -131,7 +153,9 @@
               [step]="manifest()!.orders.fractionalQuantity ? 'any' : store.instrument()?.lotSize ?? 1"
               min="0"
             />
-            @if (!manifest()!.orders.fractionalQuantity) {
+            @if (lotSizeError(); as error) {
+              <mat-error>{{ error }}</mat-error>
+            } @else if (!manifest()!.orders.fractionalQuantity) {
               <mat-hint>This broker does not support fractional quantities.</mat-hint>
             }
           </mat-form-field>
@@ -139,7 +163,10 @@
           @if (showLimitPrice()) {
             <mat-form-field appearance="outline" class="w-full">
               <mat-label>Limit price ({{ store.instrument()?.currency }})</mat-label>
-              <input matInput type="number" inputmode="decimal" formControlName="limitPrice" />
+              <input matInput type="number" inputmode="decimal" formControlName="limitPrice" [step]="store.instrument()?.tickSize ?? 'any'" />
+              @if (tickSizeError(); as error) {
+                <mat-error>{{ error }}</mat-error>
+              }
             </mat-form-field>
           }
 
@@ -150,10 +177,20 @@
             </mat-form-field>
           }
 
-          @if (manifest()!.orders.modifiable.includes('disclosedQuantity')) {
+          @if (canModify('disclosedQuantity')) {
             <mat-form-field appearance="outline" class="w-full">
               <mat-label>Disclosed quantity (optional)</mat-label>
               <input matInput type="number" inputmode="decimal" formControlName="disclosedQuantity" />
+              @if (disclosedQuantityWarning(); as warning) {
+                <!--
+                  A HINT, not an error: this is venue policy, the broker is
+                  the authority on it, and refusing an order the exchange
+                  would have taken is the worse failure.
+                -->
+                <mat-hint class="text-warning">{{ warning }}</mat-hint>
+              } @else {
+                <mat-hint>Shows only part of your order in the public book.</mat-hint>
+              }
             </mat-form-field>
           }
 
@@ -174,7 +211,13 @@
           }
 
           <footer class="flex items-center justify-end gap-2">
-            <button mat-flat-button type="button" [disabled]="form.invalid" (click)="reviewOrder()" [class]="isBuy() ? 'ak-btn-buy' : 'ak-btn-sell'">
+            <button
+              mat-flat-button
+              type="button"
+              [disabled]="form.invalid || !!blockingError()"
+              (click)="reviewOrder()"
+              [class]="isBuy() ? 'ak-btn-buy' : 'ak-btn-sell'"
+            >
               Review {{ sideLabel(form.controls.side.value) }} order
             </button>
           </footer>

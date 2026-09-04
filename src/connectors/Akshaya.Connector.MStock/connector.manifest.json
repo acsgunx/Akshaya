@@ -111,9 +111,10 @@
     "bracket": false,
     "cover": false,
     "gtt": false,
-    "marginEstimate": false,
-    "chargesEstimate": false,
-    "cancelAll": true
+    "marginEstimate": true,
+    "chargesEstimate": true,
+    "cancelAll": true,
+    "positionConversion": true
   },
   "marketData": {
     "streaming": true,

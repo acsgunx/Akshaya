@@ -4,10 +4,12 @@ import { ScrollingModule } from '@angular/cdk/scrolling';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { RouterLink } from '@angular/router';
 
 import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
-import type { BlendedHolding, CurrencyCode, Money } from '../../core/models';
+import type { BlendedHolding, BrokerHoldingLeg, CurrencyCode, Money } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 
@@ -39,6 +41,8 @@ export interface HoldingsTotal {
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    MatTooltipModule,
+    RouterLink,
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
@@ -49,6 +53,19 @@ export interface HoldingsTotal {
 })
 export class HoldingsComponent implements OnInit {
   protected readonly store = inject(DashboardStore);
+
+  /**
+   * The quantity in this leg that can actually be sold: total less pledged.
+   *
+   * Pledged stock is collateral. The broker rejects an order against it, so
+   * pre-filling the ticket with the full holding would walk the trader
+   * straight into that rejection — see the pledged badge on the row above,
+   * which exists for the same reason.
+   */
+  protected sellableOf(leg: BrokerHoldingLeg): number {
+    const free = Number(leg.quantity) - Number(leg.pledgedQuantity ?? 0);
+    return Number.isFinite(free) && free > 0 ? free : 0;
+  }
 
   private readonly expanded = signal<ReadonlySet<string>>(new Set());
 

@@ -84,7 +84,16 @@ public sealed record MStockOptions
     /// <summary>Alternate trade feed. Used as a fallback when the trade book comes back empty.</summary>
     public string TradesPath { get; init; } = "/openapi/typea/trades";
 
+    /// <summary>
+    /// Pre-trade margin and itemised charges. The one write route on this surface that takes a
+    /// JSON body rather than a form.
+    /// </summary>
+    public string OrderMarginPath { get; init; } = "/openapi/typea/margins/orders";
+
     public string PositionsPath { get; init; } = "/openapi/typea/portfolio/positions";
+
+    /// <summary>Moves an open position between margin products (MIS to CNC and back).</summary>
+    public string ConvertPositionPath { get; init; } = "/openapi/typea/portfolio/convertposition";
 
     public string HoldingsPath { get; init; } = "/openapi/typea/portfolio/holdings";
 
