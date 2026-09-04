@@ -249,6 +249,28 @@ export class BrokerLinkWizardComponent {
     });
   }
 
+  /**
+   * Which second factor the user is actually holding.
+   *
+   * The broker cannot tell us. mStock sends an SMS *or* expects an authenticator code —
+   * "if TOTP is enabled, OTP will not be triggered" — and its login response says nothing
+   * about which. So the choice is the user's, and it is routed to the matching endpoint by
+   * the flow state below.
+   */
+  protected readonly useAuthenticator = signal(false);
+
+  protected toggleAuthenticator(): void {
+    const next = !this.useAuthenticator();
+    this.useAuthenticator.set(next);
+
+    // The connector owns this key's meaning (MStockAuth.ChallengeStateKey); the wizard only
+    // echoes it back on the continue call. Cleared rather than set to 'sms', because absent
+    // means "the connector's default route" and inventing a second vocabulary for the same
+    // thing is how these two ends drift apart.
+    this.store.rememberFlowState(next ? { challenge: 'totp' } : { challenge: '' });
+    this.challengeResponseControl.reset('');
+  }
+
   protected submitChallenge(): void {
     const step = this.store.step();
     if (!step || step.type !== 'challenge' || this.challengeResponseControl.invalid) {

@@ -486,13 +486,35 @@ ticket's disclosed-quantity field. **Never call `.includes()` on `modifiable` di
 
 ---
 
+## 12a. Before any of this: getting linked
+
+Two failure modes account for most "it will not connect" reports, and neither is an order bug.
+
+**"mStock did not accept the one-time code."** The message now carries mStock's own words,
+which is what distinguishes the two causes:
+
+| mStock says | Means |
+|---|---|
+| *"The entered OTP is incorrect. Please proceed to login page."* | Mistyped, or the code lapsed — request a new one. mStock's OTPs are short-lived. |
+| *"Please enter correct TOTP"* | **Wrong route.** The account uses an authenticator app, so no SMS was ever sent. Choose "No SMS? Use my authenticator app code instead" on the challenge screen. |
+
+The second is the one that used to be unfixable from the UI: the wizard asserted an SMS had
+been sent, and every code went to the SMS endpoint regardless. See
+[`../connectors/mstock.md`](../connectors/mstock.md).
+
+**"Your mStock API key has expired or been suspended."** Type A keys last roughly 13 months;
+regenerate in the mStock API portal.
+
 ## 13. Smoke test
 
 Automated conformance uses recorded fixtures and proves the *mapping*, not the API. Only this
 proves the API. Run it against a real mStock account, out of hours where possible, with the
 smallest quantity that will trade.
 
-- [ ] Link an mStock account (OTP and, separately, TOTP).
+- [ ] Link an mStock account by **SMS OTP**.
+- [ ] Link an mStock account that has an **authenticator enabled but no stored seed**, using
+      the "use my authenticator app code instead" option. This is the path that was a dead end.
+- [ ] Link with a **stored `totp_secret`** and confirm the challenge screen is skipped.
 - [ ] `POST /api/orders/estimate` — confirm margin and charges return, and that the margin
       figure is not the charges figure.
 - [ ] Place a **limit** order well away from the market so it rests. Confirm it in mStock's own

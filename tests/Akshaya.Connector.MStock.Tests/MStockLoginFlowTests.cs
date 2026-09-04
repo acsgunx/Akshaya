@@ -62,6 +62,18 @@ public sealed class MStockLoginFlowTests
         {"status":"success","data":{"user_type":"individual","email":"trader@example.com","user_name":"A Trader","broker":"MIRAE","exchanges":["NSE","NFO"],"products":["CNC","MIS"],"order_types":["MARKET","LIMIT"],"user_id":"538","api_key":"AK-1","access_token":"ACCESS-TOKEN","public_token":"PUBLIC-TOKEN","enctoken":"ENC-TOKEN","refresh_token":"REFRESH-TOKEN","login_time":"2026-09-03 09:30:00","meta":{"demat_consent":"physical"}}}
         """;
 
+    /// <summary>mStock's documented wrong-OTP envelope, verbatim.</summary>
+    private const string OtpRejected =
+        """
+        {"status":"error","message":"The entered OTP is incorrect. Please proceed to login page. (-MACM60)","error_type":"MiraeException","data":null}
+        """;
+
+    /// <summary>mStock's documented wrong-TOTP envelope, verbatim.</summary>
+    private const string TotpRejected =
+        """
+        {"status":"error","message":"Please enter correct TOTP","error_type":"MiraeException","data":null}
+        """;
+
     private static (MStockAuth Auth, ScriptedHandler Handler) Build(
         params (HttpStatusCode Status, string Body)[] responses)
     {
@@ -236,8 +248,124 @@ public sealed class MStockLoginFlowTests
         step.Error.Message.Should().Contain("Ledger balance is being recomputed");
     }
 
+    // -----------------------------------------------------------------------------------
+    // Second-factor routing.
+    //
+    // mStock sends an SMS *or* expects an authenticator code — "if TOTP is enabled, OTP will
+    // not be triggered for login trading API requests" — and its login response says nothing
+    // about which mode the account is in. The two codes go to DIFFERENT endpoints, so getting
+    // the route wrong fails every attempt no matter what the user types.
+    //
+    // Before this, the route was chosen solely by whether a TOTP seed had been stored. An
+    // authenticator-enabled account whose owner had not stored their seed was a dead end: no
+    // SMS ever arrived, and the code from their app was posted to the SMS endpoint, which
+    // cannot accept it. The wizard now lets the user say which they hold, and these pin that
+    // the choice actually reaches the right route.
+    // -----------------------------------------------------------------------------------
+
+    private static AuthContext WithChallengeState(string challenge)
+    {
+        var context = Credentials();
+        return context with
+        {
+            State = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [MStockAuth.ChallengeStateKey] = challenge,
+            },
+        };
+    }
+
+    [Fact]
+    public async Task A_code_the_user_says_is_from_an_authenticator_goes_to_the_totp_route()
+    {
+        // THE FIX. Without the state key this code would be posted to /session/token — the SMS
+        // route — and rejected however correct it was.
+        var (auth, handler) = Build((HttpStatusCode.OK, SessionSuccess));
+
+        var step = await auth.ContinueAsync(WithChallengeState(MStockAuth.TotpChallenge), "123456");
+
+        step.IsSuccess.Should().BeTrue(
+            step.IsFailure ? $"the TOTP should have been accepted, but: {step.Error}" : string.Empty);
+
+        handler.RequestPaths.Should().ContainSingle()
+            .Which.Should().Be("/openapi/typea/session/verifytotp");
+
+        // The TOTP route takes api_key + totp — NOT request_token, which is the SMS route's
+        // field name and is silently ignored here.
+        handler.RequestBodies[0].Should().Contain("totp=123456");
+        handler.RequestBodies[0].Should().NotContain("request_token");
+    }
+
+    [Fact]
+    public async Task A_code_with_no_stated_challenge_still_goes_to_the_sms_route()
+    {
+        // The default must not move: an account that really did get an SMS keeps working
+        // exactly as before.
+        var (auth, handler) = Build((HttpStatusCode.OK, SessionSuccess));
+
+        var step = await auth.ContinueAsync(Credentials(), "654321");
+
+        step.IsSuccess.Should().BeTrue();
+        handler.RequestPaths.Should().ContainSingle()
+            .Which.Should().Be("/openapi/typea/session/token");
+        handler.RequestBodies[0].Should().Contain("request_token=654321");
+    }
+
+    [Fact]
+    public async Task Clearing_the_challenge_state_returns_to_the_sms_route()
+    {
+        // The wizard writes an empty string when the user toggles back, rather than deleting
+        // the key. Empty must mean "the default route", not "some third mode".
+        var (auth, handler) = Build((HttpStatusCode.OK, SessionSuccess));
+
+        await auth.ContinueAsync(WithChallengeState(string.Empty), "654321");
+
+        handler.RequestPaths.Should().ContainSingle()
+            .Which.Should().Be("/openapi/typea/session/token");
+    }
+
+    [Fact]
+    public async Task A_rejected_totp_explains_itself_in_mstocks_words()
+    {
+        // What an authenticator user saw before the wizard offered them the right route: a
+        // flat "did not accept the one-time code" with no hint that the SMS route was the
+        // problem. The broker's own wording is the clue.
+        var (auth, _) = Build((HttpStatusCode.OK, TotpRejected));
+
+        var step = await auth.ContinueAsync(WithChallengeState(MStockAuth.TotpChallenge), "000000");
+
+        step.IsFailure.Should().BeTrue();
+        step.Error.Code.Should().Be(ConnectorErrorCodes.ChallengeFailed);
+        step.Error.Message.Should().Contain("TOTP");
+    }
+
+    [Fact]
+    public async Task A_rejected_sms_otp_explains_itself_in_mstocks_words()
+    {
+        var (auth, _) = Build((HttpStatusCode.OK, OtpRejected));
+
+        var step = await auth.ContinueAsync(Credentials(), "000000");
+
+        step.IsFailure.Should().BeTrue();
+        step.Error.Code.Should().Be(ConnectorErrorCodes.ChallengeFailed);
+        step.Error.Message.Should().Contain("The entered OTP is incorrect");
+    }
+
+    [Fact]
+    public async Task The_sms_prompt_says_an_authenticator_account_gets_no_sms()
+    {
+        // The prompt is the only place a user learns that waiting for a message is futile.
+        var (auth, _) = Build((HttpStatusCode.OK, LoginSuccess));
+
+        var step = await auth.BeginAsync(Credentials());
+
+        var challenge = (AuthStep.ChallengeRequired)step.Value;
+        challenge.Prompt.Should().Contain("authenticator");
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {
         public DateTimeOffset UtcNow { get; } = now;
     }
 }
+

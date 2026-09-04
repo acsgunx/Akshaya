@@ -132,12 +132,33 @@ public sealed class MStockAuth : IConnectorAuth
             return await CompleteWithTotpAsync(api, apiKey, username, code.Value, ct).ConfigureAwait(false);
         }
 
-        // No authenticator: mStock has just sent an SMS. Hand control back to the wizard.
+        // No stored authenticator secret — but that does NOT mean an SMS was sent.
+        //
+        // mStock documents it plainly: "If TOTP is enabled, OTP will not be triggered for
+        // login trading API requests." The login response says nothing about which mode the
+        // account is in (`flag` is undocumented and deliberately unmapped — see
+        // mstock-login-response.md), so from here the two are indistinguishable.
+        //
+        // This branch used to assert an SMS had been sent. On a TOTP-enabled account that is a
+        // DEAD END, and a silent one: no SMS ever arrives, and a code typed from the
+        // authenticator app is posted to /session/token — the SMS route, which cannot accept
+        // it — so every attempt fails with "mStock did not accept the one-time code" no matter
+        // what the user does. The only escape was to store the TOTP seed, which is a real
+        // security trade-off nobody should be forced into to log in at all.
+        //
+        // So say what is actually known, and let the wizard offer the other route. Whichever
+        // the user picks, ContinueAsync sends it to the matching endpoint.
         var masked = login.Value.MaskedMobile;
 
         return Result<AuthStep>.Success(new AuthStep.ChallengeRequired(
             ChallengeKind.SmsOtp,
-            "Enter the one-time password mStock has sent to your registered mobile number.",
+            masked is { Length: > 0 }
+                ? "Enter the one-time password mStock has sent to your registered mobile number. "
+                  + "If your mStock account uses an authenticator app, no SMS is sent — choose "
+                  + "the authenticator option below instead."
+                : "Enter the one-time password mStock has sent to your registered mobile number. "
+                  + "If your mStock account uses an authenticator app, mStock does not send an SMS "
+                  + "at all — choose the authenticator option below and enter the code it shows.",
             masked,
             // mStock's OTPs are short-lived. Telling the wizard how long it has lets it show a
             // countdown and offer a resend rather than failing silently at the far end.

@@ -98,8 +98,26 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
         ConnectorErrorCodes.ReauthRequired => context.VendorCode == ApiKeyException
             ? "Your mStock API key has expired or been suspended. Generate a new one in the mStock API portal."
             : "mStock needs you to sign in again.",
-        ConnectorErrorCodes.InvalidCredentials => "mStock did not accept the username or password.",
-        ConnectorErrorCodes.ChallengeFailed => "mStock did not accept the one-time code.",
+        ConnectorErrorCodes.InvalidCredentials => WithBrokerWords(
+            "mStock did not accept the username or password.", context),
+
+        // THE BROKER'S REASON SURVIVES. Our sentence says what failed; only mStock's says
+        // WHY, and the difference is the whole of the user's next action:
+        //
+        //   "The entered OTP is incorrect. Please proceed to login page. (-MACM60)"
+        //                                              -> they mistyped it, or it lapsed
+        //   "Please enter correct TOTP"
+        //                                              -> they are on the wrong route
+        //                                                 entirely; the account uses an
+        //                                                 authenticator and no SMS was ever
+        //                                                 sent (see MStockAuth)
+        //
+        // Replacing all of that with a flat "did not accept the one-time code" leaves someone
+        // retyping a code that was never going to work. This arm used to do exactly that,
+        // which is doubly odd given the fallback fifteen lines below already argues the
+        // opposite — with the OTP case as its worked example.
+        ConnectorErrorCodes.ChallengeFailed => WithBrokerWords(
+            "mStock did not accept the one-time code.", context),
         ConnectorErrorCodes.InsufficientFunds => "The mStock account does not have enough funds for this order.",
         ConnectorErrorCodes.OrderRejected => "mStock rejected the order.",
         ConnectorErrorCodes.OrderNotFound => "mStock has no record of that order.",
@@ -218,6 +236,26 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
     /// </summary>
     private static string ClassifyOrderException(string? message) =>
         ClassifyFromMessage(message) ?? ConnectorErrorCodes.OrderRejected;
+
+    /// <summary>
+    /// Our explanation, followed by the broker's own, when the two are not already saying the
+    /// same thing.
+    ///
+    /// Duplicate suppression is not politeness: mStock sometimes sends text that already
+    /// contains our sentence's substance, and "mStock did not accept the one-time code. The
+    /// entered OTP is incorrect." reads like two separate failures to someone in a hurry.
+    /// </summary>
+    private static string WithBrokerWords(string ours, VendorErrorContext context)
+    {
+        var theirs = context.VendorMessage?.Trim();
+
+        if (string.IsNullOrWhiteSpace(theirs) || ours.Contains(theirs, StringComparison.OrdinalIgnoreCase))
+        {
+            return ours;
+        }
+
+        return $"{ours} mStock said: \"{theirs}\"";
+    }
 
     private static string? ClassifyFromMessage(string? message)
     {
