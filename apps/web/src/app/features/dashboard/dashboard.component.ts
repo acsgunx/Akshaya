@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -25,7 +25,7 @@ import { DashboardStore } from './dashboard.store';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.component.html',
 })
-export class DashboardComponent {
+export class DashboardComponent implements OnInit {
   protected readonly store = inject(DashboardStore);
   private readonly connectorStore = inject(ConnectorStore);
 
@@ -39,6 +39,12 @@ export class DashboardComponent {
     }
     return [...set].sort();
   });
+
+  ngOnInit(): void {
+    // Picks up a broker linked while this screen was off-router; a no-op
+    // otherwise. See `DashboardStore.ensureFresh`.
+    this.store.ensureFresh();
+  }
 
   protected refresh(): void {
     this.store.refresh(this.store.snapshot()?.displayCurrency);

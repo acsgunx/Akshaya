@@ -139,9 +139,10 @@ export class HoldingsComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    if (!this.store.snapshot()) {
-      this.store.refresh(undefined);
-    }
+    // Not `if (!snapshot())`: a snapshot taken before a broker was linked is
+    // present and wrong. The store decides — it re-pulls only when the cache
+    // is empty or a link has changed, so tab-to-tab navigation stays free.
+    this.store.ensureFresh();
   }
 
   protected isExpanded(groupKey: string): boolean {

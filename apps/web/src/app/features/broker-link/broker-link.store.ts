@@ -6,8 +6,9 @@ import { tapResponse } from '@ngrx/operators';
 import type { HttpErrorResponse } from '@angular/common/http';
 
 import { ApiService } from '../../core/api.service';
+import { BrokerLinksStore } from '../../core/broker-links.store';
 import { toAuthStepView } from '../../core/models';
-import type { ApiProblem, AuthCredentials, AuthStepView } from '../../core/models';
+import type { ApiProblem, AuthCredentials, AuthStepView, AuthStepWire } from '../../core/models';
 
 interface State {
   readonly step: AuthStepView | undefined;
@@ -29,6 +30,12 @@ const initialState: State = {
  * the component level, mirroring `order-ticket.store.ts` — a second wizard
  * instance (opening a link flow for a different broker) must not share this.
  *
+ * A finished login is the one thing here the REST of the app cares about:
+ * `applyStep` re-loads `BrokerLinksStore` on `completed`, which is what makes
+ * the new account visible on every other tab without a page refresh. That is
+ * a single small GET — the screens holding broker data mark themselves stale
+ * off it and refetch when they are next opened, not now.
+ *
  * THIS STORE NEVER BRANCHES ON A BROKER. It has four transitions —
  * completed / redirect / challenge / gateway — because `AuthStepDto` has
  * four cases, full stop. A fifth broker with a login flow that still fits
@@ -36,52 +43,63 @@ const initialState: State = {
  */
 export const BrokerLinkStore = signalStore(
   withState(initialState),
-  withMethods((store, api = inject(ApiService)) => ({
-    begin: rxMethod<{
-      connectorId: string;
-      credentials: AuthCredentials;
-      nickname?: string;
-      redirectUri?: string;
-      /** A saved login to fill the gaps from. The server resolves it; the browser only names it. */
-      savedCredentialId?: string;
-      /** Field keys to remember, applied only if the broker accepts this login. */
-      rememberFields?: readonly string[];
-    }>(
-      pipe(
-        tap(() => patchState(store, { loading: true, error: undefined })),
-        switchMap((request) =>
-          api.beginLink(request).pipe(
-            tapResponse({
-              next: (wire) => patchState(store, { step: toAuthStepView(wire), loading: false }),
-              error: (err: unknown) => patchState(store, { loading: false, error: toProblem(err) }),
-            }),
+  withMethods((store, api = inject(ApiService), links = inject(BrokerLinksStore)) => {
+    const applyStep = (wire: AuthStepWire): void => {
+      const step = toAuthStepView(wire);
+      patchState(store, { step, loading: false });
+
+      if (step.type === 'completed') {
+        links.load();
+      }
+    };
+
+    return {
+      begin: rxMethod<{
+        connectorId: string;
+        credentials: AuthCredentials;
+        nickname?: string;
+        redirectUri?: string;
+        /** A saved login to fill the gaps from. The server resolves it; the browser only names it. */
+        savedCredentialId?: string;
+        /** Field keys to remember, applied only if the broker accepts this login. */
+        rememberFields?: readonly string[];
+      }>(
+        pipe(
+          tap(() => patchState(store, { loading: true, error: undefined })),
+          switchMap((request) =>
+            api.beginLink(request).pipe(
+              tapResponse({
+                next: applyStep,
+                error: (err: unknown) => patchState(store, { loading: false, error: toProblem(err) }),
+              }),
+            ),
           ),
         ),
       ),
-    ),
 
-    continue: rxMethod<{ linkId: string; response: string }>(
-      pipe(
-        tap(() => patchState(store, { loading: true, error: undefined })),
-        switchMap(({ linkId, response }) =>
-          api.continueLink(linkId, response, store.flowState()).pipe(
-            tapResponse({
-              next: (wire) => patchState(store, { step: toAuthStepView(wire), loading: false }),
-              error: (err: unknown) => patchState(store, { loading: false, error: toProblem(err) }),
-            }),
+      continue: rxMethod<{ linkId: string; response: string }>(
+        pipe(
+          tap(() => patchState(store, { loading: true, error: undefined })),
+          switchMap(({ linkId, response }) =>
+            api.continueLink(linkId, response, store.flowState()).pipe(
+              tapResponse({
+                next: applyStep,
+                error: (err: unknown) => patchState(store, { loading: false, error: toProblem(err) }),
+              }),
+            ),
           ),
         ),
       ),
-    ),
 
-    rememberFlowState(partial: Readonly<Record<string, string>>): void {
-      patchState(store, { flowState: { ...store.flowState(), ...partial } });
-    },
+      rememberFlowState(partial: Readonly<Record<string, string>>): void {
+        patchState(store, { flowState: { ...store.flowState(), ...partial } });
+      },
 
-    reset(): void {
-      patchState(store, initialState);
-    },
-  })),
+      reset(): void {
+        patchState(store, initialState);
+      },
+    };
+  }),
 );
 
 function toProblem(err: unknown): ApiProblem {

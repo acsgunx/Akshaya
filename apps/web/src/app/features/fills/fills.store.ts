@@ -5,6 +5,7 @@ import { pipe, switchMap, tap } from 'rxjs';
 import { tapResponse } from '@ngrx/operators';
 
 import { ApiService } from '../../core/api.service';
+import { staleOnBrokerLinkChange } from '../../core/broker-links.store';
 import type { TradeQuery, TradeRecord } from '../../core/models';
 
 interface State {
@@ -19,6 +20,9 @@ interface State {
   readonly warnings: readonly string[];
   readonly isPartial: boolean;
   readonly query: TradeQuery;
+  readonly loadedAt: number | undefined;
+  /** A broker link changed since these fills were fetched; the next visit refetches. See `ensureFresh`. */
+  readonly stale: boolean;
 }
 
 const initialState: State = {
@@ -28,6 +32,8 @@ const initialState: State = {
   warnings: [],
   isPartial: false,
   query: {},
+  loadedAt: undefined,
+  stale: false,
 };
 
 /**
@@ -49,7 +55,9 @@ export const FillsStore = signalStore(
   withMethods((store, api = inject(ApiService)) => ({
     load: rxMethod<TradeQuery>(
       pipe(
-        tap((query) => patchState(store, { loading: true, error: undefined, query })),
+        // Cleared at request start, not on the response: a link completing
+        // mid-flight must survive the answer that predates it.
+        tap((query) => patchState(store, { loading: true, error: undefined, query, stale: false })),
         switchMap((query) =>
           api.getTrades(query).pipe(
             tapResponse({
@@ -59,6 +67,7 @@ export const FillsStore = signalStore(
                   warnings: result.warnings,
                   isPartial: result.isPartial,
                   loading: false,
+                  loadedAt: Date.now(),
                 }),
               error: (err: unknown) =>
                 patchState(store, {
@@ -79,10 +88,27 @@ export const FillsStore = signalStore(
     refresh(): void {
       store.load(store.query());
     },
+
+    /**
+     * Entry point for the fills screen. Only re-pulls when nothing is cached
+     * or a broker link has changed: fills are historical facts, so re-fetching
+     * them on every visit buys nothing and costs a fan-out across brokers.
+     */
+    ensureFresh(): void {
+      if (store.loading()) {
+        return;
+      }
+      if (store.loadedAt() === undefined || store.stale()) {
+        // `store.load`, not the `refresh` beside it: sibling methods added in
+        // the same `withMethods` block are not on `store` yet.
+        store.load(store.query());
+      }
+    },
   })),
   withHooks({
     onInit(store) {
       store.load({});
+      staleOnBrokerLinkChange(() => patchState(store, { stale: true }));
     },
   }),
 );
