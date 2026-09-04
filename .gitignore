@@ -39,5 +39,5 @@ Thumbs.db
 deploy/.data/
 
 # Claude Code — local launch config stays out; shared team config is tracked
-.claude/*
-!.claude/settings.json
+# .claude/*
+# !.claude/settings.json
