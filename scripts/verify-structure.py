@@ -341,6 +341,8 @@ def check_type_resolution() -> CheckResult:
         "WebApplicationBuilder", "Results", "IResult", "ProblemDetails", "Hub", "IHubContext",
         "RateLimiter", "TokenBucketRateLimiter", "TokenBucketRateLimiterOptions", "RateLimitLease",
         "ClientWebSocket", "WebSocketMessageType", "WebSocketState", "WebSocketCloseStatus",
+        # Microsoft.Data.Sqlite — the identity store's default provider (Persistence:Mode=Sqlite).
+        "SqliteConnection", "SqliteConnectionStringBuilder",
         "Random", "Regex", "Match", "Comparer", "StringComparer", "EqualityComparer", "KeyValuePair",
         "Lazy", "Nullable", "Span", "ReadOnlySpan", "Memory", "ReadOnlyMemory", "ArrayPool",
         "BinaryPrimitives", "BitConverter", "Buffer", "GC", "Environment", "AppContext",

@@ -1,0 +1,68 @@
+# Akshaya on Fly.io — the cheapest always-on option with a real disk.
+#
+#   fly launch --no-deploy --copy-config --config deploy/fly/fly.toml
+#   fly volumes create akshaya_data --size 1 --region sin
+#   fly secrets set CredentialProtection__ActiveKeyId=prod-1 \
+#                   CredentialProtection__Keys__prod-1="$(openssl rand -base64 32)"
+#   fly deploy --config deploy/fly/fly.toml --dockerfile deploy/Dockerfile
+#
+# See README.md in this directory for the full walkthrough.
+
+app = "akshaya"
+
+# Put the machine near the broker's API, not near yourself. Order latency is dominated by the hop
+# to the venue; the hop from your browser to the app is one round trip on a click.
+primary_region = "sin"
+
+[build]
+  dockerfile = "../Dockerfile"
+
+[env]
+  ASPNETCORE_ENVIRONMENT = "Production"
+  ASPNETCORE_URLS = "http://+:8080"
+
+  # Sqlite on the mounted volume below. This is the line that makes accounts survive a redeploy;
+  # a path outside /data lives on the machine's ephemeral layer and is wiped by every deploy.
+  Persistence__Mode = "Sqlite"
+  Persistence__SqlitePath = "/data/akshaya-identity.db"
+  Persistence__SeedUser__Email = "demo@akshaya.local"
+
+  # The Angular app is served from this same origin, so there is no cross-origin caller to permit.
+  Cors__AllowedOrigin = "none"
+
+[[mounts]]
+  source = "akshaya_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # ALWAYS-ON, deliberately. auto_stop_machines would save a dollar or two and cost you every
+  # in-memory order view and every open SignalR subscription on each idle period — see
+  # "Why sleeping hurts" in ../README.md. Flip these to true only for a demo you do not trade from.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # ONE machine. Orders, positions and the kill switch are in-memory and per-process: a second
+  # instance would serve a different view of the same account depending on which one the load
+  # balancer picked. Scaling out requires moving those stores to Redis or Postgres first.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    grace_period = "45s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health/ready"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  # 256MB is enough to serve, but the Angular build is not in this process and the instrument
+  # master can hold a large symbol list; 512MB leaves room for it without paging.
+  memory = "512mb"
+  cpus = 1

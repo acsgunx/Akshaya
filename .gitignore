@@ -38,6 +38,13 @@ Thumbs.db
 # Local data volumes created by deploy/docker-compose.yml
 deploy/.data/
 
+# The default (SQLite) identity store. Contains real accounts and the encrypted
+# saved-broker-credential vault — never commit it.
+App_Data/
+*.db
+*.db-shm
+*.db-wal
+
 # Claude Code — local launch config stays out; shared team config is tracked
 # .claude/*
 # !.claude/settings.json

@@ -29,8 +29,18 @@
       The manifest ships both as a loose file next to the assembly (so an operator can read
       and diff it without a decompiler) and as an embedded resource (so ManifestLoader can
       still find it when the connector is loaded from a single-file bundle).
+
+      CopyToPublishDirectory=Never because every connector's manifest has the SAME file name.
+      In this project's own bin/ that is fine — one manifest, one directory — but a publish of
+      Akshaya.Api flattens every referenced connector into one folder, and two files claiming
+      connector.manifest.json there is an error (NETSDK1152), correctly: the SDK has no way to
+      know which one you meant. Nothing reads the loose copy at runtime anyway — the host loads
+      the embedded resource — and a dropped-in plugin carries its manifest inside its own
+      directory, where the name cannot collide.
     -->
-    <None Update="connector.manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="connector.manifest.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never" />
     <EmbeddedResource Include="connector.manifest.json" LogicalName="connector.manifest.json" />
   </ItemGroup>
 

@@ -1,0 +1,21 @@
+# Keep the build context small. Copying node_modules or bin/obj into the daemon costs more time
+# than the compile that follows it, and a stale obj/ from the host breaks the container restore
+# with mismatched NuGet paths.
+**/bin/
+**/obj/
+**/node_modules/
+**/.angular/
+**/dist/
+**/.data/
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+.run/
+tests/
+docs/
+apps/web/.angular/
+apps/web/dist/
+**/*.user
+**/.DS_Store
