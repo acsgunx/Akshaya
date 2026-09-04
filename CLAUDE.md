@@ -50,3 +50,10 @@ password once at `Warning`.
 one origin, no CORS, no database. `deploy/<target>/` holds ready-made configs for
 Fly.io, Azure App Service, Azure Container Apps, Render and Railway; `deploy/README.md`
 compares them. Wiring lives in `src/Akshaya.Api/Infrastructure/Persistence/`.
+
+**MonsterASP.NET is the exception** — Windows/IIS, no container. It deploys from
+`.github/workflows/deploy-monsterasp.yml` (win-x86 publish + Angular bundle, synced
+over Web Deploy). Two things there are load-bearing and must not be "tidied up":
+`target-delete: false` and `skip-directory-paths: App_Data`, without which a plain
+msdeploy sync deletes the SQLite database and every account in it. See
+`deploy/monsterasp/README.md`.

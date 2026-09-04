@@ -44,7 +44,9 @@ fly deploy --config deploy/fly/fly.toml --dockerfile deploy/Dockerfile
 fly logs | grep "generated password"
 ```
 
-Sign in at `https://<app>.fly.dev` and change it.
+Sign in at `https://<app>.fly.dev`. Note that there is no change-password endpoint yet, so this
+is the password that account keeps — set `Persistence__SeedUser__Password` as a secret before
+the first boot if you would rather choose it yourself.
 
 ## Costs
 

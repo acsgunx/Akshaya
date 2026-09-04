@@ -1,0 +1,141 @@
+# ==================================================================================================
+# Deploy to MonsterASP.NET.
+#
+# MonsterASP is Windows/IIS hosting, not a container host, so this is a completely separate path
+# from deploy/Dockerfile — there is no image involved. The Angular app is built, the API is
+# published framework-dependent for win-x86, the bundle is dropped into the publish output's
+# wwwroot, and the whole folder is synced to IIS over Web Deploy.
+#
+# SETUP IS IN deploy/monsterasp/README.md. Four secrets are required; nothing here works until
+# they exist.
+#
+# WHEN THIS RUNS
+#   - Manually, any time, from the Actions tab (workflow_dispatch).
+#   - Automatically on every push to main, but ONLY once you opt in by setting the repository
+#     variable MONSTERASP_AUTODEPLOY to "true". Without that, a repo whose secrets are not
+#     configured yet does not fail a red X on every push.
+# ==================================================================================================
+
+name: Deploy to MonsterASP.NET
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Web Deploy stops the IIS application pool, syncs, and starts it again. Two of those interleaved
+  # would fight over the same app pool, so let a running deploy finish rather than cancelling it
+  # half-way and leaving the site stopped.
+  group: monsterasp-deploy
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    # Web Deploy (msdeploy.exe) is Windows-only and preinstalled on GitHub's Windows runners.
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' || vars.MONSTERASP_AUTODEPLOY == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail with a sentence someone can act on. Without this the first sign of a missing secret is
+      # msdeploy reporting a 401 against a URL that reads as empty.
+      - name: Check the deployment secrets are set
+        shell: pwsh
+        env:
+          WEBSITE_NAME: ${{ secrets.MONSTERASP_WEBSITE_NAME }}
+          SERVER_COMPUTER_NAME: ${{ secrets.MONSTERASP_SERVER_COMPUTER_NAME }}
+          SERVER_USERNAME: ${{ secrets.MONSTERASP_SERVER_USERNAME }}
+          SERVER_PASSWORD: ${{ secrets.MONSTERASP_SERVER_PASSWORD }}
+        run: |
+          $missing = @()
+          foreach ($name in 'WEBSITE_NAME','SERVER_COMPUTER_NAME','SERVER_USERNAME','SERVER_PASSWORD') {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              $missing += "MONSTERASP_$name"
+            }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Host "::error::Missing repository secrets: $($missing -join ', '). See deploy/monsterasp/README.md."
+            exit 1
+          }
+          Write-Host "All four Web Deploy secrets are present."
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build the Angular app
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build -- --configuration production
+
+      # Framework-dependent, not self-contained: MonsterASP has the .NET 10 runtime installed, so
+      # shipping a private copy would quadruple the upload for no benefit and would stop the host
+      # patching the runtime under us. win-x86 matches the architecture their IIS app pools run.
+      #
+      # If the host's runtime ever lags behind this repo's target, switch to a self-contained
+      # publish — one flag, documented in deploy/monsterasp/README.md.
+      - name: Publish the API
+        run: >
+          dotnet publish src/Akshaya.Api/Akshaya.Api.csproj
+          --configuration Release
+          --runtime win-x86
+          --self-contained false
+          --output publish
+
+      # Same co-hosting as the container build: one origin serves the app and the API, so there is
+      # no second site to deploy and no CORS to configure.
+      - name: Copy the Angular bundle into wwwroot
+        shell: pwsh
+        run: |
+          $src = 'apps/web/dist/akshaya-web/browser'
+          if (-not (Test-Path $src)) {
+            Write-Host "::error::Angular build output not found at $src."
+            exit 1
+          }
+          New-Item -ItemType Directory -Force -Path publish/wwwroot | Out-Null
+          Copy-Item -Path "$src/*" -Destination publish/wwwroot -Recurse -Force
+          if (-not (Test-Path 'publish/wwwroot/index.html')) {
+            Write-Host "::error::index.html is missing from publish/wwwroot; the API would serve no UI."
+            exit 1
+          }
+          Write-Host "Publish payload:"
+          '{0:N1} MB' -f ((Get-ChildItem publish -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)
+
+      - name: Deploy over Web Deploy
+        uses: rasmusbuchholdt/simply-web-deploy@2.2.0
+        with:
+          website-name: ${{ secrets.MONSTERASP_WEBSITE_NAME }}
+          server-computer-name: ${{ secrets.MONSTERASP_SERVER_COMPUTER_NAME }}
+          server-username: ${{ secrets.MONSTERASP_SERVER_USERNAME }}
+          server-password: ${{ secrets.MONSTERASP_SERVER_PASSWORD }}
+          source-path: '\publish\'
+
+          # THE TWO SETTINGS THAT PROTECT THE DATABASE.
+          #
+          # target-delete:false adds msdeploy's DoNotDeleteRule, so files on the server that are not
+          # in this build — App_Data/akshaya-identity.db above all — are left alone instead of being
+          # removed as "extra". skip-directory-paths then keeps the sync from touching that folder
+          # at all. Either alone would do; both, because the failure mode is silently deleting every
+          # account and saved broker credential on the next deploy.
+          target-delete: 'false'
+          skip-directory-paths: 'App_Data'
+
+      - name: Where it went
+        shell: pwsh
+        run: |
+          Write-Host "Deployed. The site is at https://${{ secrets.MONSTERASP_WEBSITE_NAME }}.runasp.net/"
+          Write-Host "Check https://${{ secrets.MONSTERASP_WEBSITE_NAME }}.runasp.net/health/ready before signing in."

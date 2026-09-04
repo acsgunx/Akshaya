@@ -8,6 +8,12 @@ Four targets, one image. Pick a directory, follow its README.
 | **Azure App Service** | [`azure-app-service/`](azure-app-service/) | $0 on F1, ~$13/mo on B1 | Yes — `/home` is durable on every tier | F1 yes, B1 no |
 | **Azure Container Apps** | [`azure-container-apps/`](azure-container-apps/) | $0 within the monthly free grant | Only via an Azure Files mount | Yes, scales to zero |
 | **Render / Railway** | [`render/`](render/), [`railway/`](railway/) | $0 on Render free, ~$5/mo Railway | Render: paid disk only. Railway: volume included | Render free yes |
+| **MonsterASP.NET** | [`monsterasp/`](monsterasp/) | $0 free plan, $1.95/mo premium | Yes — an ordinary file on the site's disk | Idle app pools recycle |
+
+MonsterASP is the odd one out: **Windows/IIS, no containers**, so it ignores `Dockerfile` entirely
+and deploys via Web Deploy from GitHub Actions. It is the cheapest option on this list and the only
+genuinely free one that keeps its data — at the cost of 256 MB of RAM and a `*.runasp.net`
+subdomain.
 
 **If you just want the cheapest thing that works and keeps its data: Fly.io.** It is the only
 option here where an always-on machine with a real volume lands under $5/month, and always-on
@@ -74,12 +80,18 @@ at `Warning` level:
 
 ```
 Seeded the first account because the identity store was empty. Sign in as demo@akshaya.local
-with the generated password: <20 characters> — change it after signing in; it will not be shown again.
+with the generated password: <20 characters> — it will not be shown again, and cannot be
+changed in the app. Set Persistence:SeedUser:Password to choose it yourself instead.
 ```
 
-Read it from the host's log stream (each README gives the command), sign in, and change it. Seeding
-only ever happens into an **empty** store — deleting the account does not bring it back, and it is
-off by default when `Persistence:Mode` is `Postgres`.
+Read it from the host's log stream (each README gives the command) and sign in.
+
+**There is no change-password endpoint in the application today**, so a generated password is the
+one that account keeps. On a host where reading the log is awkward, set
+`Persistence__SeedUser__Password` yourself to a value from your password manager.
+
+Seeding only ever happens into an **empty** store — deleting the account does not bring it back,
+and it is off by default when `Persistence:Mode` is `Postgres`.
 
 Set `Persistence__SeedUser__Enabled=false` to turn it off entirely.
 

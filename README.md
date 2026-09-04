@@ -65,12 +65,25 @@ Persistence__Mode=Postgres scripts/rerun.sh   # migrations are applied on startu
 ## Deploying
 
 One container serves both the API and the Angular app from a single origin, with no database
-server — see **[`deploy/README.md`](deploy/README.md)** for ready-made configurations for Fly.io,
-Azure App Service, Azure Container Apps, Render and Railway, and what each one costs.
+server — see **[`deploy/README.md`](deploy/README.md)** for ready-made configurations and what each
+one costs.
 
 ```bash
 docker build -f deploy/Dockerfile -t akshaya .
 ```
+
+| Target | |
+|---|---|
+| [Fly.io](deploy/fly/) | ~$3/mo, always on, persistent volume — the recommendation |
+| [Azure App Service](deploy/azure-app-service/) | Bicep; `/home` is durable even on the free tier |
+| [Azure Container Apps](deploy/azure-container-apps/) | Bicep; consumption plan with an Azure Files mount |
+| [Render](deploy/render/) / [Railway](deploy/railway/) | Blueprint and config-as-code |
+| [MonsterASP.NET](deploy/monsterasp/) | Windows/IIS, **no container** — free plan, deployed from GitHub Actions over Web Deploy |
+
+MonsterASP is deployed by [`.github/workflows/deploy-monsterasp.yml`](.github/workflows/deploy-monsterasp.yml):
+manual from the Actions tab, or on every push to `main` once you set the repository variable
+`MONSTERASP_AUTODEPLOY=true`. Setup is four secrets and a handful of environment variables —
+[the full walkthrough is here](deploy/monsterasp/README.md).
 
 ---
 

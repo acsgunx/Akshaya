@@ -94,10 +94,14 @@ public static class IdentityStoreInitialiser
         {
             // Written once, at Warning so it survives a production log level, and only ever for
             // a password this process just invented. A configured password is never logged.
+            // NOT "change it after signing in" — there is no change-password endpoint yet, so this
+            // value is the one that account keeps. Say so, and point at the setting that lets an
+            // operator choose it instead of inheriting whatever this process invented.
             logger.LogWarning(
                 "Seeded the first account because the identity store was empty. "
                 + "Sign in as {Email} with the generated password: {Password} "
-                + "— change it after signing in; it will not be shown again.",
+                + "— it will not be shown again, and cannot be changed in the app. "
+                + "Set Persistence:SeedUser:Password to choose it yourself instead.",
                 seed.Email,
                 password);
         }
