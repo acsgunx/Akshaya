@@ -265,6 +265,39 @@
                     <span>Verify</span>
                   }
                 </button>
+
+                <!--
+                  THE ESCAPE HATCH FOR AN AUTHENTICATOR-ENABLED ACCOUNT.
+
+                  A broker that uses an authenticator app does not send an SMS at all, and
+                  nothing in its login response says so. Without this the user waits for a
+                  message that never arrives, and any code they type is checked against the
+                  SMS endpoint — which cannot accept it — so every attempt fails identically
+                  however many times they try.
+                -->
+                <button
+                  mat-button
+                  type="button"
+                  class="w-full !text-[12.5px]"
+                  [disabled]="store.loading()"
+                  (click)="toggleAuthenticator()"
+                >
+                  @if (useAuthenticator()) {
+                    I did receive a code by SMS — use that instead
+                  } @else {
+                    No SMS? Use my authenticator app code instead
+                  }
+                </button>
+
+                @if (useAuthenticator()) {
+                  <p class="flex items-start gap-2 rounded-md border border-info/40 px-3 py-2.5 text-[12.5px]/[1.45] text-text-secondary">
+                    <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">phonelink_lock</mat-icon>
+                    <span>
+                      Enter the 6-digit code from your authenticator app. It will be checked
+                      against your broker's authenticator endpoint rather than the SMS one.
+                    </span>
+                  </p>
+                }
               </div>
             </div>
           }

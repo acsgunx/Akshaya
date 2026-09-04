@@ -69,6 +69,30 @@ POST /connect/login (username, password)
 Returns `access_token`, `refresh_token`, `public_token`, `enctoken` plus the profile's permitted
 exchanges, products and order types.
 
+## The other thing to get right: SMS or authenticator, never both
+
+mStock documents it in one line on the User page: **"If TOTP is enabled, OTP will not be
+triggered for login trading API requests."**
+
+So an account with an authenticator app enabled receives **no SMS at all**, and the login
+response says nothing about which mode the account is in (`flag` is undocumented and
+deliberately unmapped — see [`mstock-login-response.md`](mstock-login-response.md)). The two
+codes go to different endpoints:
+
+| The user holds | Endpoint | Field |
+|---|---|---|
+| An SMS code | `POST /session/token` | `request_token` |
+| An authenticator code | `POST /session/verifytotp` | `totp` |
+
+A code sent to the wrong one is always rejected, however correct it is — and the rejection
+looks identical to a mistyped code. The connector therefore does **not** guess: the wizard
+offers "No SMS? Use my authenticator app code instead", which sets
+`state["challenge"] = "totp"` and routes to `verifytotp`.
+
+Storing a `totp_secret` still works and skips the prompt entirely, but it is now an
+optimisation rather than the only way in — requiring someone to hand over their TOTP seed just
+to log in defeats much of the point of having one.
+
 ## The thing to get right: token expiry
 
 The token dies after **~12 hours OR at midnight IST, whichever comes first**. API keys last about
