@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { DatePipe } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -141,7 +141,7 @@ import { FillsStore } from './fills.store';
   `,
   styleUrl: '../orders/orders.component.scss',
 })
-export class FillsComponent {
+export class FillsComponent implements OnInit {
   protected readonly store = inject(FillsStore);
   protected readonly sideLabel = sideLabel;
 
@@ -154,6 +154,12 @@ export class FillsComponent {
   protected readonly orderCount = computed(
     () => new Set(this.store.trades().map((t) => t.brokerOrderId)).size,
   );
+
+  ngOnInit(): void {
+    // Picks up fills from a broker linked while this screen was off-router;
+    // a no-op otherwise. See `FillsStore.ensureFresh`.
+    this.store.ensureFresh();
+  }
 
   protected trackById(_index: number, trade: TradeRecord): string {
     return trade.tradeId;

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -61,7 +61,7 @@ const ModifiableFields = ['quantity', 'limitPrice', 'triggerPrice', 'orderType',
   templateUrl: './orders.component.html',
   styleUrl: './orders.component.scss',
 })
-export class OrdersComponent {
+export class OrdersComponent implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly confirm = inject(ConfirmDialogService);
   private readonly connectorStore = inject(ConnectorStore);
@@ -78,6 +78,12 @@ export class OrdersComponent {
   protected readonly hasWorkingOrders = computed(() =>
     this.store.orders().some((order) => !isOrderStateTerminal(order.state) && !isOrderUnresolved(order)),
   );
+
+  ngOnInit(): void {
+    // Picks up orders from a broker linked while this screen was off-router;
+    // a no-op otherwise. See `OrdersStore.ensureFresh`.
+    this.store.ensureFresh();
+  }
 
   protected trackById(_index: number, order: OrderRecord): string {
     return order.id;

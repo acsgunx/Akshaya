@@ -5,6 +5,7 @@ import { pipe, switchMap, tap } from 'rxjs';
 import { tapResponse } from '@ngrx/operators';
 
 import { ApiService } from '../../core/api.service';
+import { staleOnBrokerLinkChange } from '../../core/broker-links.store';
 import { MarketDataService } from '../../core/market-data.service';
 import type { CancelAllRequest, CancelAllResult, ModifyOrderRequest, OrderRecord } from '../../core/models';
 
@@ -17,6 +18,9 @@ interface State {
   readonly cancelAllInFlight: boolean;
   /** Outcome of the last cancel-all, held until dismissed so a partial sweep cannot scroll away. */
   readonly lastSweep: CancelAllResult | undefined;
+  readonly loadedAt: number | undefined;
+  /** A broker link changed since this list was fetched; the next visit refetches. See `ensureFresh`. */
+  readonly stale: boolean;
 }
 
 const initialState: State = {
@@ -27,6 +31,8 @@ const initialState: State = {
   cancellingIds: new Set(),
   cancelAllInFlight: false,
   lastSweep: undefined,
+  loadedAt: undefined,
+  stale: false,
 };
 
 /**
@@ -42,11 +48,13 @@ export const OrdersStore = signalStore(
   withMethods((store, api = inject(ApiService)) => ({
     refresh: rxMethod<void>(
       pipe(
-        tap(() => patchState(store, { loading: true, error: undefined })),
+        // Cleared at request start, not on the response: a link completing
+        // mid-flight must survive the answer that predates it.
+        tap(() => patchState(store, { loading: true, error: undefined, stale: false })),
         switchMap(() =>
           api.getOrders({ openOnly: store.openOnly() }).pipe(
             tapResponse({
-              next: (orders) => patchState(store, { orders, loading: false }),
+              next: (orders) => patchState(store, { orders, loading: false, loadedAt: Date.now() }),
               error: (err: unknown) =>
                 patchState(store, { loading: false, error: err instanceof Error ? err.message : 'Could not load orders.' }),
             }),
@@ -143,11 +151,27 @@ export const OrdersStore = signalStore(
     dismissSweep(): void {
       patchState(store, { lastSweep: undefined });
     },
+
+    /**
+     * Entry point for the blotter screen. Re-pulls only when nothing is
+     * cached or a broker link has changed — navigating back to Orders with
+     * an intact list costs no request, and the socket keeps it current
+     * anyway (see the class doc).
+     */
+    ensureFresh(): void {
+      if (store.loading()) {
+        return;
+      }
+      if (store.loadedAt() === undefined || store.stale()) {
+        store.refresh();
+      }
+    },
   })),
   withHooks({
     onInit(store) {
       const marketData = inject(MarketDataService);
       store.refresh();
+      staleOnBrokerLinkChange(() => patchState(store, { stale: true }));
       // Any push over the socket is a cue to re-pull the source of truth —
       // see the class doc for why we never trust the pushed payload alone.
       let lastSeen: string | undefined;
