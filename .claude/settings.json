@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); printf '%s' \"$cmd\" | grep -Eq '(^|[^./[:alnum:]])dotnet[[:space:]]+test([[:space:]]|$)' && jq -n '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:\"Bare `dotnet test` floods context: NuGet restore, build output, ~750 analyzer warnings and a line per test. Use scripts/t.sh instead (see CLAUDE.md) — e.g. scripts/t.sh tests/Akshaya.Trading.Tests, or scripts/t.sh SomeTestName for a name filter; add --no-build after a manual dotnet build. If a raw dotnet test invocation is genuinely required, ask the user to run it in their own terminal.\"}}'; exit 0",
+            "statusMessage": "Checking dotnet test invocation"
+          }
+        ]
+      }
+    ]
+  }
+}
