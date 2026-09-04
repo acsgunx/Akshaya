@@ -75,10 +75,16 @@ docker build -f deploy/Dockerfile -t akshaya .
 | Target | |
 |---|---|
 | [Fly.io](deploy/fly/) | ~$3/mo, always on, persistent volume — the recommendation |
-| [Azure App Service](deploy/azure-app-service/) | Bicep; `/home` is durable even on the free tier |
+| [Azure App Service](deploy/azure-app-service/) | **Step-by-step walkthrough**; deploys from GitHub Actions, free tier, `/home` is durable on every tier |
 | [Azure Container Apps](deploy/azure-container-apps/) | Bicep; consumption plan with an Azure Files mount |
 | [Render](deploy/render/) / [Railway](deploy/railway/) | Blueprint and config-as-code |
 | [MonsterASP.NET](deploy/monsterasp/) | Windows/IIS, **no container** — free plan, deployed from GitHub Actions over Web Deploy |
+
+Azure App Service is deployed by [`.github/workflows/deploy-azure.yml`](.github/workflows/deploy-azure.yml):
+manual from the Actions tab, or on every push to `main` once you set the repository variable
+`AZURE_AUTODEPLOY=true`. Setup is one script in the portal's Cloud Shell and five repository
+variables — no secret is stored, because the deploy signs in as a managed identity over OIDC.
+[The full walkthrough is here](deploy/azure-app-service/README.md).
 
 MonsterASP is deployed by [`.github/workflows/deploy-monsterasp.yml`](.github/workflows/deploy-monsterasp.yml):
 manual from the Actions tab, or on every push to `main` once you set the repository variable

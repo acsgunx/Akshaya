@@ -51,6 +51,16 @@ one origin, no CORS, no database. `deploy/<target>/` holds ready-made configs fo
 Fly.io, Azure App Service, Azure Container Apps, Render and Railway; `deploy/README.md`
 compares them. Wiring lives in `src/Akshaya.Api/Infrastructure/Persistence/`.
 
+**Azure App Service** is the documented step-by-step target and deploys from
+`.github/workflows/deploy-azure.yml` — a *code* deploy on App Service's built-in .NET 10 stack, so
+it ignores `deploy/Dockerfile` and needs no container registry. Auth is OIDC against a user-assigned
+managed identity; there is no secret in the repo. `deploy/azure-app-service/setup.sh` provisions
+everything from Cloud Shell. One setting there is load-bearing:
+`Persistence__SqlitePath=/home/data/akshaya-identity.db`. A zip deploy replaces `/home/site/wwwroot`
+wholesale, and the app's default path is relative to it — leave it on the default and every deploy
+deletes every account. The workflow refuses to run if that setting is wrong. The Bicep container
+route in `deploy/azure-app-service/main.bicep` still works and is documented alongside it.
+
 **MonsterASP.NET is the exception** — Windows/IIS, no container. It deploys from
 `.github/workflows/deploy-monsterasp.yml` (win-x86 publish + Angular bundle, synced
 over Web Deploy). Two things there are load-bearing and must not be "tidied up":

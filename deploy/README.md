@@ -1,6 +1,9 @@
 # Deploying Akshaya
 
-Four targets, one image. Pick a directory, follow its README.
+Six targets, one image. Pick a directory, follow its README.
+
+Two of them deploy themselves from GitHub Actions — **Azure App Service** and
+**MonsterASP.NET**. The rest you push to yourself.
 
 | Target | Directory | Cost at rest | Persistent disk for SQLite | Sleeps? |
 |---|---|---|---|---|
@@ -9,6 +12,13 @@ Four targets, one image. Pick a directory, follow its README.
 | **Azure Container Apps** | [`azure-container-apps/`](azure-container-apps/) | $0 within the monthly free grant | Only via an Azure Files mount | Yes, scales to zero |
 | **Render / Railway** | [`render/`](render/), [`railway/`](railway/) | $0 on Render free, ~$5/mo Railway | Render: paid disk only. Railway: volume included | Render free yes |
 | **MonsterASP.NET** | [`monsterasp/`](monsterasp/) | $0 free plan, $1.95/mo premium | Yes — an ordinary file on the site's disk | Idle app pools recycle |
+
+**Azure App Service has a step-by-step walkthrough** in
+[`azure-app-service/`](azure-app-service/): one script in the portal's Cloud Shell, five GitHub
+variables, and every push to `main` deploys. It has two routes — a *code* deploy on App Service's
+built-in .NET stack, which ignores `Dockerfile` and needs no container registry, and the
+Bicep-plus-image route below. Deploys run as a managed identity over OIDC, so no password or
+publish profile is stored in the repository.
 
 MonsterASP is the odd one out: **Windows/IIS, no containers**, so it ignores `Dockerfile` entirely
 and deploys via Web Deploy from GitHub Actions. It is the cheapest option on this list and the only

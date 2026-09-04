@@ -1,0 +1,196 @@
+# ==================================================================================================
+# Deploy to Azure App Service (Linux, built-in .NET 10 stack).
+#
+# A CODE deploy, not a container one — deploy/Dockerfile is not used here. App Service ships a
+# .NET 10 runtime, so the API is published framework-dependent, the Angular bundle is dropped into
+# the publish output's wwwroot, and the folder is zipped up to the app. No container registry, which
+# is the ~$5/month that deploy/azure-app-service/main.bicep spends and this path does not.
+#
+# The container route still exists and is still supported — see deploy/azure-app-service/README.md.
+#
+# SETUP IS IN deploy/azure-app-service/README.md, and `deploy/azure-app-service/setup.sh` does all
+# of it in Azure Cloud Shell. Nothing here works until the five repository variables exist.
+#
+# AUTHENTICATION is OIDC against a user-assigned managed identity: GitHub mints a short-lived token
+# per run and Azure trades it for an ARM token. There is no password, publish profile or client
+# secret in this repository, and nothing to rotate.
+#
+# WHEN THIS RUNS
+#   - Manually, any time, from the Actions tab (workflow_dispatch).
+#   - Automatically on every push to main, but ONLY once you opt in by setting the repository
+#     variable AZURE_AUTODEPLOY to "true". Without that, a repo whose Azure setup does not exist
+#     yet does not fail a red X on every push.
+# ==================================================================================================
+
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # A zip deploy restarts the app. Two of those interleaved would race over the same site, so let a
+  # running deploy finish rather than cancelling it half-way.
+  group: azure-deploy
+  cancel-in-progress: false
+
+# id-token: write is what lets the runner request the OIDC token that azure/login exchanges. Without
+# it, login fails with "Unable to get ACTIONS_ID_TOKEN_REQUEST_URL" and nothing else is wrong.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || vars.AZURE_AUTODEPLOY == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail with a sentence someone can act on. Without this, a missing variable surfaces as
+      # azure/login reporting a login failure against an empty client id.
+      - name: Check the Azure settings are present
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: |
+          missing=""
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
+                      AZURE_WEBAPP_NAME AZURE_RESOURCE_GROUP; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository variables:$missing. Run deploy/azure-app-service/setup.sh in Azure Cloud Shell — it prints the exact values. See deploy/azure-app-service/README.md."
+            exit 1
+          fi
+          echo "All five settings are present. Deploying to $AZURE_WEBAPP_NAME in $AZURE_RESOURCE_GROUP."
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build the Angular app
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build -- --configuration production
+
+      # Framework-dependent and portable: App Service's Linux .NET 10 stack supplies the runtime, so
+      # a self-contained publish would triple the upload and stop the platform patching the runtime
+      # under us.
+      - name: Publish the API
+        run: >
+          dotnet publish src/Akshaya.Api/Akshaya.Api.csproj
+          --configuration Release
+          --output publish
+
+      # Same co-hosting as the container build: one origin serves the app and the API, so there is
+      # no second site to deploy and no CORS to configure.
+      - name: Copy the Angular bundle into wwwroot
+        run: |
+          src=apps/web/dist/akshaya-web/browser
+          if [ ! -d "$src" ]; then
+            echo "::error::Angular build output not found at $src."
+            exit 1
+          fi
+          mkdir -p publish/wwwroot
+          cp -r "$src"/. publish/wwwroot/
+          if [ ! -f publish/wwwroot/index.html ]; then
+            echo "::error::index.html is missing from publish/wwwroot; the API would serve no UI."
+            exit 1
+          fi
+          echo "Publish payload: $(du -sh publish | cut -f1)"
+
+      - name: Sign in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # THE CHECK THAT PROTECTS THE DATABASE.
+      #
+      # A zip deploy replaces /home/site/wwwroot wholesale. The identity store — accounts and the
+      # encrypted saved-broker-credential vault — must therefore live OUTSIDE that directory, which
+      # is what Persistence__SqlitePath=/home/data/... is for. If someone leaves the setting on its
+      # relative default, the database lands under the deployed folder and this deploy silently
+      # erases every account. Refuse instead.
+      - name: Verify the database is not inside the deployment folder
+        run: |
+          path=$(az webapp config appsettings list \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[?name=='Persistence__SqlitePath'].value | [0]" -o tsv)
+
+          mode=$(az webapp config appsettings list \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[?name=='Persistence__Mode'].value | [0]" -o tsv)
+
+          if [ "$mode" = "Postgres" ] || [ "$mode" = "InMemory" ]; then
+            echo "Persistence__Mode is $mode — no SQLite file to protect."
+            exit 0
+          fi
+
+          case "$path" in
+            /home/site/wwwroot/*|"")
+              echo "::error::Persistence__SqlitePath is '${path:-<unset>}'. A zip deploy replaces /home/site/wwwroot, so the identity database would be deleted on every deploy. Set it to /home/data/akshaya-identity.db — see deploy/azure-app-service/README.md."
+              exit 1
+              ;;
+            /home/*)
+              echo "Identity database at $path — outside the deployment folder, on durable /home storage."
+              ;;
+            *)
+              echo "::error::Persistence__SqlitePath is '$path', which is not under /home. Only /home survives a restart on App Service; accounts would be lost. Set it to /home/data/akshaya-identity.db."
+              exit 1
+              ;;
+          esac
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: publish
+
+      # The deploy step returns as soon as the platform accepts the package; the app then restarts.
+      # Poll the readiness probe, which exercises the identity store, so a database path the site
+      # cannot write to fails the deploy here rather than at somebody's first sign-in.
+      - name: Wait for the site to come back
+        run: |
+          host=$(az webapp show \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query defaultHostName -o tsv)
+
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 10 "https://$host/health/ready" > /dev/null 2>&1; then
+              echo "Ready after ${i} attempts."
+              curl -fsS "https://$host/health/ready"; echo
+              # The Angular app must come back from the same origin as the API — that co-hosting is
+              # the whole reason this is one service instead of two.
+              curl -fsS "https://$host/" | grep -q "<ak-root" \
+                || echo "::warning::index.html did not contain <ak-root — is the Angular bundle in wwwroot?"
+              echo "Deployed: https://$host/"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "::error::The site did not report ready within five minutes. Check the log stream: az webapp log tail -g ${{ vars.AZURE_RESOURCE_GROUP }} -n ${{ vars.AZURE_WEBAPP_NAME }}"
+          exit 1
