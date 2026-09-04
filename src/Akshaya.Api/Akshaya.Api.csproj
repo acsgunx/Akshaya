@@ -53,7 +53,14 @@
     <PackageReference Include="FluentValidation" Version="11.11.0" />
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
 
-    <!-- Identity persistence: user accounts and the encrypted saved-credential vault. -->
+    <!--
+      Identity persistence: user accounts and the encrypted saved-credential vault. BOTH
+      providers ship, because Persistence:Mode picks between them at startup rather than at
+      build time — SQLite for a deployment with no database server, Postgres for an enterprise
+      one. Two provider assemblies in the image is a few hundred KB; a second build
+      configuration to choose between them would be a permanent tax on every release.
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
       <PrivateAssets>all</PrivateAssets>

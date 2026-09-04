@@ -1,0 +1,49 @@
+# Akshaya on Render.
+#
+#   Commit this file, then: Render dashboard → New → Blueprint → point at this repository.
+#
+# READ deploy/render/README.md FIRST. The free plan spins down after 15 minutes of inactivity and
+# has no persistent disk, which for this application means every account is lost on each spin-down.
+# The `disk:` block below fixes that and requires a paid instance type.
+
+services:
+  - type: web
+    name: akshaya
+    runtime: docker
+    dockerfilePath: ./deploy/Dockerfile
+    dockerContext: .
+    plan: starter          # `free` has no disk — see the README before changing this.
+    region: singapore
+    healthCheckPath: /health/ready
+
+    # The SQLite file lives here. Without a disk, Render's filesystem is ephemeral and the identity
+    # database is recreated empty on every deploy and every restart.
+    disk:
+      name: akshaya-data
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: PORT
+        # The image already binds 8080 (ASPNETCORE_URLS in the Dockerfile). Naming it here tells
+        # Render's router the same number instead of leaving it to port detection, which is the
+        # usual cause of a deploy that hangs on "port scan timeout".
+        value: 8080
+      - key: Persistence__Mode
+        value: Sqlite
+      - key: Persistence__SqlitePath
+        value: /data/akshaya-identity.db
+      - key: Persistence__SeedUser__Email
+        value: demo@akshaya.local
+      - key: Cors__AllowedOrigin
+        value: none
+      - key: CredentialProtection__ActiveKeyId
+        value: prod-1
+      - key: CredentialProtection__Keys__prod-1
+        # NOT generateValue. The vault needs base64 of exactly 32 raw bytes (AES-256) and rejects
+        # anything else at startup; Render's generated values are the wrong shape. sync:false makes
+        # Render prompt for it once, in the dashboard, and keep it across deploys.
+        #   Generate with: openssl rand -base64 32
+        sync: false

@@ -118,25 +118,25 @@ clean_step() {
 migrate_step() {
   [ "$SCOPE_API" = 1 ] || return 0
 
-  # The API will not start without its database: user accounts and the saved-credential vault
-  # live in Postgres. Checked here rather than left to a stack trace on first request.
-  if ! (exec 3<>/dev/tcp/127.0.0.1/5432) 2>/dev/null; then
-    warn "Nothing is listening on 5432 — start Postgres first (scripts/dev-up.sh)."
-    warn "The API needs it for accounts and saved broker logins."
-    return 0
-  fi
-  exec 3>&- 3<&- 2>/dev/null || true
-
-  if ! command -v dotnet-ef >/dev/null 2>&1 && ! dotnet ef --version >/dev/null 2>&1; then
-    warn "dotnet-ef not installed; skipping migrations."
-    warn "Install with: dotnet tool install --global dotnet-ef"
-    return 0
-  fi
-
-  say "Applying database migrations"
-  dotnet ef database update --context IdentityDbContext \
-    --project "${REPO_ROOT}/${API_PROJECT}" >/dev/null 2>&1 \
-    || warn "Migrations failed; the API may not start. Run dotnet ef database update to see why."
+  # The API brings its own schema up at startup in every persistence mode — EnsureCreated for
+  # SQLite, the EF migrations for Postgres — so there is nothing to apply from here. The default
+  # mode is a SQLite file under src/Akshaya.Api/App_Data, which needs no infrastructure at all;
+  # scripts/dev-up.sh is only required if you have opted into Postgres.
+  local mode="${Persistence__Mode:-Sqlite}"
+  case "$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')" in
+    postgres)
+      if ! (exec 3<>/dev/tcp/127.0.0.1/5432) 2>/dev/null; then
+        warn "Persistence__Mode=Postgres but nothing is listening on 5432."
+        warn "Start it with scripts/dev-up.sh, or unset Persistence__Mode to use the SQLite default."
+        return 0
+      fi
+      exec 3>&- 3<&- 2>/dev/null || true
+      say "Postgres reachable; the API applies its migrations on startup"
+      ;;
+    *)
+      say "Identity store: ${mode} (schema created on startup, no database server needed)"
+      ;;
+  esac
 }
 
 build_step() {

@@ -35,3 +35,18 @@ Running `dotnet test` yourself outside the assistant is unaffected.
 
 `scripts/rerun.sh` (or `.ps1` / `.py`) — clean-build + run API (:5080) and
 web (:4200). Flags: `-ApiOnly`, `-WebOnly`, `-Detached`, `-NoClean`, `-Relaxed`.
+
+**No database server is needed.** Identity (accounts + the encrypted saved-credential
+vault) is the only persisted store; everything else is in-memory. `Persistence:Mode`
+selects `Sqlite` (default — a file under `src/Akshaya.Api/App_Data/`), `InMemory`, or
+`Postgres`. The API creates or migrates its own schema on startup in every mode, so
+there is no `dotnet ef database update` step; `scripts/dev-up.sh` is only for the
+Postgres mode. On an empty store the API seeds one account and logs its generated
+password once at `Warning`.
+
+## Deploying
+
+`deploy/Dockerfile` builds the Angular app into the API's `wwwroot` — one container,
+one origin, no CORS, no database. `deploy/<target>/` holds ready-made configs for
+Fly.io, Azure App Service, Azure Container Apps, Render and Railway; `deploy/README.md`
+compares them. Wiring lives in `src/Akshaya.Api/Infrastructure/Persistence/`.

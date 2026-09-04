@@ -17,24 +17,60 @@ about a broker comes from a declarative capability manifest and one interface.
 ## Quick start
 
 ```bash
-# 1. Prerequisites: .NET 10 SDK, Node 22.22+, Docker
+# 1. Prerequisites: .NET 10 SDK, Node 22.22+
 scripts/bootstrap.sh          # checks toolchain, restores packages, installs web deps
 
-# 2. Infrastructure (Postgres+TimescaleDB, Redis, OpenTelemetry collector, Seq)
-scripts/dev-up.sh             # REQUIRED — user accounts live in Postgres
-
-# 3. Database schema
-dotnet ef database update --context IdentityDbContext --project src/Akshaya.Api
-
-# 4. Backend + frontend, in one command
+# 2. Backend + frontend, in one command
 scripts/rerun.sh              # or: dotnet run --project src/Akshaya.Api  +  cd apps/web && npm start
 ```
 
-Then open http://localhost:4200 and **create an account** — the app requires one, and every API
-endpoint except sign-up/sign-in rejects an unauthenticated caller.
+**No database server required.** The identity store defaults to a SQLite file under
+`src/Akshaya.Api/App_Data/`, and the API creates its own schema on startup — there is no migration
+step to run. `scripts/dev-up.sh` (Postgres + TimescaleDB, Redis, OpenTelemetry, Seq) is optional
+and only needed if you deliberately switch to the Postgres mode below.
+
+Then open http://localhost:4200. On the very first run the API seeds one account into the empty
+store and writes its generated password to the console once:
+
+```
+[WRN] Seeded the first account because the identity store was empty. Sign in as
+demo@akshaya.local with the generated password: <20 characters>
+```
+
+Sign in with that, or create your own account — every API endpoint except sign-up and sign-in
+rejects an unauthenticated caller.
 
 The Paper connector is registered by default, so you can place orders against the simulated
 matching engine without any broker credentials.
+
+### Where the data lives
+
+Identity — user accounts and the encrypted saved-broker-credential vault — is the **only**
+persisted store. Orders, positions, risk policies and the kill switch are in-memory and rebuilt
+from the broker on restart. `Persistence:Mode` picks what backs it:
+
+| Mode | Store | Survives restart | Needs a server |
+|---|---|---|---|
+| `Sqlite` *(default)* | a local file | Yes | No |
+| `InMemory` | process memory | No | No |
+| `Postgres` | `ConnectionStrings:Identity` | Yes | Yes |
+
+To develop against Postgres instead:
+
+```bash
+scripts/dev-up.sh
+Persistence__Mode=Postgres scripts/rerun.sh   # migrations are applied on startup
+```
+
+## Deploying
+
+One container serves both the API and the Angular app from a single origin, with no database
+server — see **[`deploy/README.md`](deploy/README.md)** for ready-made configurations for Fly.io,
+Azure App Service, Azure Container Apps, Render and Railway, and what each one costs.
+
+```bash
+docker build -f deploy/Dockerfile -t akshaya .
+```
 
 ---
 

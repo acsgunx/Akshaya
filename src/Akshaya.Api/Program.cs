@@ -19,13 +19,13 @@ using Akshaya.Api.Contracts;
 using Akshaya.Api.Endpoints;
 using Akshaya.Api.Hubs;
 using Akshaya.Api.Infrastructure;
+using Akshaya.Api.Infrastructure.Persistence;
 using Akshaya.Connector.Paper;
 using Akshaya.Connectors.Abstractions;
 using Akshaya.Connectors.Host;
 using Akshaya.Connectors.Sdk;
 using Akshaya.Modules.Identity;
 using Akshaya.Modules.Identity.Infrastructure;
-using Akshaya.Modules.Identity.Infrastructure.Ef;
 using Akshaya.Modules.MarketData;
 using Akshaya.Modules.Portfolio;
 using Akshaya.Modules.Portfolio.Ports;
@@ -37,7 +37,6 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -152,21 +151,18 @@ try
 
     // ── Identity: accounts, sessions, and the saved-broker-credential vault. ──────────────────
     //
-    // Postgres is the only persisted store in the application so far, and that is deliberate:
-    // orders and risk policies can be rebuilt from the broker on restart, whereas a user's
-    // account and the credentials they asked us to remember cannot be rebuilt from anything.
-    var identityConnection = builder.Configuration.GetConnectionString("Identity")
-        ?? "Host=localhost;Port=5432;Database=akshaya;Username=akshaya;Password=akshaya";
-
-    // The MIGRATIONS live here, not in the module. The module owns the model and stays
-    // provider-agnostic — which is what lets its tests run against SQLite or the in-memory
-    // provider — while the composition root owns the choice of Postgres and the
-    // Postgres-specific DDL that choice generates.
-    builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(
-        identityConnection,
-        npgsql => npgsql
-            .MigrationsAssembly(typeof(Program).Assembly.FullName)
-            .MigrationsHistoryTable("__ef_migrations", IdentityDbContext.SchemaName)));
+    // The ONLY persisted store in the application, and that is deliberate: orders, positions and
+    // risk policies can all be rebuilt from the broker on restart, whereas a user's account and
+    // the credentials they asked us to remember cannot be rebuilt from anything.
+    //
+    // Because it is the only one, it is also the only reason a deployment would need a database
+    // SERVER — so which store backs it is a configuration choice rather than a compile-time one.
+    // Persistence:Mode selects a SQLite file (the default: no infrastructure to run and nothing
+    // to pay for), SQLite held in memory, or Postgres for an enterprise deployment. See
+    // Infrastructure/Persistence/PersistenceOptions.cs for what each one costs you.
+    var persistence = builder.Services.AddAkshayaPersistence(
+        builder.Configuration,
+        builder.Environment.ContentRootPath);
 
     builder.Services.Configure<CredentialProtectionOptions>(
         builder.Configuration.GetSection(CredentialProtectionOptions.SectionName));
@@ -240,12 +236,23 @@ try
 
     // ── CORS: the Angular dev server only. AllowCredentials is required for SignalR's
     // negotiate handshake, which is why this cannot be AllowAnyOrigin. ──────────────────────────
+    //
+    // Set Cors:AllowedOrigin to "" or "none" to switch the whole thing off. That is what the
+    // single-container deployments do: when this process also serves the Angular bundle (see
+    // the SPA block further down), every request the browser makes is same-origin and a CORS
+    // policy is not a loosened restriction so much as a header nobody reads.
     var allowedOrigin = builder.Configuration["Cors:AllowedOrigin"] ?? "http://localhost:4200";
-    builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
-        .WithOrigins(allowedOrigin)
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials()));
+    var corsEnabled = !string.IsNullOrWhiteSpace(allowedOrigin)
+        && !string.Equals(allowedOrigin, "none", StringComparison.OrdinalIgnoreCase);
+
+    if (corsEnabled)
+    {
+        builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+            .WithOrigins(allowedOrigin)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()));
+    }
 
     // ── SignalR. ──────────────────────────────────────────────────────────────────────────────
     // MISMATCH WORTH FLAGGING: the brief asks for SignalR with MessagePack, but
@@ -312,6 +319,12 @@ try
     // validates its whole key set in its constructor; resolving it is the whole check.
     _ = app.Services.GetRequiredService<Akshaya.Modules.Identity.Ports.ICredentialCipher>();
 
+    // Create or migrate the identity schema, and seed the first account if the store is empty.
+    // Done in-process because the deployments this supports have no shell to run a migration
+    // job from — the container starting IS the deployment.
+    Log.Information("Identity persistence mode: {Mode}", persistence.Mode);
+    await IdentityStoreInitialiser.InitialiseAsync(app.Services);
+
     // Load the connector catalog once, at startup, before any request can ask for a manifest.
     // FailFastOnPluginError is off by default (see above), so a broken third-party plugin is
     // recorded and surfaced via the "connectors" health check rather than taking the host down.
@@ -338,7 +351,29 @@ try
         await problem.ExecuteAsync(context);
     }));
 
-    app.UseCors();
+    if (corsEnabled)
+    {
+        app.UseCors();
+    }
+
+    // ── The Angular app, served from this origin when it has been published into wwwroot. ─────
+    //
+    // Present only in a container build, where the Dockerfile drops `ng build` output into
+    // wwwroot; a developer running `ng serve` on :4200 has no wwwroot and this whole block stays
+    // off, so the dev loop is untouched. Co-hosting is what makes a one-service deployment
+    // possible: one process, one TLS certificate, one bill, and no CORS.
+    var webRoot = app.Environment.WebRootPath
+        ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+    var spaEnabled = File.Exists(Path.Combine(webRoot, "index.html"));
+
+    if (spaEnabled)
+    {
+        // Static files BEFORE authentication. The bundle is public by definition — it is what
+        // renders the sign-in form — and running it through the fallback authorization policy
+        // would 401 the very page a signed-out user needs.
+        app.UseDefaultFiles();
+        app.UseStaticFiles();
+    }
 
     // Order matters and is not arbitrary: CORS first (so a rejected pre-flight never reaches
     // auth), then authentication to populate HttpContext.User, then authorization to enforce
@@ -364,6 +399,20 @@ try
     app.MapRiskEndpoints();
 
     app.MapHub<MarketDataHub>("/hubs/market-data");
+
+    if (spaEnabled)
+    {
+        // An unmatched /api or /hubs path is a bug or a probe, and must answer 404. Without
+        // these two the SPA fallback below would hand it index.html with a 200, which turns
+        // every typo'd endpoint into a client-side JSON parse error instead of a status code.
+        app.MapFallback("/api/{**rest}", () => Results.NotFound()).AllowAnonymous();
+        app.MapFallback("/hubs/{**rest}", () => Results.NotFound()).AllowAnonymous();
+
+        // Everything else is an Angular route: deep links and refreshes must return index.html
+        // and let the client router resolve them. AllowAnonymous because the fallback
+        // authorization policy applies to endpoints, and this one has to serve signed-out users.
+        app.MapFallbackToFile("index.html").AllowAnonymous();
+    }
 
     app.Run();
 }
