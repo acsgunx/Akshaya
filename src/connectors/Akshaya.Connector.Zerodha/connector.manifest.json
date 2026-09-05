@@ -1,0 +1,146 @@
+{
+  "id": "zerodha",
+  "displayName": "Zerodha Kite",
+  "vendor": "Zerodha Broking Ltd.",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "InProcess",
+  "jurisdictions": [
+    "IN"
+  ],
+  "venues": [
+    "XNSE",
+    "XBOM"
+  ],
+  "currencies": [
+    "INR"
+  ],
+  "assetClasses": [
+    "Equity",
+    "Etf",
+    "Future",
+    "Option",
+    "Index"
+  ],
+  "auth": {
+    "model": "OAuth2",
+    "challenges": [],
+    "sessionLifetime": null,
+    "expiresAtVenueMidnight": false,
+    "refreshSupported": false,
+    "keepAliveInterval": null,
+    "credentialFields": [
+      {
+        "key": "api_key",
+        "label": "API key",
+        "secret": false,
+        "optional": false,
+        "placeholder": "your_api_key",
+        "help": "The public API key from your app on the Kite developer console. It is sent on every request as half of the Authorization header."
+      },
+      {
+        "key": "api_secret",
+        "label": "API secret",
+        "secret": true,
+        "optional": false,
+        "help": "Used only to compute the SHA-256 checksum the token exchange requires. It is never sent to Zerodha in the clear."
+      }
+    ]
+  },
+  "orders": {
+    "types": [
+      "Market",
+      "Limit",
+      "Stop",
+      "StopLimit"
+    ],
+    "timeInForce": [
+      "Day",
+      "Ioc"
+    ],
+    "positionEffects": [
+      "Delivery",
+      "Intraday",
+      "Margin",
+      "CarryForward"
+    ],
+    "varieties": [
+      "Regular",
+      "AfterMarket"
+    ],
+    "modifiable": [
+      "Quantity",
+      "LimitPrice",
+      "TriggerPrice",
+      "OrderType",
+      "TimeInForce",
+      "DisclosedQuantity"
+    ],
+    "fractionalQuantity": false,
+    "shortSellEquity": false,
+    "basket": {
+      "supported": true,
+      "maxLegs": 10,
+      "atomic": false
+    },
+    "bracket": false,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": true,
+    "chargesEstimate": true,
+    "cancelAll": true,
+    "positionConversion": true
+  },
+  "marketData": {
+    "streaming": true,
+    "streamModes": [
+      "Ltp",
+      "Quote",
+      "Full"
+    ],
+    "depthLevels": 5,
+    "historical": true,
+    "historicalTimeFrames": [
+      "OneMinute",
+      "ThreeMinutes",
+      "FiveMinutes",
+      "FifteenMinutes",
+      "ThirtyMinutes",
+      "OneHour",
+      "OneDay"
+    ],
+    "optionChain": true,
+    "maxStreamSubscriptions": 3000,
+    "historyDays": 2000
+  },
+  "rateLimits": [
+    {
+      "scope": "global",
+      "perSecond": 10
+    },
+    {
+      "scope": "orders",
+      "perSecond": 10,
+      "perMinute": 400,
+      "perDay": 5000
+    },
+    {
+      "scope": "quotes",
+      "perSecond": 1
+    },
+    {
+      "scope": "data",
+      "perSecond": 3
+    }
+  ],
+  "sandbox": {
+    "available": false,
+    "notes": "Kite Connect has no sandbox; a paid app on a live account is the only way to exercise the API. Use the Paper connector (id 'paper') for rehearsal — it implements the same contract."
+  },
+  "compliance": {
+    "algoApprovalRequired": true,
+    "regulator": "SEBI",
+    "algoIdRequired": false,
+    "notes": "SEBI's algorithmic-trading framework requires exchange/broker approval and a registered strategy identifier before automated order flow may run on a retail API. Zerodha additionally caps a single API key at 5000 orders per day and 25 modifications per order. Keep live automation behind an operator-enabled per-tenant flag."
+  }
+}

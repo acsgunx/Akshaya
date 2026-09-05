@@ -44,6 +44,7 @@
     -->
     <ProjectReference Include="..\connectors\Akshaya.Connector.Fyers\Akshaya.Connector.Fyers.csproj" />
     <ProjectReference Include="..\connectors\Akshaya.Connector.MStock\Akshaya.Connector.MStock.csproj" />
+    <ProjectReference Include="..\connectors\Akshaya.Connector.Zerodha\Akshaya.Connector.Zerodha.csproj" />
     <ProjectReference Include="..\connectors\Akshaya.Connector.Paper\Akshaya.Connector.Paper.csproj" />
   </ItemGroup>
 
