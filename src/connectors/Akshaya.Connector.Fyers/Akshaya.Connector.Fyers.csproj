@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The FYERS Securities (India) API v3 connector.
+
+    It references the CONTRACT (Akshaya.Connectors.Abstractions) and the connector SDK
+    (Akshaya.Connectors.Sdk) and nothing else. In particular it must never reference any
+    Akshaya.Modules.* assembly: a connector that can see the trading core is a connector
+    that will eventually reach into it. Enforced by tests/Akshaya.Architecture.Tests.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Connector.Fyers</RootNamespace>
+    <AssemblyName>Akshaya.Connector.Fyers</AssemblyName>
+    <!--
+      CA1848: LoggerMessage source-gen delegates. The three log calls here are on cold paths
+              (a vendor error, a skipped out-of-scope row) and are not worth the ceremony.
+      CA2007: ConfigureAwait(false) on `await using`. There is no way to write it on a using
+              declaration without turning the resource into a ConfiguredAsyncDisposable and
+              losing the variable; every ordinary await in this project does carry it.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A test project exercises internals directly (FyersTime, the facet ctors, FyersApi). -->
+    <InternalsVisibleTo Include="Akshaya.Connector.Fyers.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The manifest ships both as a loose file next to the assembly (so an operator can read
+      and diff it without a decompiler) and as an embedded resource (so ManifestLoader can
+      still find it when the connector is loaded from a single-file bundle).
+
+      CopyToPublishDirectory=Never because every connector's manifest has the SAME file name.
+      In this project's own bin/ that is fine — one manifest, one directory — but a publish of
+      Akshaya.Api flattens every referenced connector into one folder, and two files claiming
+      connector.manifest.json there is an error (NETSDK1152), correctly: the SDK has no way to
+      know which one you meant. Nothing reads the loose copy at runtime anyway — the host loads
+      the embedded resource — and a dropped-in plugin carries its manifest inside its own
+      directory, where the name cannot collide.
+    -->
+    <None Update="connector.manifest.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never" />
+    <EmbeddedResource Include="connector.manifest.json" LogicalName="connector.manifest.json" />
+  </ItemGroup>
+
+</Project>

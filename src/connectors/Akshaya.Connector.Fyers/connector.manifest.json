@@ -1,0 +1,135 @@
+{
+  "id": "fyers",
+  "displayName": "FYERS",
+  "vendor": "FYERS Securities India Pvt. Ltd.",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "InProcess",
+  "jurisdictions": [
+    "IN"
+  ],
+  "venues": [
+    "XNSE",
+    "XBOM"
+  ],
+  "currencies": [
+    "INR"
+  ],
+  "assetClasses": [
+    "Equity",
+    "Etf",
+    "Future",
+    "Option",
+    "Index"
+  ],
+  "auth": {
+    "model": "OAuth2",
+    "challenges": [],
+    "sessionLifetime": "12:00:00",
+    "expiresAtVenueMidnight": true,
+    "venueMidnightTimeZone": "Asia/Kolkata",
+    "refreshSupported": false,
+    "keepAliveInterval": null,
+    "credentialFields": [
+      {
+        "key": "app_id",
+        "label": "App ID",
+        "secret": false,
+        "optional": false,
+        "placeholder": "XCXXXXXXXX-100",
+        "help": "The client id issued when you create an app in the FYERS API dashboard. It is sent on every request alongside the access token."
+      },
+      {
+        "key": "app_secret",
+        "label": "App secret",
+        "secret": true,
+        "optional": false,
+        "help": "Used only to compute the SHA-256 app id hash the token exchange requires. It is never sent to FYERS in the clear."
+      }
+    ]
+  },
+  "orders": {
+    "types": [
+      "Market",
+      "Limit",
+      "Stop",
+      "StopLimit"
+    ],
+    "timeInForce": [
+      "Day",
+      "Ioc"
+    ],
+    "positionEffects": [
+      "Delivery",
+      "Intraday",
+      "Margin",
+      "CarryForward"
+    ],
+    "varieties": [
+      "Regular",
+      "AfterMarket"
+    ],
+    "modifiable": [
+      "Quantity",
+      "LimitPrice",
+      "TriggerPrice",
+      "OrderType",
+      "DisclosedQuantity"
+    ],
+    "fractionalQuantity": false,
+    "shortSellEquity": false,
+    "basket": {
+      "supported": true,
+      "maxLegs": 10,
+      "atomic": false
+    },
+    "bracket": false,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": true,
+    "chargesEstimate": false,
+    "cancelAll": true,
+    "positionConversion": true
+  },
+  "marketData": {
+    "streaming": false,
+    "streamModes": [],
+    "depthLevels": 5,
+    "historical": true,
+    "historicalTimeFrames": [
+      "OneMinute",
+      "ThreeMinutes",
+      "FiveMinutes",
+      "FifteenMinutes",
+      "ThirtyMinutes",
+      "OneHour",
+      "OneDay",
+      "OneWeek",
+      "OneMonth"
+    ],
+    "optionChain": true,
+    "historyDays": 366
+  },
+  "rateLimits": [
+    {
+      "scope": "global",
+      "perSecond": 10,
+      "perMinute": 200,
+      "perDay": 100000
+    },
+    {
+      "scope": "orders",
+      "perSecond": 10
+    }
+  ],
+  "sandbox": {
+    "available": false,
+    "notes": "FYERS has no sandbox; an app on a live account is the only way to exercise the API. Use the Paper connector (id 'paper') for rehearsal — it implements the same contract."
+  },
+  "compliance": {
+    "algoApprovalRequired": true,
+    "regulator": "SEBI",
+    "algoIdRequired": false,
+    "notes": "SEBI's algorithmic-trading framework requires exchange/broker approval and a registered strategy identifier before automated order flow may run on a retail API; FYERS documents its own changes to API usage taking effect 1 April 2026. Keep live automation behind an operator-enabled per-tenant flag."
+  }
+}

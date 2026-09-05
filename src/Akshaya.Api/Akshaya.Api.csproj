@@ -42,6 +42,7 @@
       the same path a third-party plugin takes. In production these references are removed and
       the connectors are dropped into the plugin directory instead.
     -->
+    <ProjectReference Include="..\connectors\Akshaya.Connector.Fyers\Akshaya.Connector.Fyers.csproj" />
     <ProjectReference Include="..\connectors\Akshaya.Connector.MStock\Akshaya.Connector.MStock.csproj" />
     <ProjectReference Include="..\connectors\Akshaya.Connector.Paper\Akshaya.Connector.Paper.csproj" />
   </ItemGroup>
