@@ -81,6 +81,20 @@ point of having them:
   [`connectors/mstock.md`](connectors/mstock.md). The docs host refuses plain HTTP clients but
   serves a real browser — re-check through one rather than assuming it is unreachable.
 
+- **The FYERS connector against a live account.** Written from the v3 documentation read on
+  2026-09-06. The symbol master **is** verified — all NSE/BSE files were downloaded and parsed,
+  and 4,000 instruments round-tripped through the symbol translator in both directions without
+  loss — but no authenticated request has ever been sent. The response shapes in `FyersDtos.cs`
+  are the most likely place reality differs. The smoke test in
+  [`connectors/fyers.md`](connectors/fyers.md) has **not** been run.
+
+  Two things there are deliberate rather than unfinished, and both are written up in that file:
+  the connector declares `refreshSupported: false` because FYERS is withdrawing refresh tokens
+  and the route needs the user's trading PIN, and it exposes **no live feed** because the FYERS
+  market-data socket speaks a proprietary binary protocol with no published wire format. The
+  order socket is documented JSON and could be wired, but `marketData.streaming` is a single
+  flag covering both feeds — splitting it is a contract change that needs an ADR.
+
 - **Order behaviour beyond the Paper connector.** The whole order flow has been exercised
   end to end against `paper`, which implements the same contract. The mStock smoke test in
   [`features/orders.md`](features/orders.md) §13 has **not** been run.
@@ -116,6 +130,7 @@ web app builds. What is left:
 | 1 | Identity, tenancy, 2FA | **Not started** — the API uses a clearly-marked dev auth stub |
 | 2 | Connector contract, SDK, host, conformance kit, two fakes | Written |
 | 3 | mStock connector | Written; re-checked against the published docs 2026-09-04, still unverified against the live API beyond login |
+| 3 | FYERS connector | Written from the v3 docs 2026-09-06; symbol master verified against live files, everything else unverified against a live account |
 | 4 | Credential vault, envelope encryption, link flow | **Partial** — the link flow exists, the KMS-backed vault does not |
 | 5 | Order state machine, risk gate, portfolio, reconciliation | Written and **exercised end to end** against the Paper connector; persistence still in-memory |
 | 6 | Market data, SignalR fan-out, candles | **Partial** — the hub and conflation exist; TimescaleDB storage does not |

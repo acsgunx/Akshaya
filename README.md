@@ -142,6 +142,7 @@ src/
   Akshaya.Connectors.Host/         Discovery, AssemblyLoadContext isolation, gateway supervision
   connectors/
     Akshaya.Connector.MStock/      Reference implementation (India, NSE/BSE)
+    Akshaya.Connector.Fyers/       FYERS API v3 (India, NSE/BSE) — OAuth2, no live feed
     Akshaya.Connector.Paper/       Simulated broker — paper trading and backtest execution
   Modules/
     Trading/                       Order state machine, risk gate, reconciliation
@@ -208,7 +209,8 @@ why, and the failure mode each one has.
 | Paper | any | none | in-process | Implemented |
 | m.Stock (Mirae Asset) | India | password + SMS OTP / TOTP | REST + WebSocket | Implemented, never run against the live API |
 | Zerodha Kite | India | request token + checksum | REST + binary WS | Planned |
-| Fyers, Upstox, Angel One, Dhan | India | OAuth2 / TOTP / static token | REST + WS | Planned |
+| FYERS | India | OAuth2 | REST | Implemented, never run against the live API — no live feed, see [`docs/connectors/fyers.md`](docs/connectors/fyers.md) |
+| Upstox, Angel One, Dhan | India | OAuth2 / TOTP / static token | REST + WS | Planned |
 | Moomoo (Futu) | SG, HK, US, JP, AU | local OpenD gateway | TCP + protobuf | Planned — needs a gateway sidecar per credential |
 | IBKR | Global | OAuth 1.0a or Client Portal Gateway | REST + WS | Planned — third-party access needs a compliance onboarding measured in months, start it early |
 | Saxo, Tiger | SG, Global | OAuth2 / RSA-signed | REST + streaming | Planned |
