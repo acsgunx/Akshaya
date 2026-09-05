@@ -335,6 +335,7 @@ def check_type_resolution() -> CheckResult:
         "ConcurrentQueue", "ActivitySource", "Activity", "Meter", "Counter", "Histogram", "Stopwatch",
         "TimeZoneInfo", "TimeSpan", "DateTime", "DateTimeOffset", "DateOnly", "TimeOnly", "CultureInfo",
         "Math", "Convert", "Enum", "Array", "Path", "File", "Directory", "Stream", "StreamReader",
+        "GZipStream",
         "MemoryStream", "AssemblyLoadContext", "Assembly", "AssemblyName", "Type", "Attribute",
         "ILogger", "ILoggerFactory", "LogLevel", "IServiceCollection", "IServiceProvider",
         "IOptions", "IConfiguration", "IHostedService", "BackgroundService", "WebApplication",

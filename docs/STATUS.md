@@ -81,6 +81,21 @@ point of having them:
   [`connectors/mstock.md`](connectors/mstock.md). The docs host refuses plain HTTP clients but
   serves a real browser — re-check through one rather than assuming it is unreachable.
 
+- **The Zerodha Kite connector against a live account.** Written from the Kite Connect v3
+  documentation read on 2026-09-06. Two parts **are** verified: the instrument master (all four
+  exchange dumps parsed, 60,089 instruments, zero unparseable rows, 5,000 round-tripped through the
+  symbol translator both ways) and the binary tick protocol (LTP, quote, full and index packets
+  built byte-for-byte from the documented layout and fed through the real decoder). No
+  authenticated request has been sent; the response shapes in `ZerodhaDtos.cs` are the most likely
+  place reality differs. The smoke test in [`connectors/zerodha.md`](connectors/zerodha.md) has
+  **not** been run.
+
+  One thing there is deliberate rather than unfinished, and is written up in that file: Kite's
+  access token expires at **06:00 IST**, not at venue midnight, and `AuthSpec` has no way to
+  express an hour-of-day. The connector declares `expiresAtVenueMidnight: false` and computes the
+  expiry itself; declaring it true would have `SessionMonitor` clamp every session six hours early.
+  Generalising that field is a contract change that needs an ADR.
+
 - **The FYERS connector against a live account.** Written from the v3 documentation read on
   2026-09-06. The symbol master **is** verified — all NSE/BSE files were downloaded and parsed,
   and 4,000 instruments round-tripped through the symbol translator in both directions without
@@ -130,6 +145,7 @@ web app builds. What is left:
 | 1 | Identity, tenancy, 2FA | **Not started** — the API uses a clearly-marked dev auth stub |
 | 2 | Connector contract, SDK, host, conformance kit, two fakes | Written |
 | 3 | mStock connector | Written; re-checked against the published docs 2026-09-04, still unverified against the live API beyond login |
+| 3 | Zerodha Kite connector | Written from the v3 docs 2026-09-06; instrument master and binary tick protocol verified, everything else unverified against a live account |
 | 3 | FYERS connector | Written from the v3 docs 2026-09-06; symbol master verified against live files, everything else unverified against a live account |
 | 4 | Credential vault, envelope encryption, link flow | **Partial** — the link flow exists, the KMS-backed vault does not |
 | 5 | Order state machine, risk gate, portfolio, reconciliation | Written and **exercised end to end** against the Paper connector; persistence still in-memory |

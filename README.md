@@ -142,6 +142,7 @@ src/
   Akshaya.Connectors.Host/         Discovery, AssemblyLoadContext isolation, gateway supervision
   connectors/
     Akshaya.Connector.MStock/      Reference implementation (India, NSE/BSE)
+    Akshaya.Connector.Zerodha/     Kite Connect v3 (India, NSE/BSE) — OAuth2, live binary feed
     Akshaya.Connector.Fyers/       FYERS API v3 (India, NSE/BSE) — OAuth2, no live feed
     Akshaya.Connector.Paper/       Simulated broker — paper trading and backtest execution
   Modules/
@@ -208,7 +209,7 @@ why, and the failure mode each one has.
 |---|---|---|---|---|
 | Paper | any | none | in-process | Implemented |
 | m.Stock (Mirae Asset) | India | password + SMS OTP / TOTP | REST + WebSocket | Implemented, never run against the live API |
-| Zerodha Kite | India | request token + checksum | REST + binary WS | Planned |
+| Zerodha Kite | India | request token + checksum | REST + binary WS | Implemented, never run against the live API — see [`docs/connectors/zerodha.md`](docs/connectors/zerodha.md) |
 | FYERS | India | OAuth2 | REST | Implemented, never run against the live API — no live feed, see [`docs/connectors/fyers.md`](docs/connectors/fyers.md) |
 | Upstox, Angel One, Dhan | India | OAuth2 / TOTP / static token | REST + WS | Planned |
 | Moomoo (Futu) | SG, HK, US, JP, AU | local OpenD gateway | TCP + protobuf | Planned — needs a gateway sidecar per credential |
