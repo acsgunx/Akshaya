@@ -130,6 +130,7 @@ public sealed class ConnectorFactory : IConnectorFactory
         // Gateway-hosted brokers have a process behind them that must be up BEFORE we hand out
         // a connector. Doing it here means every caller gets GatewayUnavailable with an
         // actionable message rather than a timeout on their first real call.
+        GatewayEndpoint? gatewayEndpoint = null;
         if (entry.Manifest.Hosting == ConnectorHosting.Gateway)
         {
             var gateway = await _gateways.EnsureAvailableAsync(entry.Manifest, session.AccountId, ct);
@@ -137,9 +138,13 @@ public sealed class ConnectorFactory : IConnectorFactory
             {
                 return Result<IBrokerConnector>.Failure(gateway.Error);
             }
+
+            // The connector is handed the address the supervisor just probed, never one it worked
+            // out for itself, so the two cannot be talking about different daemons.
+            gatewayEndpoint = gateway.Value;
         }
 
-        var raw = Activate(entry, session);
+        var raw = Activate(entry, session, gatewayEndpoint);
         return raw.IsFailure
             ? Result<IBrokerConnector>.Failure(raw.Error)
             : Result<IBrokerConnector>.Success(Decorate(raw.Value, entry.Manifest, session.AccountId));
@@ -156,7 +161,15 @@ public sealed class ConnectorFactory : IConnectorFactory
         }
 
         var entry = entryResult.Value;
-        var raw = Activate(entry, session: null);
+
+        // The login handshake runs before any account id exists, so there is no credential to
+        // supervise a per-credential gateway for. It gets the gateway's default address, unprobed;
+        // a gateway connector's auth facet reports GatewayUnavailable itself when nothing answers.
+        var gatewayEndpoint = entry.Manifest is { Hosting: ConnectorHosting.Gateway, Gateway: { } spec }
+            ? _options.ResolveGatewayEndpoint(spec, UnauthenticatedCredentialId)
+            : null;
+
+        var raw = Activate(entry, session: null, gatewayEndpoint);
 
         return raw.IsFailure
             ? Result<IBrokerConnector>.Failure(raw.Error)
@@ -168,7 +181,10 @@ public sealed class ConnectorFactory : IConnectorFactory
     /// Builds the raw connector from whichever source the catalog recorded. The three sources
     /// converge here and nothing above this method can tell them apart.
     /// </summary>
-    private Result<IBrokerConnector> Activate(ConnectorCatalogEntry entry, BrokerSession? session)
+    private Result<IBrokerConnector> Activate(
+        ConnectorCatalogEntry entry,
+        BrokerSession? session,
+        GatewayEndpoint? gatewayEndpoint)
     {
         var context = new ConnectorActivationContext
         {
@@ -177,6 +193,9 @@ public sealed class ConnectorFactory : IConnectorFactory
             LoggerFactory = _loggerFactory,
             Clock = _clock,
             Settings = _options.SettingsFor(entry.Manifest.Id),
+            Gateway = gatewayEndpoint is null
+                ? null
+                : new GatewayAddress(gatewayEndpoint.Host, gatewayEndpoint.Port),
         };
 
         try

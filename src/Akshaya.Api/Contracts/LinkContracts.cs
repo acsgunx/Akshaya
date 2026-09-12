@@ -58,7 +58,11 @@ public sealed class BeginLinkRequestDtoValidator : AbstractValidator<BeginLinkRe
 /// <summary>Answer a challenge, or hand back an OAuth code, and continue the flow.</summary>
 public sealed record ContinueLinkRequestDto
 {
-    /// <summary>The OTP, TOTP or OAuth authorisation code the previous step asked for.</summary>
+    /// <summary>
+    /// The OTP, TOTP or OAuth authorisation code the previous step asked for — or an EMPTY string
+    /// after a <c>gateway</c> step, which asks the connector to check again whether its gateway is
+    /// ready.
+    /// </summary>
     public required string Response { get; init; }
 
     /// <summary>Opaque state echoed from the previous step. The connector owns its meaning.</summary>
@@ -68,8 +72,12 @@ public sealed record ContinueLinkRequestDto
 
 public sealed class ContinueLinkRequestDtoValidator : AbstractValidator<ContinueLinkRequestDto>
 {
+    // NotNull, not NotEmpty. An empty response is how the link wizard's "I've started it — check
+    // again" button asks a gateway connector to re-evaluate, and NotEmpty turned that button into a
+    // guaranteed 400 for every gateway-hosted broker. A connector that needs a real answer (an OTP,
+    // an OAuth code) already refuses a blank one itself with ChallengeFailed. See ADR 0008.
     public ContinueLinkRequestDtoValidator() =>
-        RuleFor(r => r.Response).NotEmpty().WithMessage("A challenge response is required.");
+        RuleFor(r => r.Response).NotNull().WithMessage("A challenge response is required.");
 }
 
 /// <summary>

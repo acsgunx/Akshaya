@@ -44,6 +44,10 @@
     -->
     <ProjectReference Include="..\connectors\Akshaya.Connector.Fyers\Akshaya.Connector.Fyers.csproj" />
     <ProjectReference Include="..\connectors\Akshaya.Connector.MStock\Akshaya.Connector.MStock.csproj" />
+    <ProjectReference Include="..\connectors\Akshaya.Connector.Moomoo\Akshaya.Connector.Moomoo.csproj" />
+    <ProjectReference Include="..\connectors\Akshaya.Connector.Longbridge\Akshaya.Connector.Longbridge.csproj" />
+    <ProjectReference Include="..\connectors\Akshaya.Connector.Ibkr\Akshaya.Connector.Ibkr.csproj" />
+    <ProjectReference Include="..\connectors\Akshaya.Connector.Tiger\Akshaya.Connector.Tiger.csproj" />
     <ProjectReference Include="..\connectors\Akshaya.Connector.Zerodha\Akshaya.Connector.Zerodha.csproj" />
     <ProjectReference Include="..\connectors\Akshaya.Connector.Paper\Akshaya.Connector.Paper.csproj" />
   </ItemGroup>

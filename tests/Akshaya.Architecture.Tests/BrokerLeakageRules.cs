@@ -28,7 +28,8 @@ public sealed class BrokerLeakageRules
         "moomoo", "futu", "opend",
         "ibkr", "tws",
         "fyers", "upstox", "dhan", "angelone", "smartapi",
-        "saxo", "tigerbrokers",
+        "saxo", "tigerbrokers", "tiger", "tigeropen",
+        "longbridge", "longport",
     ];
 
     /// <summary>

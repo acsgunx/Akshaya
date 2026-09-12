@@ -35,6 +35,19 @@ public sealed record ConnectorActivationContext
     public Func<string, HttpClient>? HttpClientFactory { get; init; }
 
     /// <summary>
+    /// Where this connector's gateway daemon listens, when its manifest declares
+    /// <c>hosting: Gateway</c>; null for every other hosting model.
+    ///
+    /// Resolved by the host and never by the connector, so the supervisor that probed a daemon and
+    /// the connector that talks to it cannot disagree about which daemon that is. For a connector
+    /// bound to a session it is the address the supervisor has just probed. For the unauthenticated
+    /// handshake instance — which has no credential to resolve against yet — it is the gateway's
+    /// DEFAULT address and has not been probed, so the auth facet must report
+    /// <c>GatewayUnavailable</c> itself when nothing answers there. See ADR 0008.
+    /// </summary>
+    public GatewayAddress? Gateway { get; init; }
+
+    /// <summary>
     /// Deployment-specific settings from the host's configuration, scoped to this connector —
     /// a sandbox toggle, a base URL override, a partner id. Never credentials: those arrive
     /// through <see cref="AuthCredentials"/> and are never persisted in configuration.
@@ -44,6 +57,19 @@ public sealed record ConnectorActivationContext
 
     /// <summary>Convenience: a logger named for the connector.</summary>
     public ILogger CreateLogger() => LoggerFactory.CreateLogger($"Akshaya.Connector.{Manifest.Id}");
+}
+
+/// <summary>
+/// A gateway daemon's network address, as the host hands it to a gateway-hosted connector.
+///
+/// Host and port only, with no scheme: the connector knows whether its daemon speaks HTTPS, a raw
+/// TCP framing or anything else, and the host must not.
+/// </summary>
+/// <param name="Host">Hostname or IP address.</param>
+/// <param name="Port">TCP port the daemon listens on.</param>
+public sealed record GatewayAddress(string Host, int Port)
+{
+    public override string ToString() => $"{Host}:{Port}";
 }
 
 /// <summary>

@@ -110,6 +110,22 @@ point of having them:
   order socket is documented JSON and could be wired, but `marketData.streaming` is a single
   flag covering both feeds — splitting it is a contract change that needs an ADR.
 
+- **The moomoo, Longbridge, IBKR and Tiger connectors against a live account.** All four were written
+  from vendor documentation and official SDK sources read 2026-09-11 and 2026-09-12, and **not one
+  authenticated request has been sent** through any of them. Each has a smoke test in
+  `connectors/<id>.md` that has **not** been run, and each ends with the open questions its sources did
+  not answer — the places reality is most likely to differ:
+  - [`connectors/moomoo.md`](connectors/moomoo.md) — OpenD's framing is hand-written from the published
+    protocol, and the gateway is run by the operator, one per credential.
+  - [`connectors/longbridge.md`](connectors/longbridge.md) — the quote and trade sockets' protobuf is
+    hand-encoded from the published `.proto` files, and the declared rate limits are conservative
+    guesses because Longbridge publishes none.
+  - [`connectors/ibkr.md`](connectors/ibkr.md) — whether a stop's trigger travels in `price` or
+    `auxPrice` is the first thing its smoke test settles. Order reply messages are never confirmed
+    automatically: each is one of the username's own precautions.
+  - [`connectors/tiger.md`](connectors/tiger.md) — whether Tiger accepts a 32-character `user_mark` is
+    the first thing its smoke test settles, because that marker is how a timed-out order is recovered.
+
 - **Order behaviour beyond the Paper connector.** The whole order flow has been exercised
   end to end against `paper`, which implements the same contract. The mStock smoke test in
   [`features/orders.md`](features/orders.md) §13 has **not** been run.
@@ -151,8 +167,9 @@ web app builds. What is left:
 | 5 | Order state machine, risk gate, portfolio, reconciliation | Written and **exercised end to end** against the Paper connector; persistence still in-memory |
 | 6 | Market data, SignalR fan-out, candles | **Partial** — the hub and conflation exist; TimescaleDB storage does not |
 | 7 | Strategy engine, backtester | **Not started** — the Paper connector and charge schedules are the groundwork |
-| 8 | Second and third connectors | **Not started** — this is the phase that tests whether the design worked |
-| 9–10 | IBKR, SaaS hardening | **Not started** |
+| 3 | moomoo, Longbridge, IBKR and Tiger connectors | Written from vendor docs and SDK sources 2026-09-11/12; entirely unverified against live accounts |
+| 8 | Second and third connectors | Written — seven connectors now implement the contract across India, the US, Hong Kong and Singapore. The design held; the four platform gaps it exposed are recorded in ADR 0008 |
+| 9–10 | IBKR, SaaS hardening | **Partial** — the IBKR connector is written against the Client Portal Gateway; SaaS hardening is not started |
 
 ## Known gaps worth naming
 
@@ -167,5 +184,8 @@ web app builds. What is left:
   reference Python one — "any language" is a design property, not a demonstrated one.
 - **No instrument master service.** Market data endpoints currently answer through a specific
   broker link rather than a canonical, cross-broker instrument store.
-- **Gateway supervision is a seam, not an implementation.** `IGatewayRuntime` has a null
-  implementation; running an actual OpenD or Client Portal Gateway container is unbuilt.
+- **Gateways are run by the operator, not supervised by the host.** `ConfiguredGatewayRuntime` resolves
+  a gateway's address from configuration and probes it (ADR 0008); the host does not start, stop or
+  restart one. An operator runs OpenD or the Client Portal Gateway — one per credential — and tells the
+  host where it listens. A gateway that is not answering surfaces as `GatewayRequired` in the link
+  wizard and as unhealthy in connector health, rather than as an opaque failure.

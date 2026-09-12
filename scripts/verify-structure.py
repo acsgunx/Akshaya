@@ -38,7 +38,8 @@ REPO = Path(__file__).resolve().parent.parent
 BROKER_NAMES = [
     "mstock", "zerodha", "kite", "moomoo", "futu", "ibkr",
     "interactivebrokers", "fyers", "upstox", "dhan", "angelone",
-    "smartapi", "saxo", "tigerbrokers",
+    "smartapi", "saxo", "tigerbrokers", "tiger", "tigeropen",
+    "longbridge", "longport",
 ]
 
 # Directories where broker names are legitimate.
@@ -335,7 +336,7 @@ def check_type_resolution() -> CheckResult:
         "ConcurrentQueue", "ActivitySource", "Activity", "Meter", "Counter", "Histogram", "Stopwatch",
         "TimeZoneInfo", "TimeSpan", "DateTime", "DateTimeOffset", "DateOnly", "TimeOnly", "CultureInfo",
         "Math", "Convert", "Enum", "Array", "Path", "File", "Directory", "Stream", "StreamReader",
-        "GZipStream",
+        "GZipStream", "TcpClient", "InvalidDataException",
         "MemoryStream", "AssemblyLoadContext", "Assembly", "AssemblyName", "Type", "Attribute",
         "ILogger", "ILoggerFactory", "LogLevel", "IServiceCollection", "IServiceProvider",
         "IOptions", "IConfiguration", "IHostedService", "BackgroundService", "WebApplication",

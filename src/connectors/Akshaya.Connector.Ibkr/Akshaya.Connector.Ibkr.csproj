@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Interactive Brokers Client Portal Web API connector, reached through an operator-run Client
+    Portal Gateway.
+
+    It references the CONTRACT (Akshaya.Connectors.Abstractions) and the connector SDK
+    (Akshaya.Connectors.Sdk) and nothing else — no vendor SDK. The gateway speaks JSON over HTTPS and
+    a JSON-over-WebSocket market data feed. It must never reference any Akshaya.Modules.* assembly;
+    enforced by tests/Akshaya.Architecture.Tests.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Akshaya.Connector.Ibkr</RootNamespace>
+    <AssemblyName>Akshaya.Connector.Ibkr</AssemblyName>
+    <!--
+      CA1848: LoggerMessage source-gen delegates. Log calls here are on cold paths.
+      CA2007: ConfigureAwait(false) on `await using`; every ordinary await carries it.
+      CA1711: "type name ends in Stream". IbkrStream is the feed facet the connector guide names.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1711</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Akshaya.Connectors.Abstractions\Akshaya.Connectors.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Akshaya.Connectors.Sdk\Akshaya.Connectors.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Akshaya.Connector.Ibkr.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- See Akshaya.Connector.Zerodha.csproj for why the manifest is both loose and embedded. -->
+    <None Update="connector.manifest.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never" />
+    <EmbeddedResource Include="connector.manifest.json" LogicalName="connector.manifest.json" />
+  </ItemGroup>
+
+</Project>
