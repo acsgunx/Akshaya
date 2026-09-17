@@ -1,0 +1,139 @@
+{
+  "id": "ibkr",
+  "displayName": "Interactive Brokers",
+  "vendor": "Interactive Brokers LLC",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "Gateway",
+  "gateway": {
+    "id": "ibkr-cpgw",
+    "port": 5000,
+    "perCredential": true,
+    "setupInstructionsUrl": "https://ibkrcampus.com/ibkr-api-page/ibkr-api-home/"
+  },
+  "jurisdictions": [
+    "US",
+    "HK",
+    "SG",
+    "GB",
+    "AU",
+    "CA",
+    "IN",
+    "JP"
+  ],
+  "venues": [
+    "XNYS",
+    "XNAS",
+    "XASE",
+    "ARCX",
+    "BATS",
+    "XHKG",
+    "XSES"
+  ],
+  "currencies": [
+    "USD",
+    "HKD",
+    "SGD"
+  ],
+  "assetClasses": [
+    "Equity",
+    "Etf",
+    "Option"
+  ],
+  "auth": {
+    "model": "GatewaySession",
+    "challenges": [],
+    "sessionLifetime": "1.00:00:00",
+    "expiresAtVenueMidnight": false,
+    "refreshSupported": false,
+    "keepAliveInterval": "00:01:00",
+    "credentialFields": [
+      {
+        "key": "account_id",
+        "label": "Account id",
+        "secret": false,
+        "optional": true,
+        "placeholder": "U1234567",
+        "pattern": "^[A-Za-z0-9]+$",
+        "help": "The IBKR account to trade, as the Client Portal Gateway lists it. Leave blank when the signed-in username can trade a single account; it is required when there are several."
+      }
+    ]
+  },
+  "orders": {
+    "types": [
+      "Market",
+      "Limit",
+      "Stop",
+      "StopLimit"
+    ],
+    "timeInForce": [
+      "Day",
+      "Gtc",
+      "Ioc"
+    ],
+    "positionEffects": [
+      "Delivery",
+      "ShortSell"
+    ],
+    "varieties": [
+      "Regular"
+    ],
+    "modifiable": [
+      "Quantity",
+      "LimitPrice",
+      "TriggerPrice"
+    ],
+    "fractionalQuantity": false,
+    "shortSellEquity": true,
+    "basket": {
+      "supported": true,
+      "maxLegs": 5,
+      "atomic": false
+    },
+    "bracket": false,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": true,
+    "chargesEstimate": true,
+    "cancelAll": true,
+    "positionConversion": false
+  },
+  "marketData": {
+    "streaming": true,
+    "streamModes": [
+      "Ltp",
+      "Quote"
+    ],
+    "depthLevels": 0,
+    "historical": true,
+    "historicalTimeFrames": [
+      "OneMinute",
+      "ThreeMinutes",
+      "FiveMinutes",
+      "FifteenMinutes",
+      "ThirtyMinutes",
+      "OneHour",
+      "OneDay",
+      "OneWeek",
+      "OneMonth"
+    ],
+    "optionChain": true,
+    "maxStreamSubscriptions": 100
+  },
+  "rateLimits": [
+    {
+      "scope": "global",
+      "perSecond": 10
+    }
+  ],
+  "sandbox": {
+    "available": false,
+    "notes": "An IBKR paper account signs in to the same Client Portal Gateway with its own paper username and links like a live account. The Paper connector (id 'paper') implements the same contract without IBKR."
+  },
+  "compliance": {
+    "algoApprovalRequired": false,
+    "regulator": "SEC/FINRA (US), SFC (HK), MAS (SG), FCA (UK), and others by IBKR entity",
+    "algoIdRequired": false,
+    "notes": "A username has one brokerage session at a time across Trader Workstation, IBKR Mobile and the Client Portal Gateway: signing in elsewhere competes with the gateway's session. Market data over the API needs the username's own market data subscriptions. The gateway runs on infrastructure the operator controls."
+  }
+}

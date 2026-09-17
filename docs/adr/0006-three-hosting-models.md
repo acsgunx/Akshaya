@@ -56,6 +56,11 @@ system is unpleasant.
 
 ## Status
 
+> **Amended by [ADR 0008](0008-operator-run-gateways-keepalive-and-new-venues.md):** gateway hosting is
+> now built for daemons the operator runs. `ConfiguredGatewayRuntime` resolves and probes them, the
+> factory hands the address to the connector, and the host calls `KeepAliveAsync`. A runtime that
+> launches a container per credential is still unbuilt.
+
 In-process is built and exercised by the mStock and Paper connectors.
 
 `broker_connector.proto` is complete, and `GrpcConnectorProxy` implements `IBrokerConnector`

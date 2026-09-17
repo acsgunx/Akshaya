@@ -1,0 +1,155 @@
+{
+  "id": "longbridge",
+  "displayName": "Longbridge",
+  "vendor": "Longbridge Securities (Long Bridge HK Limited)",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "InProcess",
+  "jurisdictions": [
+    "HK",
+    "SG",
+    "US"
+  ],
+  "venues": [
+    "XNYS",
+    "XNAS",
+    "XASE",
+    "ARCX",
+    "BATS",
+    "XHKG",
+    "XSES"
+  ],
+  "currencies": [
+    "USD",
+    "HKD",
+    "SGD"
+  ],
+  "assetClasses": [
+    "Equity",
+    "Etf",
+    "Option",
+    "Index"
+  ],
+  "auth": {
+    "model": "OAuth2",
+    "challenges": [],
+    "sessionLifetime": "30.00:00:00",
+    "expiresAtVenueMidnight": false,
+    "refreshSupported": true,
+    "keepAliveInterval": null,
+    "credentialFields": [
+      {
+        "key": "client_id",
+        "label": "OAuth client id",
+        "secret": false,
+        "optional": false,
+        "placeholder": "your-client-id",
+        "help": "The client id of a Longbridge OAuth client registered with this deployment's callback URL. Register one once with POST https://openapi.longbridge.com/oauth2/register; docs/connectors/longbridge.md has the exact request."
+      },
+      {
+        "key": "client_secret",
+        "label": "OAuth client secret",
+        "secret": true,
+        "optional": true,
+        "help": "Only for a confidential client. Registration normally returns a public client with no secret, which signs in with PKCE instead — leave this blank."
+      },
+      {
+        "key": "environment",
+        "label": "Environment",
+        "secret": false,
+        "optional": true,
+        "placeholder": "real",
+        "pattern": "^(real|paper)$",
+        "help": "real for the live account (the default), paper for Longbridge paper trading on the same login."
+      }
+    ]
+  },
+  "orders": {
+    "types": [
+      "Market",
+      "Limit",
+      "Stop",
+      "StopLimit"
+    ],
+    "timeInForce": [
+      "Day",
+      "Gtc",
+      "Gtd"
+    ],
+    "positionEffects": [
+      "Delivery",
+      "ShortSell"
+    ],
+    "varieties": [
+      "Regular"
+    ],
+    "modifiable": [
+      "Quantity",
+      "LimitPrice",
+      "TriggerPrice"
+    ],
+    "fractionalQuantity": false,
+    "shortSellEquity": true,
+    "basket": {
+      "supported": true,
+      "maxLegs": 10,
+      "atomic": false
+    },
+    "bracket": false,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": false,
+    "chargesEstimate": false,
+    "cancelAll": true,
+    "positionConversion": false
+  },
+  "marketData": {
+    "streaming": true,
+    "streamModes": [
+      "Ltp",
+      "Quote",
+      "Full"
+    ],
+    "depthLevels": 10,
+    "historical": true,
+    "historicalTimeFrames": [
+      "OneMinute",
+      "ThreeMinutes",
+      "FiveMinutes",
+      "FifteenMinutes",
+      "ThirtyMinutes",
+      "OneHour",
+      "OneDay",
+      "OneWeek",
+      "OneMonth"
+    ],
+    "optionChain": true,
+    "maxStreamSubscriptions": 500
+  },
+  "rateLimits": [
+    {
+      "scope": "orders",
+      "perSecond": 1,
+      "perMinute": 30
+    },
+    {
+      "scope": "quotes",
+      "perSecond": 5
+    },
+    {
+      "scope": "data",
+      "perSecond": 5,
+      "perMinute": 120
+    }
+  ],
+  "sandbox": {
+    "available": false,
+    "notes": "Longbridge paper trading uses the same endpoints, selected per request: link with environment 'paper'. The Paper connector (id 'paper') implements the same contract without a Longbridge account."
+  },
+  "compliance": {
+    "algoApprovalRequired": false,
+    "regulator": "SFC (HK), MAS (SG), SEC/FINRA (US)",
+    "algoIdRequired": false,
+    "notes": "OpenAPI trading and quote access must be enabled on the Longbridge account first, and OpenAPI quote permissions are separate from the app's: Hong Kong real-time quotes and pushes need the LV1 OpenAPI quote card, and Singapore quotes are not served over the API at all."
+  }
+}

@@ -144,6 +144,10 @@ src/
     Akshaya.Connector.MStock/      Reference implementation (India, NSE/BSE)
     Akshaya.Connector.Zerodha/     Kite Connect v3 (India, NSE/BSE) — OAuth2, live binary feed
     Akshaya.Connector.Fyers/       FYERS API v3 (India, NSE/BSE) — OAuth2, no live feed
+    Akshaya.Connector.Moomoo/      moomoo/Futu (US, HK) — operator-run OpenD gateway, JSON over TCP
+    Akshaya.Connector.Longbridge/  Longbridge (US, HK, SG) — OAuth2 + PKCE, protobuf sockets
+    Akshaya.Connector.Ibkr/        IBKR (US, HK, SG) — operator-run Client Portal Gateway
+    Akshaya.Connector.Tiger/       Tiger Brokers (US, HK, SG) — RSA-signed OpenAPI, no live feed
     Akshaya.Connector.Paper/       Simulated broker — paper trading and backtest execution
   Modules/
     Trading/                       Order state machine, risk gate, reconciliation
@@ -212,9 +216,11 @@ why, and the failure mode each one has.
 | Zerodha Kite | India | request token + checksum | REST + binary WS | Implemented, never run against the live API — see [`docs/connectors/zerodha.md`](docs/connectors/zerodha.md) |
 | FYERS | India | OAuth2 | REST | Implemented, never run against the live API — no live feed, see [`docs/connectors/fyers.md`](docs/connectors/fyers.md) |
 | Upstox, Angel One, Dhan | India | OAuth2 / TOTP / static token | REST + WS | Planned |
-| Moomoo (Futu) | SG, HK, US, JP, AU | local OpenD gateway | TCP + protobuf | Planned — needs a gateway sidecar per credential |
-| IBKR | Global | OAuth 1.0a or Client Portal Gateway | REST + WS | Planned — third-party access needs a compliance onboarding measured in months, start it early |
-| Saxo, Tiger | SG, Global | OAuth2 / RSA-signed | REST + streaming | Planned |
+| Moomoo (Futu) | US, HK | operator-run OpenD gateway | TCP + JSON frames | Implemented, never run against OpenD — see [`docs/connectors/moomoo.md`](docs/connectors/moomoo.md) |
+| Longbridge | US, HK, SG | OAuth2 + PKCE | REST + protobuf WS | Implemented, never run against the live API — see [`docs/connectors/longbridge.md`](docs/connectors/longbridge.md) |
+| IBKR | US, HK, SG | operator-run Client Portal Gateway | REST + JSON WS | Implemented, never run against a gateway — see [`docs/connectors/ibkr.md`](docs/connectors/ibkr.md) |
+| Tiger Brokers | US, HK, SG | RSA-signed requests | REST | Implemented, never run against the live API — no live feed, see [`docs/connectors/tiger.md`](docs/connectors/tiger.md) |
+| Saxo | Global | OAuth2 | REST + streaming | Planned |
 
 ---
 

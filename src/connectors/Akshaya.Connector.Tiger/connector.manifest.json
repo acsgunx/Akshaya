@@ -1,0 +1,167 @@
+{
+  "id": "tiger",
+  "displayName": "Tiger Brokers",
+  "vendor": "Tiger Brokers (UP Fintech Holding Ltd.)",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "InProcess",
+  "jurisdictions": [
+    "SG",
+    "NZ",
+    "HK",
+    "AU",
+    "US"
+  ],
+  "venues": [
+    "XNYS",
+    "XNAS",
+    "XASE",
+    "ARCX",
+    "BATS",
+    "XHKG",
+    "XSES"
+  ],
+  "currencies": [
+    "USD",
+    "HKD",
+    "SGD"
+  ],
+  "assetClasses": [
+    "Equity",
+    "Etf",
+    "Option"
+  ],
+  "auth": {
+    "model": "RsaSigned",
+    "challenges": [],
+    "sessionLifetime": "365.00:00:00",
+    "expiresAtVenueMidnight": false,
+    "refreshSupported": false,
+    "keepAliveInterval": null,
+    "credentialFields": [
+      {
+        "key": "tiger_id",
+        "label": "Tiger id",
+        "secret": false,
+        "optional": false,
+        "placeholder": "20150001",
+        "pattern": "^[0-9]+$",
+        "help": "The developer id shown on the Tiger OpenAPI console for the application whose public key is registered."
+      },
+      {
+        "key": "account",
+        "label": "Account",
+        "secret": false,
+        "optional": false,
+        "placeholder": "20220000000000",
+        "pattern": "^[A-Za-z0-9-]+$",
+        "help": "The Tiger account to trade: the numeric standard or prime account, or the paper account id."
+      },
+      {
+        "key": "private_key",
+        "label": "RSA private key",
+        "secret": true,
+        "optional": false,
+        "help": "The PEM private key whose public half is registered on the Tiger OpenAPI console. Every request is signed with it; it is never sent. PKCS#1 and PKCS#8 keys are both accepted, with or without their BEGIN and END lines."
+      },
+      {
+        "key": "license",
+        "label": "Account licence",
+        "secret": false,
+        "optional": true,
+        "placeholder": "TBSG",
+        "pattern": "^(TBNZ|TBSG|TBHK|TBAU|TBUS)$",
+        "help": "The licence the account is held under, which decides the endpoint: TBSG and TBNZ trade through the Singapore and New Zealand gateway, and the rest through Tiger's common gateway. Leave blank to use the common gateway."
+      },
+      {
+        "key": "token",
+        "label": "Two-factor token",
+        "secret": true,
+        "optional": true,
+        "help": "Only for licences that require it (TBHK). Issued by the Tiger console and sent as the Authorization header."
+      },
+      {
+        "key": "environment",
+        "label": "Environment",
+        "secret": false,
+        "optional": true,
+        "placeholder": "real",
+        "pattern": "^(real|paper)$",
+        "help": "real for a live account (the default), paper for a Tiger paper-trading account."
+      }
+    ]
+  },
+  "orders": {
+    "types": [
+      "Market",
+      "Limit",
+      "Stop",
+      "StopLimit"
+    ],
+    "timeInForce": [
+      "Day",
+      "Gtc",
+      "Gtd"
+    ],
+    "positionEffects": [
+      "Delivery",
+      "ShortSell"
+    ],
+    "varieties": [
+      "Regular"
+    ],
+    "modifiable": [
+      "Quantity",
+      "LimitPrice",
+      "TriggerPrice"
+    ],
+    "fractionalQuantity": false,
+    "shortSellEquity": true,
+    "basket": {
+      "supported": true,
+      "maxLegs": 5,
+      "atomic": false
+    },
+    "bracket": false,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": true,
+    "chargesEstimate": true,
+    "cancelAll": true,
+    "positionConversion": false
+  },
+  "marketData": {
+    "streaming": false,
+    "streamModes": [],
+    "depthLevels": 10,
+    "historical": true,
+    "historicalTimeFrames": [
+      "OneMinute",
+      "ThreeMinutes",
+      "FiveMinutes",
+      "FifteenMinutes",
+      "ThirtyMinutes",
+      "OneHour",
+      "OneDay",
+      "OneWeek",
+      "OneMonth"
+    ],
+    "optionChain": true
+  },
+  "rateLimits": [
+    {
+      "scope": "global",
+      "perSecond": 5
+    }
+  ],
+  "sandbox": {
+    "available": true,
+    "notes": "A Tiger paper account links exactly like a live one: set environment to paper. TBSG and TBNZ paper accounts are served by Tiger's sandbox host; every other licence uses the same host as live. The Paper connector (id 'paper') implements the same contract without a Tiger account."
+  },
+  "compliance": {
+    "algoApprovalRequired": false,
+    "regulator": "MAS (SG), FMA (NZ), SFC (HK), ASIC (AU), SEC/FINRA (US)",
+    "algoIdRequired": false,
+    "notes": "OpenAPI access is granted per application on the Tiger console, and the application's public key must be registered there before any request is accepted. Quote permissions are separate from trading and are granted per market."
+  }
+}

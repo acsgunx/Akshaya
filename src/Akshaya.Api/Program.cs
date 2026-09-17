@@ -91,6 +91,20 @@ try
         options.PluginDirectory = builder.Configuration["Connectors:PluginDirectory"];
         options.FailFastOnPluginError = false;
 
+        // Where operator-run gateway daemons listen, keyed by the gateway id a manifest declares.
+        // Empty is a working default for local development: each gateway is then looked for on
+        // loopback at its manifest's port. See ADR 0008.
+        builder.Configuration.GetSection("Connectors:Gateways").Bind(options.Gateways);
+
+        // Per-connector settings, keyed by connector id then setting name — a region, a timeout, a
+        // quota. Never credentials: those arrive through the link flow. See ADR 0008.
+        foreach (var connector in builder.Configuration.GetSection("Connectors:Settings").GetChildren())
+        {
+            options.Settings[connector.Key] = connector.GetChildren()
+                .Where(setting => setting.Value is not null)
+                .ToDictionary(setting => setting.Key, setting => setting.Value!, StringComparer.OrdinalIgnoreCase);
+        }
+
         // The Paper simulator ships with the platform, so it is registered the same way a host
         // would register any other first-party, compiled-in connector — see AddInProcess's own
         // doc comment. This is the ONLY connector this file may name.
@@ -113,9 +127,15 @@ try
     builder.Services.AddSingleton<ConnectorCatalog>();
     builder.Services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
     builder.Services.AddSingleton<IConnectorAuditSink, LoggingConnectorAuditSink>();
-    builder.Services.AddSingleton<IGatewayRuntime, NullGatewayRuntime>();
+    // Gateways are run by the operator and probed here, not launched by this process. A runtime
+    // that starts a container per credential would replace this one line. See ADR 0008.
+    builder.Services.AddSingleton<IGatewayRuntime, ConfiguredGatewayRuntime>();
     builder.Services.AddSingleton<IGatewaySupervisor, GatewaySupervisor>();
     builder.Services.AddSingleton<IConnectorFactory, ConnectorFactory>();
+
+    // Calls Auth.KeepAliveAsync on the interval each manifest declares. Reads only the manifest,
+    // so it names no broker; a connector without keepAliveInterval is never touched.
+    builder.Services.AddHostedService<ConnectorKeepAliveService>();
 
     // ── Trading core + Portfolio module. ─────────────────────────────────────────────────────
     builder.Services.AddTradingCore();
@@ -563,6 +583,21 @@ static IReadOnlyDictionary<Venue, VenueCalendar> BuildDevTradingCalendars()
     var singaporeSession = new TradingSession(new TimeOnly(9, 0), new TimeOnly(17, 0));
     var usSession = new TradingSession(new TimeOnly(9, 30), new TimeOnly(16, 0));
 
+    // HKEX breaks for lunch, so its day is two regular sessions around a break. One 09:30–16:00
+    // session would call the market open at 12:30, when an order is rejected at the venue.
+    TradingSession[] hongKongSessions =
+    [
+        new(new TimeOnly(9, 30), new TimeOnly(12, 0)),
+        new(new TimeOnly(12, 0), new TimeOnly(13, 0), SessionKind.Break),
+        new(new TimeOnly(13, 0), new TimeOnly(16, 0)),
+    ];
+
+    // The listing venues of most US ETFs. They trade the same core hours as NYSE and Nasdaq, and
+    // without a row here the risk gate treats SPY (NYSE Arca) as a closed market.
+    var nyseArca = new Venue("ARCX");
+    var cboeBzx = new Venue("BATS");
+    var nyseAmerican = new Venue("XASE");
+
     return new Dictionary<Venue, VenueCalendar>
     {
         [Venue.Nse] = new VenueCalendar { Venue = Venue.Nse, TimeZoneId = "Asia/Kolkata", Sessions = [indiaSession] },
@@ -570,6 +605,10 @@ static IReadOnlyDictionary<Venue, VenueCalendar> BuildDevTradingCalendars()
         [Venue.Sgx] = new VenueCalendar { Venue = Venue.Sgx, TimeZoneId = "Asia/Singapore", Sessions = [singaporeSession] },
         [Venue.Nasdaq] = new VenueCalendar { Venue = Venue.Nasdaq, TimeZoneId = "America/New_York", Sessions = [usSession] },
         [Venue.Nyse] = new VenueCalendar { Venue = Venue.Nyse, TimeZoneId = "America/New_York", Sessions = [usSession] },
+        [nyseArca] = new VenueCalendar { Venue = nyseArca, TimeZoneId = "America/New_York", Sessions = [usSession] },
+        [cboeBzx] = new VenueCalendar { Venue = cboeBzx, TimeZoneId = "America/New_York", Sessions = [usSession] },
+        [nyseAmerican] = new VenueCalendar { Venue = nyseAmerican, TimeZoneId = "America/New_York", Sessions = [usSession] },
+        [Venue.Hkex] = new VenueCalendar { Venue = Venue.Hkex, TimeZoneId = "Asia/Hong_Kong", Sessions = hongKongSessions },
     };
 }
 

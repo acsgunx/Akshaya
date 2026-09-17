@@ -61,6 +61,14 @@ public sealed class ConnectorHostOptions
     public IDictionary<string, IReadOnlyDictionary<string, string>> Settings { get; }
         = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Where operator-run gateway daemons listen, keyed by <see cref="GatewaySpec.Id"/> — bound
+    /// from <c>Connectors:Gateways</c>. Read by <see cref="ConfiguredGatewayRuntime"/> and by the
+    /// factory, through <see cref="ResolveGatewayEndpoint"/>, so both see the same address.
+    /// </summary>
+    public IDictionary<string, GatewayEndpointOptions> Gateways { get; }
+        = new Dictionary<string, GatewayEndpointOptions>(StringComparer.OrdinalIgnoreCase);
+
     // ── Decorator toggles. All on by default; turning one off is an explicit, auditable act. ──
 
     /// <summary>
@@ -124,4 +132,61 @@ public sealed class ConnectorHostOptions
         Settings.TryGetValue(connectorId, out var settings)
             ? settings
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Where a gateway is assumed to listen when the operator configured no host for it.</summary>
+    public const string DefaultGatewayHost = "127.0.0.1";
+
+    /// <summary>
+    /// The address one credential's gateway listens on, or null when no port is known anywhere.
+    ///
+    /// Most specific wins: a per-credential override (only when the spec says gateways are
+    /// per-credential — a shared gateway must never be split by a stray override), then the
+    /// gateway's own configured address, then loopback on the manifest's declared port. The
+    /// loopback default is what makes a developer's local OpenD or Client Portal Gateway work with
+    /// no configuration at all; in a deployment it simply fails the probe, with a message naming
+    /// the address it tried.
+    /// </summary>
+    public GatewayEndpoint? ResolveGatewayEndpoint(GatewaySpec spec, string credentialId)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+
+        Gateways.TryGetValue(spec.Id, out var configured);
+
+        GatewayEndpointOptions? perCredential = null;
+        if (spec.PerCredential && configured is not null && !string.IsNullOrWhiteSpace(credentialId))
+        {
+            configured.Credentials.TryGetValue(credentialId, out perCredential);
+        }
+
+        var host = FirstNonBlank(perCredential?.Host, configured?.Host) ?? DefaultGatewayHost;
+        var port = perCredential?.Port ?? configured?.Port ?? spec.Port;
+
+        return port is { } value and >= 1 and <= 65535
+            ? new GatewayEndpoint(host, value)
+            : null;
+    }
+
+    private static string? FirstNonBlank(string? first, string? second) =>
+        !string.IsNullOrWhiteSpace(first) ? first.Trim()
+        : !string.IsNullOrWhiteSpace(second) ? second.Trim()
+        : null;
+}
+
+/// <summary>
+/// One operator-run gateway's address. Either field may be omitted: a missing host means
+/// loopback, a missing port means the one the connector's manifest declares.
+/// </summary>
+public sealed class GatewayEndpointOptions
+{
+    public string? Host { get; set; }
+
+    public int? Port { get; set; }
+
+    /// <summary>
+    /// Per-credential overrides, keyed by the broker account id the session carries. Only
+    /// consulted for gateways whose spec is per-credential. The link handshake cannot use these —
+    /// it runs before the account id is known — so it always reaches the default address.
+    /// </summary>
+    public IDictionary<string, GatewayEndpointOptions> Credentials { get; }
+        = new Dictionary<string, GatewayEndpointOptions>(StringComparer.OrdinalIgnoreCase);
 }

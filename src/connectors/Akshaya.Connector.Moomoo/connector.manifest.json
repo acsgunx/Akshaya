@@ -1,0 +1,165 @@
+{
+  "id": "moomoo",
+  "displayName": "moomoo",
+  "vendor": "Moomoo Technologies Inc. (Futu Holdings Ltd.)",
+  "contractVersion": "1.0",
+  "connectorVersion": "1.0.0",
+  "hosting": "Gateway",
+  "gateway": {
+    "id": "moomoo-opend",
+    "port": 11111,
+    "perCredential": true,
+    "setupInstructionsUrl": "https://openapi.moomoo.com/moomoo-api-doc/en/quick/opend-base.html"
+  },
+  "jurisdictions": [
+    "US",
+    "SG",
+    "HK",
+    "AU",
+    "CA",
+    "MY",
+    "JP"
+  ],
+  "venues": [
+    "XNYS",
+    "XNAS",
+    "XASE",
+    "ARCX",
+    "BATS",
+    "XHKG"
+  ],
+  "currencies": [
+    "USD",
+    "HKD"
+  ],
+  "assetClasses": [
+    "Equity",
+    "Etf",
+    "Option",
+    "Index"
+  ],
+  "auth": {
+    "model": "GatewaySession",
+    "challenges": [],
+    "sessionLifetime": "1.00:00:00",
+    "expiresAtVenueMidnight": false,
+    "refreshSupported": false,
+    "keepAliveInterval": null,
+    "credentialFields": [
+      {
+        "key": "account_id",
+        "label": "Trading account id",
+        "secret": false,
+        "optional": true,
+        "placeholder": "281756455981234567",
+        "pattern": "^[0-9]+$",
+        "help": "The numeric account id OpenD reports for the account to trade. Leave blank when the moomoo login has a single US or Hong Kong securities account; it is required when there are several."
+      },
+      {
+        "key": "trade_password",
+        "label": "Trade password",
+        "secret": true,
+        "optional": true,
+        "help": "Unlocks live trading on a command-line OpenD. Only its MD5 hash is sent, and only to OpenD. Leave blank for a paper account, or when you unlock trading in the OpenD window yourself — the window build does not accept an unlock over the API."
+      },
+      {
+        "key": "environment",
+        "label": "Environment",
+        "secret": false,
+        "optional": true,
+        "placeholder": "real",
+        "pattern": "^(real|paper)$",
+        "help": "real for a live account (the default), paper for moomoo's paper-trading account on the same login."
+      }
+    ]
+  },
+  "orders": {
+    "types": [
+      "Market",
+      "Limit",
+      "Stop",
+      "StopLimit",
+      "MarketIfTouched"
+    ],
+    "timeInForce": [
+      "Day",
+      "Gtc"
+    ],
+    "positionEffects": [
+      "Delivery",
+      "ShortSell"
+    ],
+    "varieties": [
+      "Regular"
+    ],
+    "modifiable": [
+      "Quantity",
+      "LimitPrice",
+      "TriggerPrice"
+    ],
+    "fractionalQuantity": false,
+    "shortSellEquity": true,
+    "basket": {
+      "supported": true,
+      "maxLegs": 5,
+      "atomic": false
+    },
+    "bracket": false,
+    "cover": false,
+    "gtt": false,
+    "marginEstimate": false,
+    "chargesEstimate": false,
+    "cancelAll": true,
+    "positionConversion": false
+  },
+  "marketData": {
+    "streaming": true,
+    "streamModes": [
+      "Ltp",
+      "Quote",
+      "Full"
+    ],
+    "depthLevels": 10,
+    "historical": true,
+    "historicalTimeFrames": [
+      "OneMinute",
+      "ThreeMinutes",
+      "FiveMinutes",
+      "FifteenMinutes",
+      "ThirtyMinutes",
+      "OneHour",
+      "OneDay",
+      "OneWeek",
+      "OneMonth"
+    ],
+    "optionChain": true,
+    "maxStreamSubscriptions": 100
+  },
+  "rateLimits": [
+    {
+      "scope": "orders",
+      "perSecond": 1,
+      "perMinute": 15
+    },
+    {
+      "scope": "quotes",
+      "perSecond": 2,
+      "perMinute": 60
+    },
+    {
+      "scope": "data",
+      "perSecond": 2,
+      "perMinute": 60
+    }
+  ],
+  "sandbox": {
+    "available": false,
+    "notes": "moomoo paper trading runs through the same OpenD as a live account rather than a separate endpoint: link with environment 'paper'. The Paper connector (id 'paper') implements the same contract for rehearsal without OpenD."
+  },
+  "compliance": {
+    "algoApprovalRequired": false,
+    "regulator": "SEC/FINRA (US), SFC (HK), MAS (SG), ASIC (AU)",
+    "algoIdRequired": false,
+    "notes": "moomoo requires the API questionnaire and agreements to be completed at the first OpenD login before any request is served. US pattern-day-trader rules apply to US margin accounts under USD 25,000. Live trading must be unlocked in OpenD, and one unlock serves every connection to that OpenD."
+  }
+}
