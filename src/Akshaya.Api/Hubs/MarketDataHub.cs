@@ -82,9 +82,9 @@ public sealed class MarketDataHub(SubscriptionRegistry registry, ILogger<MarketD
         await _registry.UnsubscribeAsync(Context.ConnectionId, brokerLinkId, keys, Context.ConnectionAborted);
     }
 
-    private static IReadOnlyList<InstrumentKey> ParseInstruments(IReadOnlyList<string> raw)
+    private static List<InstrumentKey> ParseInstruments(string[] raw)
     {
-        var keys = new List<InstrumentKey>(raw.Count);
+        var keys = new List<InstrumentKey>(raw.Length);
         foreach (var value in raw)
         {
             if (!InstrumentKey.TryParse(value, out var key))

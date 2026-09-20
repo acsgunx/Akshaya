@@ -1519,7 +1519,7 @@ public sealed class MatchingEngine : IAsyncDisposable
         return query.To is not { } to || date <= to;
     }
 
-    private BrokerOrder ToBrokerOrder(WorkingOrder order) => new()
+    private static BrokerOrder ToBrokerOrder(WorkingOrder order) => new()
     {
         BrokerOrderId = order.BrokerOrderId,
         ClientOrderId = order.Request.ClientOrderId,

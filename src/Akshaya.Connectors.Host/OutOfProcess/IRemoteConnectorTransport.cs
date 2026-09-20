@@ -79,7 +79,7 @@ public sealed class UnconfiguredRemoteTransport(Uri address, ConnectorManifest m
 {
     private Error Unavailable => new(
         ConnectorErrorCodes.BrokerUnavailable,
-        $"Connector '{manifest.Id}' is declared out-of-process at {address}, but no gRPC "
+        $"Connector '{manifest.Id}' is declared out-of-process at {Address}, but no gRPC "
         + "transport is registered in this deployment. Register an IRemoteConnectorTransportFactory "
         + "during startup, or change the connector's hosting to InProcess.");
 

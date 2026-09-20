@@ -106,7 +106,7 @@ public static class OrderStateExtensions
 ///    throws <see cref="InvalidOperationException"/>. It is not a broker outcome; a broker
 ///    saying something surprising is data, a caller calling MarkFilled on a cancelled order
 ///    is a bug.
-///  * <see cref="ReconciliationAllowed"/> — what the BROKER may tell us. Wider, because the
+///  * <see cref="CanReconcile"/> — what the BROKER may tell us. Wider, because the
 ///    broker is the source of truth and our local state can be wrong in ways our own code
 ///    would never produce: a stream event we mis-sequenced, a fill we recorded from a partial
 ///    payload, a cancel that raced a fill. Reconciliation may therefore correct a terminal
@@ -251,5 +251,5 @@ public static class OrderStateMachine
             ? string.Join(", ", targets.Select(t => t.ToString()).Order(StringComparer.Ordinal))
             : "(none — terminal)";
 
-    private static IReadOnlySet<OrderState> Set(params OrderState[] states) => new HashSet<OrderState>(states);
+    private static HashSet<OrderState> Set(params OrderState[] states) => new(states);
 }

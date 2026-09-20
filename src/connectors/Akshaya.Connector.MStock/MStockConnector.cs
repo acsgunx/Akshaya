@@ -181,7 +181,7 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
         string.IsNullOrWhiteSpace(existing) ? addition : $"{existing} {addition}";
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         if (_disposed)
         {
@@ -200,6 +200,8 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
         await _api.DisposeAsync().ConfigureAwait(false);
         _instruments.Dispose();
 
-        GC.SuppressFinalize(this);
+        // Chain to the base, as ConnectorBase.DisposeAsync's own documentation requires. Until this
+        // method carried `override` it hid the base instead, so this never ran.
+        await base.DisposeAsync().ConfigureAwait(false);
     }
 }

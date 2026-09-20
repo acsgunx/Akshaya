@@ -452,7 +452,7 @@ finally
 // file-scoped one; every other file in this project uses a file-scoped namespace as required.
 // ================================================================================================
 
-/// <summary>Reads and validates an embedded <c>connector.manifest.json</c> straight out of a connector assembly.</summary>
+// Reads and validates an embedded connector.manifest.json straight out of a connector assembly.
 static ConnectorManifest LoadEmbeddedManifest(Assembly assembly, string label)
 {
     using var stream = assembly.GetManifestResourceStream(ManifestLoader.FileName)
@@ -471,11 +471,11 @@ static ConnectorManifest LoadEmbeddedManifest(Assembly assembly, string label)
     return result.Value;
 }
 
-/// <summary>
-/// Finds every <see cref="IConnectorPlugin"/> compiled into this deployment by loading the
-/// connector assemblies that sit next to the API and scanning them for the entry-point
-/// interface. This is the same shape the on-disk plugin loader uses; it names no broker.
-/// </summary>
+//
+// Finds every IConnectorPlugin compiled into this deployment by loading the
+// connector assemblies that sit next to the API and scanning them for the entry-point
+// interface. This is the same shape the on-disk plugin loader uses; it names no broker.
+//
 static IReadOnlyList<IConnectorPlugin> DiscoverInProcessPlugins()
 {
     var plugins = new List<IConnectorPlugin>();
@@ -509,19 +509,19 @@ static IReadOnlyList<IConnectorPlugin> DiscoverInProcessPlugins()
     return plugins;
 }
 
-/// <summary>
-/// Activates (or reuses) the Paper connector for one account.
-///
-/// THE REUSE IS LOAD-BEARING, NOT AN OPTIMISATION. <see cref="Akshaya.Modules.Trading.Application.BrokerLinkResolver"/>
-/// creates a fresh connector on every call and requires the caller to dispose it — correct for
-/// every real broker, where the state lives at the venue and the connector is just a client. The
-/// Paper connector is the one exception: its <c>MatchingEngine</c> holds the whole simulated book
-/// (positions, working orders, fills) in process memory, so a fresh instance per HTTP request
-/// would reset a paper account back to zero on every call. The fix is to activate exactly one
-/// <see cref="PaperConnector"/> per account and hand out a non-disposing proxy over it — see
-/// <see cref="NonDisposingConnectorProxy"/> — so BrokerLinkResolver's own disposal contract is
-/// honoured (the caller's `await using` still runs) without tearing down the shared state.
-/// </summary>
+//
+// Activates (or reuses) the Paper connector for one account.
+//
+// THE REUSE IS LOAD-BEARING, NOT AN OPTIMISATION. Akshaya.Modules.Trading.Application.BrokerLinkResolver
+// creates a fresh connector on every call and requires the caller to dispose it — correct for
+// every real broker, where the state lives at the venue and the connector is just a client. The
+// Paper connector is the one exception: its MatchingEngine holds the whole simulated book
+// (positions, working orders, fills) in process memory, so a fresh instance per HTTP request
+// would reset a paper account back to zero on every call. The fix is to activate exactly one
+// PaperConnector per account and hand out a non-disposing proxy over it — see
+// NonDisposingConnectorProxy — so BrokerLinkResolver's own disposal contract is
+// honoured (the caller's `await using` still runs) without tearing down the shared state.
+//
 static Result<IBrokerConnector> CreatePaperConnector(
     ConnectorActivationContext context,
     ConcurrentDictionary<string, PaperConnector> cache)
@@ -576,7 +576,7 @@ static async Task RunPaperTapeAsync(
     }
 }
 
-/// <summary>Dev-only venue calendars covering the venues the built-in connectors and the paper simulator claim.</summary>
+// Dev-only venue calendars covering the venues the built-in connectors and the paper simulator claim.
 static IReadOnlyDictionary<Venue, VenueCalendar> BuildDevTradingCalendars()
 {
     var indiaSession = new TradingSession(new TimeOnly(9, 15), new TimeOnly(15, 30));
@@ -618,7 +618,7 @@ public sealed partial class Program;
 /// <summary>
 /// Wraps a cached, long-lived connector so a caller's <c>await using</c> — the pattern every
 /// other consumer of <c>IConnectorFactory</c> correctly follows — does not tear it down. See
-/// <see cref="CreatePaperConnector"/> for why exactly one connector, Paper, needs this.
+/// CreatePaperConnector for why exactly one connector, Paper, needs this.
 /// </summary>
 internal sealed class NonDisposingConnectorProxy(IBrokerConnector inner) : IBrokerConnector
 {
@@ -645,7 +645,7 @@ internal sealed class NonDisposingConnectorProxy(IBrokerConnector inner) : IBrok
 /// <summary>
 /// DEV-ONLY synthetic tick source for the built-in Paper connector: a handful of NSE equities
 /// walking on a fixed seed. A real deployment injects a live feed (for paper trading proper) or
-/// a recorded tape (for the backtester) — see <see cref="IMarketDataSource"/>'s own remarks. This
+/// a recorded tape (for the backtester) — see IMarketDataSource's own remarks. This
 /// exists so the API is exercisable end to end with no external market-data subscription.
 /// </summary>
 internal sealed class DevPaperMarketDataSource : IMarketDataSource
@@ -782,7 +782,7 @@ internal sealed class DevPaperMarketDataSource : IMarketDataSource
 /// <summary>
 /// DEV-ONLY adapter from the Trading module's broker-link store to the Portfolio module's own,
 /// deliberately thin, link port. The Portfolio module must not depend on Trading's link
-/// lifecycle (see <see cref="IPortfolioLinkProvider"/>'s remarks) — this is the one place that
+/// lifecycle (see IPortfolioLinkProvider's remarks) — this is the one place that
 /// bridges them, and it is exactly what a future BrokerLink module replaces both stores with.
 /// </summary>
 internal sealed class BrokerLinkPortfolioProvider(IBrokerLinkStore links) : IPortfolioLinkProvider
@@ -812,7 +812,7 @@ public sealed class PortfolioOptions
 ///
 /// Every endpoint depends on this abstraction rather than on <c>HttpContext.User</c> directly,
 /// which is what made swapping the old header-trusting dev stub for
-/// <see cref="ClaimsCurrentUserAccessor"/> a one-line change in the composition root.
+/// ClaimsCurrentUserAccessor a one-line change in the composition root.
 /// </summary>
 public interface ICurrentUserAccessor
 {
@@ -823,7 +823,7 @@ public interface ICurrentUserAccessor
     string UserId { get; }
 
     /// <summary>
-    /// False for an anonymous caller, where <see cref="UserId"/> and <see cref="TenantId"/>
+    /// False for an anonymous caller, where UserId and TenantId
     /// are empty. Endpoints behind <c>RequireAuthorization()</c> never see false; the handful
     /// that are deliberately anonymous (<c>/api/account/me</c>) check it.
     /// </summary>
@@ -853,9 +853,9 @@ internal sealed class ClaimsCurrentUserAccessor : ICurrentUserAccessor
 }
 
 /// <summary>
-/// Shared by <see cref="ClaimsCurrentUserAccessor"/> and <see cref="Akshaya.Api.Hubs.MarketDataHub"/>.
+/// Shared by ClaimsCurrentUserAccessor and Akshaya.Api.Hubs.MarketDataHub.
 ///
-/// The hub cannot use <see cref="IHttpContextAccessor"/> reliably: SignalR hub method
+/// The hub cannot use IHttpContextAccessor reliably: SignalR hub method
 /// invocations do not run inside the original HTTP request's ambient context once the connection
 /// is established, so the ambient <c>HttpContext</c> it exposes is typically null there. The hub
 /// reads the principal off <c>HubCallerContext.User</c> instead. This type is the one place that

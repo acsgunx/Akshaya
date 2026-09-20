@@ -12,6 +12,21 @@
   <PropertyGroup>
     <RootNamespace>Akshaya.Connector.MStock</RootNamespace>
     <AssemblyName>Akshaya.Connector.MStock</AssemblyName>
+    <!--
+      Analyzer suppressions, each with a reason, matching the other connectors' style.
+      CA2007: ConfigureAwait(false). Connector code runs under the host, which has no sync
+              context; the sibling connectors decline this for the same reason.
+      CA1711: MStockStream ends in 'Stream', a suffix the rule reserves for System.IO.Stream.
+              It is an IConnectorStream, named for the interface it implements.
+      CA5350: HMACSHA1 in MStockAuth. This is TOTP — RFC 4226 section 5.3 SPECIFIES HMAC-SHA1,
+              and the authenticator on the other end computes the same thing. Changing the
+              algorithm would not harden anything; it would stop the codes matching.
+      CA1822: MStockErrorMapper's Map* members do not touch instance state, but the type
+              implements IVendorErrorMapper and is injected as a collaborator (the connector, the
+              API client and four test fixtures all hold an instance). Making them static would
+              break that shape to save a `this` nobody passes.
+    -->
+    <NoWarn>$(NoWarn);CA2007;CA1711;CA5350;CA1822</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

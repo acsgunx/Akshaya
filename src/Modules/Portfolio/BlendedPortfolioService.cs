@@ -466,13 +466,13 @@ public sealed class BlendedPortfolioService(
     /// explains what is missing.
     /// </summary>
     private async Task<Money?> ConvertTotalAsync(
-        IReadOnlyList<Money> native,
+        Money[] native,
         Currency displayCurrency,
         Dictionary<Currency, AppliedFxRate> rates,
         List<string> warnings,
         CancellationToken ct)
     {
-        if (native.Count == 0)
+        if (native.Length == 0)
         {
             return Money.Zero(displayCurrency);
         }

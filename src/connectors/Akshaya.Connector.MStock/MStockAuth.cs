@@ -412,7 +412,7 @@ public sealed class MStockAuth : IConnectorAuth
     /// </summary>
     internal string SessionSource => _options.SessionSource;
 
-    private static void AddIfPresent(IDictionary<string, string> target, string key, string? value)
+    private static void AddIfPresent(Dictionary<string, string> target, string key, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value))
         {

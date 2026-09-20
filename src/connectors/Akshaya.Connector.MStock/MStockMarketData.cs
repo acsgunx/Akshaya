@@ -334,7 +334,7 @@ public sealed class MStockMarketData : IConnectorMarketData
         return keys;
     }
 
-    private Quote MapQuote(InstrumentKey instrument, MStockQuoteDto dto, DateTimeOffset fallbackTime)
+    private static Quote MapQuote(InstrumentKey instrument, MStockQuoteDto dto, DateTimeOffset fallbackTime)
     {
         var ohlc = dto.Ohlc;
         var depth = dto.Depth;
@@ -366,7 +366,7 @@ public sealed class MStockMarketData : IConnectorMarketData
         };
     }
 
-    private Quote? MapChainLeg(
+    private static Quote? MapChainLeg(
         InstrumentKey underlying,
         DateOnly expiry,
         decimal strike,
@@ -402,7 +402,7 @@ public sealed class MStockMarketData : IConnectorMarketData
     /// <c>[timestamp, open, high, low, close, volume, openInterest?]</c>. Reading them by
     /// index is unavoidable; validating the length before doing so is not.
     /// </summary>
-    private Result<Candle> MapCandle(IReadOnlyList<JsonElement> row)
+    private static Result<Candle> MapCandle(IReadOnlyList<JsonElement> row)
     {
         const int MinimumFields = 6;
 
