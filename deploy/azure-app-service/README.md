@@ -132,6 +132,9 @@ not land in `wwwroot`, or if the identity database is configured somewhere a dep
 
 ## Step 5 — sign in
 
+[`docs/ACCESSING-THE-APP.md`](../../docs/ACCESSING-THE-APP.md) is the full version of this step,
+including what to do when the password has already scrolled past.
+
 On an empty identity store the API creates one account and writes its generated password to the log
 **once**, at `Warning` level. Back in Cloud Shell:
 
