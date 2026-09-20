@@ -4,6 +4,22 @@
 // Provisions the smallest thing that can serve the application: one App Service plan, one web app,
 // and a container registry to push the image to. NO DATABASE — Persistence:Mode defaults to Sqlite
 // and the file lives under /home, which App Service backs with Azure Storage on every tier.
+//
+// RUN IT FROM A CLONE OF THE REPOSITORY. Both this file and the `az acr build` context that has to
+// follow are local paths, so a bare Cloud Shell cannot see them:
+//
+//   git clone https://github.com/acsgunx/Akshaya.git && cd Akshaya
+//   az group create --name akshaya-rg --location centralindia
+//   az deployment group create --resource-group akshaya-rg \
+//     --template-file deploy/azure-app-service/main.bicep \
+//     --parameters appName=<globally-unique-name> sku=B1 credentialKey="$(openssl rand -base64 32)"
+//
+// Deploying does not start the app: the web app points at an image that nothing has pushed yet, so
+// the site serves an error until `az acr build --registry <acr> --image akshaya:latest --file
+// deploy/Dockerfile .` has run. See README.md, Path B.
+//
+// SAVE THE credentialKey. Generating it inline means a second run mints a different one, and the
+// saved-credential vault cannot be read under a key it was not encrypted with.
 // ==================================================================================================
 
 @description('Globally unique name for the web app. Becomes <appName>.azurewebsites.net.')
