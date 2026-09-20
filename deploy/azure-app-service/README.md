@@ -12,7 +12,7 @@ There are two ways in. They produce the same running application.
 | Extra cost | None | ~$5/month for the container registry |
 | Works on F1 | Yes | Depends on region and tier — check before committing |
 | Deploys on `git push` | Yes | Push the image yourself, or wire up a webhook |
-| Setup | One script in Cloud Shell, five GitHub variables | `az deployment group create`, then `az acr build` |
+| Setup | One script in Cloud Shell, five GitHub variables | Clone the repo, `az deployment group create`, then `az acr build` |
 
 **Start with Path A.** Path B is worth it when you want the deployed artefact to be byte-identical
 to what you run locally with `docker run`, or when you need a runtime App Service does not offer.
@@ -217,6 +217,7 @@ az webapp config set -g akshaya-rg -n <app-name> --always-on true \
 | Deploy is green, the site returns 500 | `az webapp log tail -g akshaya-rg -n <app-name>` — usually a missing `CredentialProtection` key |
 | The site never becomes ready on F1 | The daily CPU quota is spent. It resets at midnight UTC, or move to B1 |
 | Ticks arrive but slowly | WebSockets are off. `az webapp config set … --web-sockets-enabled true` |
+| `An error occurred reading file. Could not find a part of the path '/home/<you>/deploy/…'` | Path B run outside a clone of the repository. `--template-file` is a local path — clone it first, as Path B says |
 
 Read the application's own log stream any time with:
 
@@ -239,6 +240,17 @@ harmless once the Azure side is gone, but delete them too if you are not coming 
 
 Deploys the image `deploy/Dockerfile` builds, via a container registry the template provisions. Use
 this when you want the deployed artefact to be identical to what `docker run` gives you locally.
+
+**Unlike Path A, this path needs the repository on the machine you run it from.** `--template-file`
+and the `az acr build` context below are both local paths, not URLs — Cloud Shell starts in an empty
+home directory, so clone first and run everything from the repository root:
+
+```bash
+git clone https://github.com/acsgunx/Akshaya.git && cd Akshaya
+```
+
+If the repository is private, Cloud Shell already has the GitHub CLI: run `gh auth login`, then
+`gh repo clone acsgunx/Akshaya`.
 
 ```bash
 az group create --name akshaya-rg --location centralindia
@@ -291,6 +303,10 @@ az webapp log tail -g akshaya-rg -n akshaya-csg | grep "generated password"
 
 Notes specific to this path:
 
+- **`credentialKey` is generated inline, so every run of that command mints a new one.** Save the
+  value before you close the shell. Re-running the deployment with a fresh key leaves the vault
+  encrypted under the old one and every saved broker credential unreadable — Path A's `setup.sh`
+  protects you from this by reusing an existing key, and the Bicep template cannot.
 - The registry is **Basic**, ~$5/month, and is the only line on the bill that Path A does not have.
   Pushing to Docker Hub instead is free; set `DOCKER_REGISTRY_SERVER_URL`/`USERNAME`/`PASSWORD`
   accordingly.
