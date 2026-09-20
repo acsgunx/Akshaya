@@ -1,5 +1,8 @@
 # Azure App Service
 
+**Just want the commands in order?** [`RUNBOOK.md`](RUNBOOK.md) is the sequence with nothing
+between the steps. This file explains why the design is what it is.
+
 **$0 on the F1 free tier, ~$13/month on B1.** The best-supported .NET target, and the only one in
 `deploy/` where the free tier still gives you durable storage.
 
