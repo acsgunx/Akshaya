@@ -236,6 +236,7 @@ az webapp config set -g akshaya-rg -n <app-name> --always-on true \
 | `An error occurred reading file. Could not find a part of the path '/home/<you>/deploy/…'` | Path B run outside a clone of the repository. `--template-file` is a local path — clone it first, as Path B says |
 | `AppSetting with name '…' is not allowed` | The name contains a character that is not legal in an environment variable name, almost always a hyphen. On Linux App Service every app setting name becomes an env var name — keep the credential key id alphanumeric (`prod1`, not `prod-1`) |
 | `TasksOperationsNotAllowed` from `az acr build` | ACR Tasks is disabled for the subscription, not for the registry — common on trial, free and new pay-as-you-go accounts. Nothing in this repo can work around it. Use Path A, or build the image somewhere with a Docker daemon and `docker push` it |
+| Deploy is green but the site serves **503** forever | Check `az webapp config show … --query linuxFxVersion`. If it says `DOCKER|…`, the app was created by Path B and a zip deploy lands somewhere a container app never reads. `setup.sh` now corrects this when it reuses an app; to fix one by hand, `az webapp config set … --linux-fx-version "DOTNETCORE|10.0"` and delete the `WEBSITES_PORT` and `DOCKER_*` settings |
 
 Read the application's own log stream any time with:
 
