@@ -24,12 +24,17 @@ public sealed class UserAccountService(
     ILogger<UserAccountService> logger)
 {
     /// <summary>
-    /// Long enough that a short password is not trivially reversible, short enough that the
-    /// field is usable. Length is the only requirement worth enforcing server-side — composition
-    /// rules (a digit, a symbol) measurably push people toward weaker, more predictable
-    /// passwords, and NIST SP 800-63B has recommended against them since 2017.
+    /// The shortest password sign-up will accept. Length is the only requirement enforced here —
+    /// composition rules (a digit, a symbol) measurably push people toward weaker, more
+    /// predictable passwords, and NIST SP 800-63B has recommended against them since 2017.
+    ///
+    /// SET DELIBERATELY LOW, for a single-operator deployment where the owner is the only account
+    /// holder. Four characters is not a security boundary: there is no rate limit and no lockout
+    /// on sign-in, so an attacker who can reach the endpoint can exhaust a four-character space in
+    /// seconds, and behind these accounts sit saved broker credentials. Raise this before anyone
+    /// else signs up, or put a rate limiter in front of sign-in first.
     /// </summary>
-    public const int MinimumPasswordLength = 10;
+    public const int MinimumPasswordLength = 4;
 
     /// <summary>A syntactically plausible address. Deliverability is a confirmation email's job, not a regex's.</summary>
     private static bool LooksLikeEmail(string email)
