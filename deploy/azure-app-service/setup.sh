@@ -127,6 +127,28 @@ az appservice plan create \
 # ── The web app ───────────────────────────────────────────────────────────────────────────────────
 if az webapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --output none 2>/dev/null; then
   echo "==> Web app $APP_NAME already exists — reusing it"
+
+  # Reusing an app means inheriting whatever stack it was created with, and the one case that
+  # actually happens is an app left behind by Path B: linuxFxVersion is DOCKER|<acr>/akshaya:latest,
+  # pointing at an image that was never pushed. A zip deploy onto that app SUCCEEDS — the platform
+  # accepts the package — and the site then serves 503 forever, because a container app never looks
+  # at the deployed folder. Nothing in the deploy workflow sets the stack, so this is the only place
+  # it can be corrected.
+  CURRENT_STACK="$(az webapp config show \
+    --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --query linuxFxVersion -o tsv 2>/dev/null || true)"
+  if [ "$CURRENT_STACK" != "$RUNTIME" ]; then
+    echo "    stack is '${CURRENT_STACK:-unset}', setting it to $RUNTIME"
+    az webapp config set \
+      --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+      --linux-fx-version "$RUNTIME" --output none
+    # Container-only settings. Harmless on a code app, but WEBSITES_PORT in particular makes the
+    # platform probe a port nothing listens on, which looks identical to a crashed application.
+    az webapp config appsettings delete \
+      --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+      --setting-names WEBSITES_PORT DOCKER_REGISTRY_SERVER_URL DOCKER_REGISTRY_SERVER_USERNAME \
+                      DOCKER_REGISTRY_SERVER_PASSWORD WEBSITES_ENABLE_APP_SERVICE_STORAGE \
+      --output none 2>/dev/null || true
+  fi
 else
   echo "==> Web app $APP_NAME"
   az webapp create \
