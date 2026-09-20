@@ -22,6 +22,13 @@ namespace Akshaya.Api.Endpoints;
 /// </summary>
 public static class AccountEndpoints
 {
+    /// <summary>
+    /// Rate-limit policy for the endpoints that take a password from an unauthenticated caller.
+    /// Configured in Program.cs; applied below to sign-in and register only. Sign-out and /me are
+    /// anonymous too but carry no secret to guess.
+    /// </summary>
+    public const string AuthRateLimitPolicy = "auth";
+
     public static IEndpointRouteBuilder MapAccountEndpoints(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -52,7 +59,8 @@ public static class AccountEndpoints
             await SignInCookieAsync(http, result.Value);
             return Results.Ok(UserProfileDto.From(result.Value));
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting(AuthRateLimitPolicy);
 
         group.MapPost("/sign-in", async (
             SignInRequestDto request,
@@ -76,7 +84,8 @@ public static class AccountEndpoints
             await SignInCookieAsync(http, result.Value);
             return Results.Ok(UserProfileDto.From(result.Value));
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting(AuthRateLimitPolicy);
 
         group.MapPost("/sign-out", async (HttpContext http) =>
         {
