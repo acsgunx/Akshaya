@@ -156,6 +156,7 @@
   ],
   "sandbox": {
     "available": true,
+    "baseUrl": "https://openapi-sandbox.tigerfintech.com",
     "notes": "A Tiger paper account links exactly like a live one: set environment to paper. TBSG and TBNZ paper accounts are served by Tiger's sandbox host; every other licence uses the same host as live. The Paper connector (id 'paper') implements the same contract without a Tiger account."
   },
   "compliance": {
