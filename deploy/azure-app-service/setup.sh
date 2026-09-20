@@ -121,11 +121,15 @@ else
 fi
 
 # ── The credential-protection key ─────────────────────────────────────────────────────────────────
+# The key id 'prod1' is arbitrary but must stay ALPHANUMERIC: it lands inside an app setting name,
+# and on Linux App Service an app setting name becomes an environment variable name, which cannot
+# contain a hyphen. 'prod-1' is rejected with "AppSetting with name ... is not allowed".
+#
 # Generated once and never again. Losing or replacing it does not lose accounts, but every saved
 # broker credential sealed with it becomes unreadable and has to be entered again.
 EXISTING_KEY="$(az webapp config appsettings list \
   --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
-  --query "[?name=='CredentialProtection__Keys__prod-1'].value | [0]" -o tsv 2>/dev/null || true)"
+  --query "[?name=='CredentialProtection__Keys__prod1'].value | [0]" -o tsv 2>/dev/null || true)"
 
 if [ -n "$EXISTING_KEY" ] && [ "$EXISTING_KEY" != "null" ]; then
   echo "==> Credential-protection key already set — leaving it alone"
@@ -151,8 +155,8 @@ az webapp config appsettings set \
     Persistence__SqlitePath=/home/data/akshaya-identity.db \
     Persistence__SeedUser__Email="$SEED_EMAIL" \
     Cors__AllowedOrigin=none \
-    CredentialProtection__ActiveKeyId=prod-1 \
-    CredentialProtection__Keys__prod-1="$CREDENTIAL_KEY" \
+    CredentialProtection__ActiveKeyId=prod1 \
+    CredentialProtection__Keys__prod1="$CREDENTIAL_KEY" \
     SCM_DO_BUILD_DURING_DEPLOYMENT=false \
     DOTNET_gcServer=0 \
   --output none
@@ -302,7 +306,7 @@ KEEP THIS SOMEWHERE YOU CAN FIND IT AGAIN — the master key for the saved-broke
 It is stored in the app's settings, so you do not need it to run; you need it to move the app to
 another host without every remembered broker login becoming unreadable.
 
-  CredentialProtection__Keys__prod-1  $CREDENTIAL_KEY
+  CredentialProtection__Keys__prod1  $CREDENTIAL_KEY
 
 EOF
 fi
