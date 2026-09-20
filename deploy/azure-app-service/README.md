@@ -253,12 +253,27 @@ az deployment group create \
                credentialKey="$(openssl rand -base64 32)"
 ```
 
+```bash
+az deployment group create \
+  --resource-group akshaya-rg \
+  --template-file deploy/azure-app-service/main.bicep \
+  --parameters appName=akshaya-csg \
+               sku=B1 \
+               credentialKey="$(openssl rand -base64 32)"
+```
+
 Then build and push the image to the registry the template created:
 
 ```bash
 ACR=$(az acr list -g akshaya-rg --query "[0].name" -o tsv)
 az acr build --registry "$ACR" --image akshaya:latest --file deploy/Dockerfile .
 az webapp restart -g akshaya-rg -n akshaya-<something-unique>
+```
+
+```bash
+ACR=$(az acr list -g akshaya-rg --query "[0].name" -o tsv)
+az acr build --registry "$ACR" --image akshaya:latest --file deploy/Dockerfile .
+az webapp restart -g akshaya-rg -n akshaya-csg
 ```
 
 The site returns an error page between the two commands — the app exists but its image does not
@@ -268,6 +283,10 @@ Get the seeded account's password the same way as Path A:
 
 ```bash
 az webapp log tail -g akshaya-rg -n akshaya-<something-unique> | grep "generated password"
+```
+
+```bash
+az webapp log tail -g akshaya-rg -n akshaya-csg | grep "generated password"
 ```
 
 Notes specific to this path:
