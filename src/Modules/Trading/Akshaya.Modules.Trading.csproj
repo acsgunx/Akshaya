@@ -22,8 +22,11 @@
       CA2007: ConfigureAwait(false). No sync context in ASP.NET Core; adding it hides bugs.
       CA1031: catching Exception is correct at exactly one boundary — turning an arbitrary
               connector throw into a Result so one broker cannot take down a request.
+          CA1716: the `to` parameter of GetRateAsync(from, to) collides with the Visual Basic `To`
+              keyword. It is a PUBLIC interface member, so renaming it is a breaking change, and
+              `from`/`to` is the only pair that reads correctly for an FX conversion. No VB here.
     -->
-    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031;CA1716</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

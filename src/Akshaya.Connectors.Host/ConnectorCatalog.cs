@@ -89,7 +89,7 @@ public sealed record ConnectorLoadFailure(string Location, string? ConnectorId, 
 ///     linked to five brokers must not lose all five because a sixth plugin was published
 ///     badly.
 /// </summary>
-public sealed class ConnectorCatalog
+public sealed class ConnectorCatalog : IDisposable
 {
     private readonly ConnectorHostOptions _options;
     private readonly ILogger<ConnectorCatalog> _logger;
@@ -558,4 +558,11 @@ public sealed class ConnectorCatalog
             connectorId ?? "unknown",
             error.Message);
     }
+
+    /// <summary>
+    /// Releases the load gate. The catalogue is a singleton for the process lifetime, so this
+    /// matters at shutdown rather than in steady state — but a SemaphoreSlim that is never
+    /// disposed is a handle that is never returned, and the analyzer is right to say so.
+    /// </summary>
+    public void Dispose() => _loadGate.Dispose();
 }

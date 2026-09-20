@@ -654,7 +654,7 @@ internal static class MStockCsv
     }
 
     private static string? Field(
-        IReadOnlyList<string> fields,
+        List<string> fields,
         IReadOnlyDictionary<string, int> header,
         params ReadOnlySpan<string> names)
     {

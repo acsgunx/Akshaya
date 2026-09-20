@@ -131,7 +131,7 @@ public sealed class KillSwitchRequestDtoValidator : AbstractValidator<KillSwitch
 /// <summary>
 /// A tenant's pre-trade limits, as the risk-settings screen edits them.
 ///
-/// <see cref="TenantId"/> and the normalisation currency are deliberately absent: both are
+/// <c>TenantId</c> and the normalisation currency are deliberately absent: both are
 /// server-controlled (see the handler above), never something a settings form can change.
 /// </summary>
 public sealed record RiskPolicyDto

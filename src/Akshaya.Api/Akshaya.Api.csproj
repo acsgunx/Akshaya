@@ -20,7 +20,14 @@
       CA1031: catching Exception is correct at the connector and stream boundaries.
       CA1812: endpoint and options classes are instantiated by the framework or by DI.
     -->
-    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031;CA1812</NoWarn>
+    <!--
+      CA1050: PortfolioOptions and ICurrentUserAccessor sit beside the top-level statements in
+              Program.cs rather than in a namespace. They are composition-root wiring, declared
+              where they are used and referenced nowhere else.
+      CA1861: constant array arguments inside Infrastructure/Migrations. That file is EF-generated
+              and is rewritten wholesale by the next migration; editing it is pointless.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031;CA1812;CA1050;CA1861</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -7,6 +7,11 @@
   -->
 
   <PropertyGroup>
+    <!--
+      CA1707: xUnit test names use underscores so the failure message reads as a sentence. Every
+              other test project here declares the same.
+    -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
     <IsPackable>false</IsPackable>
     <RootNamespace>Akshaya.Architecture.Tests</RootNamespace>
   </PropertyGroup>

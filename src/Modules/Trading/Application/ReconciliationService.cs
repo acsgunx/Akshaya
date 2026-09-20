@@ -329,10 +329,10 @@ public sealed class ReconciliationService(
     /// </summary>
     private (BrokerOrder Order, OrderMatchMethod Method)? Match(
         Order order,
-        IReadOnlyDictionary<Guid, BrokerOrder> byClientOrderId,
-        IReadOnlyDictionary<string, BrokerOrder> byBrokerOrderId,
+        Dictionary<Guid, BrokerOrder> byClientOrderId,
+        Dictionary<string, BrokerOrder> byBrokerOrderId,
         IReadOnlyList<BrokerOrder> book,
-        IReadOnlySet<string> claimed)
+        HashSet<string> claimed)
     {
         if (byClientOrderId.TryGetValue(order.ClientOrderId, out var byClient))
         {

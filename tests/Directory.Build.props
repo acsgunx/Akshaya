@@ -1,0 +1,26 @@
+<Project>
+
+  <!--
+    Shared by every test project. Rules declined here rather than in each csproj, because they are
+    all consequences of how tests are written in this repo rather than of anything a given suite
+    does.
+  -->
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!--
+      xUnit1051: xUnit v3 wants TestContext.Current.CancellationToken passed to every call that
+                 takes a CancellationToken. These suites pass CancellationToken.None or default
+                 deliberately — a unit test that cannot be cancelled mid-assertion is not a
+                 responsiveness problem, and threading the ambient token through every call would
+                 obscure the ones where the token under test IS the point.
+      CA1707:    xUnit test names use underscores so a failure message reads as a sentence. Every
+                 test project in this repo is written that way.
+      CA2007:    ConfigureAwait(false) in a test. There is no synchronization context under the
+                 xUnit runner, so it changes nothing and adds noise to every await.
+    -->
+    <NoWarn>$(NoWarn);xUnit1051;CA1707;CA2007</NoWarn>
+  </PropertyGroup>
+
+</Project>

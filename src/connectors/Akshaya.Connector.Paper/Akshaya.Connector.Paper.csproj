@@ -34,7 +34,13 @@
       CA1002/CA1819: internal mutable collections are not exposed; the analyser cannot see
               that the public surface is all IReadOnlyList.
     -->
-    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031;CA5394;CA1002;CA1819</NoWarn>
+    <!--
+      CA1711: PaperStream ends in 'Stream', a suffix the rule reserves for System.IO.Stream. It is
+              an IConnectorStream and is named for the interface it implements.
+      CA1716: IChargeSchedule.Handles collides with the Visual Basic `Handles` keyword. This
+              solution contains no VB.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031;CA5394;CA1002;CA1819;CA1711;CA1716</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

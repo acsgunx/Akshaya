@@ -26,7 +26,8 @@
       CA1848/CA1031: same reasons as the SDK.
       xUnit1041: fixture arguments are supplied by the derived classes, not by a fixture type.
     -->
-    <NoWarn>$(NoWarn);CA1707;CA2007;CA1848;CA1031;xUnit1041</NoWarn>
+    <!-- CA1711: FakeBrokerStream is an IConnectorStream, named for what it fakes. -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1848;CA1031;xUnit1041;CA1711</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

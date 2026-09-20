@@ -23,7 +23,14 @@
       CA1848/CA1031: same reasons as the assembly under test.
       xUnit1041: fixture arguments are supplied by helper builders, not by a fixture type.
     -->
-    <NoWarn>$(NoWarn);CA1707;CA2007;CA1848;CA1031;xUnit1041</NoWarn>
+    <!--
+      CA2012: NSubstitute setup reads `mock.Method(...).Returns(new ValueTask<T>(x))`. The
+              analyzer sees a ValueTask returned from a call and passed elsewhere; nothing is
+              consumed twice, because the substituted call never ran.
+      CA1859: interface-typed locals in test code. Devirtualising a lookup in a unit test is not
+              a performance win worth constraining how the tests are written.
+    -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1848;CA1031;xUnit1041;CA2012;CA1859</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
