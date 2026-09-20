@@ -85,11 +85,28 @@ echo "==> Subscription $(az account show --query name -o tsv) ($SUBSCRIPTION_ID)
 # Pick the .NET 10 stack by asking the platform rather than hard-coding a moniker that changes with
 # every major release. If it is not offered in this region, say so plainly — the alternative is
 # `az webapp create` failing with a validation error that does not mention .NET at all.
+#
+# Two things this has to survive, both of which produced a FALSE "no .NET 10 here" before:
+#
+#   - The separator is not stable across Azure CLI versions. Older builds print DOTNETCORE|10.0,
+#     newer ones DOTNETCORE:10.0. Accept either, and pass back whatever the platform said rather
+#     than a moniker reassembled from parts.
+#   - `-o tsv` is not one column. It is the moniker plus end-of-support date, OS, family, status
+#     and a display name, tab-separated, so the whole line is not a runtime and `az webapp create`
+#     will not take it. Cut field 1.
+#
+# The trailing (\.|$) matters: without it, 10 also matches 11.0 and 1.0.
 echo "==> Looking for the .NET 10 runtime on Linux"
-RUNTIME="$(az webapp list-runtimes --os linux -o tsv | grep -i '^DOTNETCORE:10' | head -1 || true)"
+RUNTIME="$(az webapp list-runtimes --os linux -o tsv 2>/dev/null \
+  | awk -F'\t' '{print $1}' \
+  | grep -iE '^DOTNETCORE[:|]10(\.|$)' \
+  | head -1 || true)"
 if [ -z "$RUNTIME" ]; then
   echo "ERROR: App Service does not offer a .NET 10 Linux runtime in this subscription." >&2
-  echo "       Deploy the container instead — see deploy/azure-app-service/README.md, 'Path B'." >&2
+  echo "       Check for yourself before believing it — this is what was searched:" >&2
+  echo "         az webapp list-runtimes --os linux -o tsv | grep -i dotnet" >&2
+  echo "       If a 10.x line is there, this script's matcher is at fault; please report it." >&2
+  echo "       Otherwise deploy the container — see deploy/azure-app-service/README.md, 'Path B'." >&2
   exit 1
 fi
 echo "    $RUNTIME"
