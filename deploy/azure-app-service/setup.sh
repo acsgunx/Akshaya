@@ -242,11 +242,18 @@ else
   echo "    F1: skipping alwaysOn and the health-check probe — neither exists on the free tier."
 fi
 
-# Container logging is off by default and is the only way to read the seeded account's password.
+# Logging is off by default and is the only way to read the seeded account's password.
+#
+# BOTH switches, and the second one is the one that matters here. On Linux the application runs in
+# a container, and its stdout — every line ASP.NET Core writes, including the generated password and
+# any startup exception — is captured by --docker-container-logging. --application-logging alone
+# leaves that stream uncollected: `az webapp log tail` then prints pages of platform status and not
+# one line from the application, which reads exactly like an app that is failing silently.
 az webapp log config \
   --name "$APP_NAME" \
   --resource-group "$RESOURCE_GROUP" \
   --application-logging filesystem \
+  --docker-container-logging filesystem \
   --level warning \
   --output none
 
