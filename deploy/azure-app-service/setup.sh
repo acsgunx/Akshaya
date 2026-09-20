@@ -244,6 +244,20 @@ PRINCIPAL_ID="$(az identity show --name "$IDENTITY_NAME" --resource-group "$RESO
 # The subject must match exactly what GitHub puts in the token, or the exchange fails with a generic
 # "no matching federated identity record". A workflow_dispatch run on <branch> presents the same
 # ref subject as a push to it, so one credential covers both triggers.
+#
+# TWO subjects, because GitHub has two formats and which one arrives is not ours to choose:
+#
+#   repo:<owner>/<repo>:ref:refs/heads/<branch>                    the classic, name-based one
+#   repo:<owner>@<ownerId>/<repo>@<repoId>:ref:refs/heads/<branch> the immutable, ID-based one
+#
+# The second is GitHub's answer to a repository being renamed or transferred out from under a trust
+# relationship, and it is being switched on per account rather than all at once. A setup that
+# registers only the classic subject fails with AADSTS700213 the moment the account is flipped, and
+# the error prints the presented subject without saying that a second format exists. Registering
+# both costs one extra credential and removes the failure mode in either direction.
+#
+# The IDs come from the public repository API. If that lookup fails — a private repo, no network —
+# the classic credential is still created and the ID-based one is skipped with a warning.
 echo "==> Trusting GitHub Actions on $GITHUB_REPO@$BRANCH"
 if az identity federated-credential show \
      --name github-actions \
@@ -266,6 +280,44 @@ else
     --subject "repo:${GITHUB_REPO}:ref:refs/heads/${BRANCH}" \
     --audiences api://AzureADTokenExchange \
     --output none
+fi
+
+# ── The same trust, in GitHub's ID-based subject format ───────────────────────────────────────────
+REPO_JSON="$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}" 2>/dev/null || true)"
+REPO_ID="$(printf '%s' "$REPO_JSON" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*\([0-9]\{1,\}\).*/\1/p' | head -1)"
+OWNER_ID="$(printf '%s' "$REPO_JSON" \
+  | tr ',' '\n' | grep -A20 '"owner"' | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*\([0-9]\{1,\}\).*/\1/p' | head -1)"
+
+if [ -n "$REPO_ID" ] && [ -n "$OWNER_ID" ]; then
+  OWNER="${GITHUB_REPO%%/*}"
+  REPO="${GITHUB_REPO##*/}"
+  IMMUTABLE_SUBJECT="repo:${OWNER}@${OWNER_ID}/${REPO}@${REPO_ID}:ref:refs/heads/${BRANCH}"
+  echo "    also trusting the ID-based subject: $IMMUTABLE_SUBJECT"
+  if az identity federated-credential show \
+       --name github-actions-immutable \
+       --identity-name "$IDENTITY_NAME" \
+       --resource-group "$RESOURCE_GROUP" --output none 2>/dev/null; then
+    FIC_VERB=update
+  else
+    FIC_VERB=create
+  fi
+  az identity federated-credential "$FIC_VERB" \
+    --name github-actions-immutable \
+    --identity-name "$IDENTITY_NAME" \
+    --resource-group "$RESOURCE_GROUP" \
+    --issuer https://token.actions.githubusercontent.com \
+    --subject "$IMMUTABLE_SUBJECT" \
+    --audiences api://AzureADTokenExchange \
+    --output none
+else
+  echo "    WARNING: could not read the numeric repo/owner ids from api.github.com." >&2
+  echo "             Only the name-based subject is trusted. If the deploy fails with" >&2
+  echo "             AADSTS700213, copy the 'subject claim' from the workflow log and run:" >&2
+  echo "               az identity federated-credential create --name github-actions-immutable \\" >&2
+  echo "                 --identity-name $IDENTITY_NAME --resource-group $RESOURCE_GROUP \\" >&2
+  echo "                 --issuer https://token.actions.githubusercontent.com \\" >&2
+  echo "                 --subject '<the subject claim from the log>' \\" >&2
+  echo "                 --audiences api://AzureADTokenExchange" >&2
 fi
 
 # Scoped to the one web app, not the subscription: this identity can deploy and read the site's

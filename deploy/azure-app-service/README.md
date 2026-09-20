@@ -226,7 +226,7 @@ az webapp config set -g akshaya-rg -n <app-name> --always-on true \
 | Symptom | Cause |
 |---|---|
 | `Missing repository variables: …` | Step 3 was skipped, or a name is misspelled. The message lists them |
-| `AADSTS70021: No matching federated identity record found` | The branch does not match. The script trusts one branch — re-run it with `--branch <name>` |
+| `AADSTS700213: No matching federated identity record found` | Compare the `subject claim` the log prints against the credentials on the identity. Two causes: the branch does not match (re-run `setup.sh` with `--branch <name>`), or the subject is GitHub's ID-based form — `repo:owner@123/repo@456:ref:…` rather than `repo:owner/repo:ref:…`. `setup.sh` registers both; a setup from before it did needs the second one adding by hand, using the subject exactly as the log prints it |
 | `Unable to get ACTIONS_ID_TOKEN_REQUEST_URL` | The workflow's `permissions: id-token: write` was removed |
 | `AuthorizationFailed` on the first deploy | Role assignments take a minute or two to propagate. Re-run the workflow |
 | `Persistence__SqlitePath is …` and the deploy stops | Exactly the guard described above. Set the setting as the message says |
