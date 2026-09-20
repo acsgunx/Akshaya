@@ -74,6 +74,11 @@ resource app 'Microsoft.Web/sites@2023-12-01' = {
   properties: {
     serverFarmId: plan.id
     httpsOnly: true
+
+    // Session affinity off: there is one instance, so there is nothing to be affine to, and the
+    // cookie only confuses caches. It belongs here on the site, NOT in siteConfig below — Bicep
+    // only warns about it there (BCP037) and App Service silently ignores it.
+    clientAffinityEnabled: false
     siteConfig: {
       linuxFxVersion: 'DOCKER|${registry.properties.loginServer}/akshaya:latest'
 
@@ -124,11 +129,15 @@ resource app 'Microsoft.Web/sites@2023-12-01' = {
           value: 'none'
         }
         {
+          // The key id is arbitrary (CredentialProtectionOptions.Keys is a plain dictionary), but it
+          // ends up inside an app setting NAME, and on Linux App Service an app setting name becomes
+          // an environment variable name. A hyphen is not legal in one, so 'prod-1' is rejected at
+          // deploy time with "AppSetting with name ... is not allowed". Keep this id alphanumeric.
           name: 'CredentialProtection__ActiveKeyId'
-          value: 'prod-1'
+          value: 'prod1'
         }
         {
-          name: 'CredentialProtection__Keys__prod-1'
+          name: 'CredentialProtection__Keys__prod1'
           value: credentialKey
         }
         {
@@ -145,16 +154,6 @@ resource app 'Microsoft.Web/sites@2023-12-01' = {
         }
       ]
     }
-  }
-}
-
-// Session affinity off: there is one instance, so there is nothing to be affine to, and the cookie
-// only confuses caches.
-resource affinity 'Microsoft.Web/sites/config@2023-12-01' = {
-  parent: app
-  name: 'web'
-  properties: {
-    clientAffinityEnabled: false
   }
 }
 

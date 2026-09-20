@@ -218,6 +218,7 @@ az webapp config set -g akshaya-rg -n <app-name> --always-on true \
 | The site never becomes ready on F1 | The daily CPU quota is spent. It resets at midnight UTC, or move to B1 |
 | Ticks arrive but slowly | WebSockets are off. `az webapp config set … --web-sockets-enabled true` |
 | `An error occurred reading file. Could not find a part of the path '/home/<you>/deploy/…'` | Path B run outside a clone of the repository. `--template-file` is a local path — clone it first, as Path B says |
+| `AppSetting with name '…' is not allowed` | The name contains a character that is not legal in an environment variable name, almost always a hyphen. On Linux App Service every app setting name becomes an env var name — keep the credential key id alphanumeric (`prod1`, not `prod-1`) |
 
 Read the application's own log stream any time with:
 
