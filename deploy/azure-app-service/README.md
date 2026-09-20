@@ -67,7 +67,15 @@ curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/deploy/azure-ap
 ```
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/acsgunx/Akshaya/main/deploy/azure-app-service/setup.sh -o setup.sh && chmod +x setup.sh
+```
+
+```bash
 ./setup.sh --app <app-name> --repo <owner>/<repo>
+```
+
+```bash
+./setup.sh --app akshaya --repo acsgunx/Akshaya
 ```
 
 It takes a couple of minutes and creates:
