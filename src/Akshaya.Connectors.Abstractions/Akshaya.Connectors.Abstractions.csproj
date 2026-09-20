@@ -16,6 +16,14 @@
 
   <PropertyGroup>
     <RootNamespace>Akshaya.Connectors.Abstractions</RootNamespace>
+    <!--
+      CA1711: IConnectorStream ends in 'Stream', a suffix the rule reserves for System.IO.Stream.
+              It is not one, but it is a market-data stream in the sense everyone in this domain
+              means, and it is THE CONTRACT: every connector, including third-party and
+              out-of-process ones, is compiled against this name. Renaming it to avoid a
+              suffix-matching rule would break all of them.
+    -->
+    <NoWarn>$(NoWarn);CA1711</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

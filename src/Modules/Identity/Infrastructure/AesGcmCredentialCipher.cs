@@ -48,7 +48,10 @@ public sealed class AesGcmCredentialCipher : ICredentialCipher
     private const int TagBytes = 16;
     private const int KeyBytes = 32;
 
-    private readonly IReadOnlyDictionary<string, byte[]> _keys;
+    // Dictionary, not IReadOnlyDictionary: this field is private, is only ever assigned the
+    // dictionary built in the constructor, and is only read through TryGetValue. The concrete
+    // type lets that call be devirtualised (CA1859).
+    private readonly Dictionary<string, byte[]> _keys;
     private readonly string _activeKeyId;
     private readonly byte[] _activeKey;
 

@@ -17,7 +17,14 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!--
+      CA1873 fires on the params array behind ANY log call that takes an argument, so it lands in
+      every project that logs at all. It is the same trade-off the projects here already decline
+      for CA1848, and it gets the same answer repo-wide: an IsEnabled guard around every
+      LogInformation costs more in noise than the array costs at runtime, and nothing in this
+      solution logs on the tick path. Declared once here rather than copied into six csproj files.
+    -->
+    <NoWarn>$(NoWarn);CS1591;CA1873</NoWarn>
     <!--
       NU1901-1904 are the NuGet vulnerability advisories. They fire on transitive pins the repo
       cannot currently move without a wider dependency bump; keep them visible as warnings

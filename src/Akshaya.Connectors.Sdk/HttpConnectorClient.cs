@@ -631,7 +631,7 @@ public sealed class HttpConnectorClient
             : string.Concat(body.AsSpan(0, _options.MaxErrorBodyChars), "…[truncated]");
     }
 
-    private Result<(string Body, string Path)> Failure(
+    private static Result<(string Body, string Path)> Failure(
         string canonicalCode,
         string message,
         string? vendorCode,

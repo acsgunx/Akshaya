@@ -500,7 +500,9 @@ public static partial class ManifestLoader
     /// <see cref="ModifyOrderRequest"/>. Anything else would disable a UI control that does
     /// not exist, or fail to disable one that does.
     /// </summary>
-    private static readonly IReadOnlySet<string> ModifiableFields =
+    // HashSet, not IReadOnlySet: private, and Contains on the concrete type avoids the
+    // interface dispatch on a per-field validation path (CA1859).
+    private static readonly HashSet<string> ModifiableFields =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             nameof(ModifyOrderRequest.Quantity),

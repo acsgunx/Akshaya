@@ -363,6 +363,7 @@ public sealed class ConnectorRateLimiter(
     /// </param>
     /// <param name="scope">One of <see cref="RateLimitScopes"/>.</param>
     /// <param name="permits">Permits to consume. A basket of N legs sent as N calls costs N.</param>
+    /// <param name="ct">Cancels the wait for a permit, not any call already admitted.</param>
     public async Task<Result> AcquireAsync(
         string credentialId,
         string scope,

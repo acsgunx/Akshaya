@@ -25,8 +25,13 @@
               Core or in the connector host; adding it everywhere buys nothing and hides bugs.
       CA1031: catching Exception is correct in exactly one place — the boundary that turns
               an arbitrary connector/vendor throw into a Result. That is the whole point.
+      CA1716: `Nothing` and the `next` parameter collide with reserved words in Visual Basic.
+              Both are core to the interception pipeline's shape, and this solution contains no
+              VB; renaming them to suit a language nobody here compiles buys nothing.
+      CA1711: NullStream ends in 'Stream', a suffix the rule reserves for System.IO.Stream. It is
+              the no-op IConnectorStream, and it is named after the interface it implements.
     -->
-    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031</NoWarn>
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1031;CA1716;CA1711</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

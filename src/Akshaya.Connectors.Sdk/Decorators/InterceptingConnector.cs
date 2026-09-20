@@ -44,7 +44,7 @@ public readonly record struct ConnectorCallSubject(
 /// <summary>The unit type, so the non-generic <see cref="Result"/> can ride the generic path.</summary>
 public readonly record struct Nothing
 {
-    public static readonly Nothing Value = default;
+    public static readonly Nothing Value;
 }
 
 /// <summary>Adapters between <see cref="Result"/> and <see cref="Result{T}"/> for interceptors.</summary>

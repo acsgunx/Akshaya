@@ -82,7 +82,9 @@ public sealed class DefaultVendorErrorMapper : IVendorErrorMapper
         ("gateway", ConnectorErrorCodes.GatewayUnavailable),
     ];
 
-    private readonly IReadOnlyDictionary<string, string> _byVendorCode;
+    // Dictionary, not IReadOnlyDictionary: private, always assigned a Dictionary above, and
+    // only read through TryGetValue, so the concrete type devirtualises the lookup (CA1859).
+    private readonly Dictionary<string, string> _byVendorCode;
     private readonly IReadOnlyList<(string Phrase, string Code)> _byPhrase;
     private readonly bool _useBuiltInPhrases;
 
