@@ -17,6 +17,19 @@ There are two ways in. They produce the same running application.
 **Start with Path A.** Path B is worth it when you want the deployed artefact to be byte-identical
 to what you run locally with `docker run`, or when you need a runtime App Service does not offer.
 
+**Check that Path B is available to you before you commit to it.** It builds the image with
+`az acr build`, which runs on ACR Tasks — and ACR Tasks is disabled on many trial, free and new
+pay-as-you-go subscriptions. There is no way around that from here: Cloud Shell has no Docker
+daemon, so there is nothing local to build with either. One cheap command tells you, and it costs
+nothing to run before you provision anything:
+
+```bash
+az acr check-health --yes
+```
+
+If `az acr build` later fails with `TasksOperationsNotAllowed`, the subscription is the reason.
+Path A does not use a registry at all and is unaffected.
+
 ---
 
 # Path A — deploy from GitHub Actions
@@ -222,6 +235,7 @@ az webapp config set -g akshaya-rg -n <app-name> --always-on true \
 | Ticks arrive but slowly | WebSockets are off. `az webapp config set … --web-sockets-enabled true` |
 | `An error occurred reading file. Could not find a part of the path '/home/<you>/deploy/…'` | Path B run outside a clone of the repository. `--template-file` is a local path — clone it first, as Path B says |
 | `AppSetting with name '…' is not allowed` | The name contains a character that is not legal in an environment variable name, almost always a hyphen. On Linux App Service every app setting name becomes an env var name — keep the credential key id alphanumeric (`prod1`, not `prod-1`) |
+| `TasksOperationsNotAllowed` from `az acr build` | ACR Tasks is disabled for the subscription, not for the registry — common on trial, free and new pay-as-you-go accounts. Nothing in this repo can work around it. Use Path A, or build the image somewhere with a Docker daemon and `docker push` it |
 
 Read the application's own log stream any time with:
 
@@ -294,6 +308,19 @@ az webapp restart -g akshaya-rg -n akshaya-csg
 
 The site returns an error page between the two commands — the app exists but its image does not
 yet. That is expected.
+
+`az acr build` is where a subscription without ACR Tasks stops: `TasksOperationsNotAllowed`, naming
+the registry and the subscription. The registry is fine and the Dockerfile is fine — the build
+service is switched off for the account. Either deploy with Path A instead, or build the image on a
+machine that has Docker and push it yourself:
+
+```bash
+az acr login --name "$ACR"
+docker build -f deploy/Dockerfile -t "$ACR.azurecr.io/akshaya:latest" .
+docker push "$ACR.azurecr.io/akshaya:latest"
+```
+
+Cloud Shell cannot do that second one — it has no Docker daemon.
 
 Get the seeded account's password the same way as Path A:
 
