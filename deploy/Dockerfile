@@ -37,6 +37,11 @@ WORKDIR /src
 # does not re-download the package set. Listed explicitly because COPY cannot glob a directory tree
 # while preserving its shape — and a missing entry fails loudly at restore rather than silently
 # producing a slower build.
+#
+# EVERY connector the API references has to be listed here. It references all of them, so adding a
+# connector means adding a line — `dotnet restore` runs before `COPY src/ ./src/` below and aborts
+# on the first project file it cannot find. Path A never had this failure mode: it builds from a
+# checkout with a plain `dotnet publish` and has no hand-maintained list to fall out of date.
 COPY Directory.Build.props .editorconfig ./
 COPY src/Akshaya.Api/Akshaya.Api.csproj                                     src/Akshaya.Api/
 COPY src/Akshaya.SharedKernel/Akshaya.SharedKernel.csproj                   src/Akshaya.SharedKernel/
@@ -47,8 +52,14 @@ COPY src/Modules/Identity/Akshaya.Modules.Identity.csproj                   src/
 COPY src/Modules/MarketData/Akshaya.Modules.MarketData.csproj              src/Modules/MarketData/
 COPY src/Modules/Portfolio/Akshaya.Modules.Portfolio.csproj                src/Modules/Portfolio/
 COPY src/Modules/Trading/Akshaya.Modules.Trading.csproj                    src/Modules/Trading/
-COPY src/connectors/Akshaya.Connector.MStock/Akshaya.Connector.MStock.csproj src/connectors/Akshaya.Connector.MStock/
-COPY src/connectors/Akshaya.Connector.Paper/Akshaya.Connector.Paper.csproj   src/connectors/Akshaya.Connector.Paper/
+COPY src/connectors/Akshaya.Connector.Fyers/Akshaya.Connector.Fyers.csproj           src/connectors/Akshaya.Connector.Fyers/
+COPY src/connectors/Akshaya.Connector.Ibkr/Akshaya.Connector.Ibkr.csproj             src/connectors/Akshaya.Connector.Ibkr/
+COPY src/connectors/Akshaya.Connector.Longbridge/Akshaya.Connector.Longbridge.csproj src/connectors/Akshaya.Connector.Longbridge/
+COPY src/connectors/Akshaya.Connector.Moomoo/Akshaya.Connector.Moomoo.csproj         src/connectors/Akshaya.Connector.Moomoo/
+COPY src/connectors/Akshaya.Connector.MStock/Akshaya.Connector.MStock.csproj         src/connectors/Akshaya.Connector.MStock/
+COPY src/connectors/Akshaya.Connector.Paper/Akshaya.Connector.Paper.csproj           src/connectors/Akshaya.Connector.Paper/
+COPY src/connectors/Akshaya.Connector.Tiger/Akshaya.Connector.Tiger.csproj           src/connectors/Akshaya.Connector.Tiger/
+COPY src/connectors/Akshaya.Connector.Zerodha/Akshaya.Connector.Zerodha.csproj       src/connectors/Akshaya.Connector.Zerodha/
 RUN dotnet restore src/Akshaya.Api/Akshaya.Api.csproj
 
 COPY src/ ./src/

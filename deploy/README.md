@@ -2,6 +2,9 @@
 
 Six targets, one image. Pick a directory, follow its README.
 
+Once it is up, [`docs/ACCESSING-THE-APP.md`](../docs/ACCESSING-THE-APP.md) covers what to open, what to
+sign in as, and where the seeded account's password comes from on each host.
+
 Two of them deploy themselves from GitHub Actions — **Azure App Service** and
 **MonsterASP.NET**. The rest you push to yourself.
 
