@@ -15,6 +15,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 using Akshaya.Api.Contracts;
 using Akshaya.Api.Endpoints;
 using Akshaya.Api.Hubs;
@@ -36,6 +37,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry.Metrics;
@@ -328,6 +330,56 @@ try
             }
         });
 
+    // ── Rate limiting, for the two endpoints that accept a password from anyone. ──────────────
+    //
+    // Sign-in and sign-up are anonymous by necessity, and behind the accounts they guard sit
+    // saved broker credentials. Without a limiter, guessing a password is bounded only by how
+    // fast requests can be sent, which is the whole attack.
+    //
+    // PARTITIONED BY THE CLIENT ADDRESS, and getting that address right is the load-bearing part.
+    // Behind App Service the connection comes from the platform's front end, so
+    // RemoteIpAddress is the same value for every caller and a limiter keyed on it throttles
+    // everyone together the moment one attacker starts guessing. The client address is in
+    // X-Forwarded-For, and the LAST entry is the one the platform observed — anything to its
+    // left was supplied by the caller and can say whatever it likes.
+    //
+    // A caller who can vary that last entry defeats this, which is why it is a speed bump for
+    // guessing rather than an authentication control. Raising MinimumPasswordLength is what
+    // makes the space too large to walk; this makes walking it slow.
+    builder.Services.AddRateLimiter(limiter =>
+    {
+        limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+        limiter.AddPolicy(AccountEndpoints.AuthRateLimitPolicy, http =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                ClientAddress(http),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    // Ten attempts per five minutes. A person who has mistyped their password
+                    // three times is not helped by a fourth attempt arriving faster; a script
+                    // working through a keyspace is stopped dead.
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(5),
+                    QueueLimit = 0,
+                }));
+
+        // Say when to come back rather than only that the door is shut, and log it: a burst of
+        // these on sign-in is the signal that someone is being guessed at.
+        limiter.OnRejected = (context, ct) =>
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                ((int)TimeSpan.FromMinutes(5).TotalSeconds).ToString(CultureInfo.InvariantCulture);
+
+            Log.Warning(
+                "Rate limit rejected {Method} {Path} from {Client}.",
+                context.HttpContext.Request.Method,
+                context.HttpContext.Request.Path,
+                ClientAddress(context.HttpContext));
+
+            return ValueTask.CompletedTask;
+        };
+    });
+
     // ── ProblemDetails + OpenAPI + Scalar. ────────────────────────────────────────────────────
     builder.Services.AddProblemDetails();
     builder.Services.AddOpenApi();
@@ -401,6 +453,10 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
+    // After authentication so a rejected request is still attributable in the log, and before the
+    // endpoints it protects.
+    app.UseRateLimiter();
+
     // Probes are for the orchestrator, which has no session. They expose no tenant data.
     app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
     app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = _ => true }).AllowAnonymous();
@@ -453,6 +509,33 @@ finally
 // ================================================================================================
 
 // Reads and validates an embedded connector.manifest.json straight out of a connector assembly.
+// The caller's address, as the hosting platform saw it.
+//
+// X-Forwarded-For is a list that grows left to right, and every entry except the last was put
+// there by someone upstream of us — including, potentially, the caller. The LAST entry is the one
+// added by the proxy that actually accepted the connection, so that is the only one worth keying
+// a limit on. With no header at all (a direct connection, or a local run) the socket's own remote
+// address is both available and honest.
+static string ClientAddress(HttpContext http)
+{
+    var forwarded = http.Request.Headers["X-Forwarded-For"].ToString();
+    if (!string.IsNullOrWhiteSpace(forwarded))
+    {
+        var last = forwarded.Split(',')[^1].Trim();
+        if (last.Length > 0)
+        {
+            // App Service writes "<ip>:<port>"; the port is per-connection and would make every
+            // request its own partition, which is the same as having no limit at all.
+            var colon = last.LastIndexOf(':');
+            return colon > 0 && !last.Contains("::", StringComparison.Ordinal)
+                ? last[..colon]
+                : last;
+        }
+    }
+
+    return http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+}
+
 static ConnectorManifest LoadEmbeddedManifest(Assembly assembly, string label)
 {
     using var stream = assembly.GetManifestResourceStream(ManifestLoader.FileName)
