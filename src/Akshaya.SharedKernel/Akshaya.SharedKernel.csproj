@@ -9,6 +9,19 @@
 
   <PropertyGroup>
     <RootNamespace>Akshaya.SharedKernel</RootNamespace>
+    <!--
+      Analyzer suppressions, each with a reason. TreatWarningsAsErrors is on in CI, so these are
+      the ones we consciously decline rather than silently tolerate.
+
+      CA1716: the type `Error` collides with a reserved word in Visual Basic. It is the single
+              failure channel for the whole platform and appears in the signature of every
+              Result-returning method; renaming it to satisfy a language this solution does not
+              contain would cost more than it buys.
+      CA1000: `Result<T>.Success` / `Result<T>.Failure` are static members on a generic type.
+              That is the Result pattern, not an accident — the factories are how a Result is
+              constructed at all, and instance members cannot serve that role.
+    -->
+    <NoWarn>$(NoWarn);CA1716;CA1000</NoWarn>
   </PropertyGroup>
 
 </Project>
