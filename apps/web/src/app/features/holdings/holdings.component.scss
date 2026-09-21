@@ -1,6 +1,6 @@
 // Column widths shared by the header, the rows and the expanded legs, so a value can never
 // drift out of line with its own heading. Everything else this screen needs — the grid
-// mechanics, hover, badges, page header — comes from the primitives in styles.scss.
+// mechanics, hover, badges — comes from the primitives in styles.scss.
 :host {
   --ak-cols: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-price-width)
     var(--ak-col-pnl-width) var(--ak-col-pnl-width) 5rem;

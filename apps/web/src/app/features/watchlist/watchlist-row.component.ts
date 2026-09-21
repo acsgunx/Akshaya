@@ -21,8 +21,9 @@ type FlashDirection = 'up' | 'down' | undefined;
  *
  * FLASH WITHOUT JITTER: the flash is a CSS background-colour animation
  * (`.ak-flash-up`/`.ak-flash-down`, defined once in `styles.scss`) applied
- * to a cell whose width is already fixed by `.ak-col-price` — see
- * DESIGN.md "price cells must never jitter". The direction is derived by
+ * to a cell whose width is already fixed — by `.ak-col-price` in the grid,
+ * by `min-w-price` in the compact card — see DESIGN.md "price cells must
+ * never jitter". The direction is derived by
  * comparing consecutive ticks HERE, not guessed from `Tick.change` (which is
  * relative to the previous CLOSE, not the previous tick) — a flash means
  * "this number just moved", which is a different fact from "the day's
@@ -64,7 +65,7 @@ type FlashDirection = 'up' | 'down' | undefined;
         </span>
         <span class="block shrink-0 text-right">
           <!-- Same fixed-width, background-only flash as the desktop cell — see the class doc. -->
-          <span class="ak-col-price block rounded-xs px-1 text-[15px] font-semibold" [class]="flashClass()">
+          <span class="block min-w-price rounded-xs px-1 text-[15px] font-semibold tabular-nums" [class]="flashClass()">
             {{ quote()?.lastPrice | akMoney }}
           </span>
           <span
