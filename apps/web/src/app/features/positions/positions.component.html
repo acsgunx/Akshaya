@@ -3,16 +3,7 @@
     <!-- Compact only: Holdings and Positions share the Portfolio tab. -->
     <ak-section-tabs class="flex-1" label="Portfolio" [tabs]="portfolioTabs" />
     <h1 class="text-[22px] font-bold max-lg:sr-only">Positions</h1>
-    <button
-      mat-icon-button
-      type="button"
-      class="ak-focus-halo shrink-0"
-      [attr.aria-label]="store.loading() ? 'Refreshing positions' : 'Refresh positions'"
-      [disabled]="store.loading()"
-      (click)="store.refresh(undefined)"
-    >
-      <mat-icon [class.animate-spin]="store.loading()">refresh</mat-icon>
-    </button>
+    <ak-refresh-button class="shrink-0" what="positions" [busy]="store.loading()" (refresh)="store.refresh(undefined)" />
   </header>
 
   @if (conversionError(); as error) {
@@ -33,7 +24,12 @@
       a leg names one account and one product. Labelled buttons rather than the desktop's icon
       buttons, because the tooltips that explain those icons need a hover a finger cannot do.
     -->
-    <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Positions">
+    <ul
+      class="overflow-hidden rounded-lg border border-border bg-surface-1"
+      role="list"
+      aria-label="Positions"
+      [akRefreshing]="store.loading()"
+    >
       @for (pos of positions(); track pos.groupKey) {
         <li class="cv-auto-[76px] border-b border-border last:border-b-0">
           <button
@@ -166,7 +162,7 @@
     </div>
 
     <!-- Virtualised: only visible rows are rendered even with thousands of blended positions. -->
-    <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport">
+    <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport" [akRefreshing]="store.loading()">
       <div *cdkVirtualFor="let pos of positions(); trackBy: trackByGroupKey">
         <div class="ak-trow" role="row">
           <!--
