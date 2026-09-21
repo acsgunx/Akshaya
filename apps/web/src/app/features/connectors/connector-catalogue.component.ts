@@ -2,10 +2,10 @@ import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/cor
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { ConnectorStore } from '../../core/connector.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { ACCOUNT_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 
 /**
@@ -17,7 +17,7 @@ import { ACCOUNT_TABS, SectionTabsComponent } from '../../shared/section-tabs/se
 @Component({
   selector: 'ak-connector-catalogue',
   standalone: true,
-  imports: [RouterLink, MatButtonModule, MatIconModule, MatProgressSpinnerModule, EmptyStateComponent, SectionTabsComponent],
+  imports: [RouterLink, MatButtonModule, MatIconModule, EmptyStateComponent, LoadingStateComponent, SectionTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './connector-catalogue.component.html',
 })

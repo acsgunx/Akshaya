@@ -37,8 +37,12 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
           Shorter on a phone, where the full label would push the top bar past
           the screen edge — the one place this control must never be.
         -->
-        <span class="lg:hidden">Halted · Resume</span>
-        <span class="max-lg:hidden">Trading halted — resume</span>
+        @if (store.busy()) {
+          <span>Resuming…</span>
+        } @else {
+          <span class="lg:hidden">Halted · Resume</span>
+          <span class="max-lg:hidden">Trading halted — resume</span>
+        }
       </button>
     } @else {
       <button
@@ -49,7 +53,12 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
         (click)="engage()"
       >
         <mat-icon aria-hidden="true">power_settings_new</mat-icon>
-        Kill switch
+        <!--
+          Says what it is doing while the halt is in flight. Greyed out alone,
+          it reads as "the kill switch is unavailable" — the worst possible
+          thing for this button to appear to say.
+        -->
+        {{ store.busy() ? 'Halting…' : 'Kill switch' }}
       </button>
     }
   `,

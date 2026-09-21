@@ -6,7 +6,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RouterLink } from '@angular/router';
 
 import { InstrumentPipe } from '../../core/instrument.pipe';
@@ -16,6 +15,7 @@ import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import type { TradeRecord } from '../../core/models';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { ORDERS_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import { FillsStore } from './fills.store';
 
@@ -45,12 +45,12 @@ import { FillsStore } from './fills.store';
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
-    MatProgressSpinnerModule,
     RouterLink,
     InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
+    LoadingStateComponent,
     SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -112,7 +112,7 @@ import { FillsStore } from './fills.store';
       }
 
       @if (store.loading() && store.trades().length === 0) {
-        <div class="ak-loading"><mat-spinner diameter="28" /> Loading fills…</div>
+        <ak-loading-state label="Loading fills…" />
       } @else if (store.trades().length === 0) {
         <ak-empty-state
           icon="fact_check"

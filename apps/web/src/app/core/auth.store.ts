@@ -13,6 +13,8 @@ interface State {
   readonly busy: boolean;
   readonly error: ApiProblem | undefined;
   readonly savedCredentials: readonly SavedCredential[];
+  /** A `loadSavedCredentials` is in flight; until it answers, an empty list means "not known yet", not "none". */
+  readonly savedCredentialsLoading: boolean;
 }
 
 const initialState: State = {
@@ -21,6 +23,7 @@ const initialState: State = {
   busy: false,
   error: undefined,
   savedCredentials: [],
+  savedCredentialsLoading: false,
 };
 
 /**
@@ -96,11 +99,12 @@ export const AuthStore = signalStore(
       },
 
       async loadSavedCredentials(): Promise<void> {
+        patchState(store, { savedCredentialsLoading: true });
         try {
           const savedCredentials = await firstValueFrom(api.getSavedCredentials());
-          patchState(store, { savedCredentials });
+          patchState(store, { savedCredentials, savedCredentialsLoading: false });
         } catch {
-          patchState(store, { savedCredentials: [] });
+          patchState(store, { savedCredentials: [], savedCredentialsLoading: false });
         }
       },
 

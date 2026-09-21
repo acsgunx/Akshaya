@@ -11,16 +11,16 @@
       mat-icon-button
       type="button"
       class="ak-focus-halo shrink-0"
-      aria-label="Refresh holdings"
+      [attr.aria-label]="store.loading() ? 'Refreshing holdings' : 'Refresh holdings'"
       [disabled]="store.loading()"
       (click)="store.refresh(undefined)"
     >
-      <mat-icon>refresh</mat-icon>
+      <mat-icon [class.animate-spin]="store.loading()">refresh</mat-icon>
     </button>
   </header>
 
   @if (store.loading() && !store.snapshot()) {
-    <div class="ak-loading"><mat-spinner diameter="28" /> Loading holdings…</div>
+    <ak-loading-state label="Loading holdings…" />
   } @else if (holdings().length === 0) {
     <ak-empty-state
       icon="account_balance_wallet"

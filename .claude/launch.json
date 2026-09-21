@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "akshaya-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/Akshaya.Api", "--", "--environment", "Development", "--urls", "http://localhost:5080"],
+      "port": 5080
+    },
+    {
       "name": "akshaya-web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "apps/web", "run", "start", "--", "--port", "4200"],

@@ -19,17 +19,32 @@
         matInput
         [formControl]="searchControl"
         [matAutocomplete]="auto"
+        [attr.aria-busy]="store.searching()"
         placeholder="Search by symbol or name"
       />
+      <!-- The search is answered by a broker, which can take a second or two. -->
+      @if (store.searching()) {
+        <mat-spinner matSuffix class="mr-3" diameter="18" aria-hidden="true" />
+      }
       <mat-autocomplete #auto="matAutocomplete" (optionSelected)="addInstrument($event.option.value)">
         @for (result of store.searchResults(); track result.key) {
           <mat-option [value]="result">{{ result.name }} · {{ result.key }}</mat-option>
+        }
+        @if (store.noMatches()) {
+          <mat-option disabled>No instruments match “{{ store.searchQuery().trim() }}”</mat-option>
         }
       </mat-autocomplete>
     </mat-form-field>
   </header>
 
-  @if (hasNoUsableLink()) {
+  <!--
+    Until the first load of linked accounts answers, "no broker connected" would
+    be a guess, and on a cold start it tells someone with three linked brokers
+    to go and link one.
+  -->
+  @if (linksPending()) {
+    <ak-loading-state label="Loading your broker accounts…" />
+  } @else if (hasNoUsableLink()) {
     <ak-empty-state
       icon="link_off"
       title="No broker connected"

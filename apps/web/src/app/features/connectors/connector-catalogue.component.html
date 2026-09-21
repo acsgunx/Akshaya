@@ -11,9 +11,7 @@
   </header>
 
   @if (store.loading()) {
-    <div class="flex items-center gap-2.5 p-8 text-text-secondary">
-      <mat-spinner diameter="28" /> Loading connectors…
-    </div>
+    <ak-loading-state label="Loading connectors…" />
   } @else if (store.isEmpty()) {
     <ak-empty-state
       icon="link_off"

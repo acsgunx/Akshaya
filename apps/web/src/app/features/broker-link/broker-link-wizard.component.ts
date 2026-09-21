@@ -13,6 +13,7 @@ import { AuthStore } from '../../core/auth.store';
 import { ConnectorStore } from '../../core/connector.store';
 import { challengeKindLabel } from '../../core/labels';
 import type { AuthCredentials, SavedCredential } from '../../core/models';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { BrokerLinkStore } from './broker-link.store';
 
 /**
@@ -48,6 +49,7 @@ import { BrokerLinkStore } from './broker-link.store';
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    LoadingStateComponent,
   ],
   providers: [BrokerLinkStore],
   changeDetection: ChangeDetectionStrategy.OnPush,

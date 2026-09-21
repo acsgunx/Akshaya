@@ -1,12 +1,35 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  Injector,
+  OnInit,
+  afterNextRender,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import {
+  Event,
+  NavigationCancel,
+  NavigationCancellationCode,
+  NavigationEnd,
+  NavigationError,
+  NavigationSkipped,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
-import { filter, map } from 'rxjs';
+import { filter, map, take } from 'rxjs';
 
+import { ActivityService } from './core/activity.service';
 import { AuthStore } from './core/auth.store';
+import { dismissBootSplash } from './core/boot-splash';
 import { BrokerLinksStore } from './core/broker-links.store';
 import { ConnectorStore } from './core/connector.store';
+import { ActivityBarComponent } from './shared/activity-bar/activity-bar.component';
 import { AppearanceMenuComponent } from './shared/appearance/appearance-menu.component';
 import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component';
 
@@ -33,13 +56,29 @@ interface TabItem {
  * always visible. The switch is pure CSS (`lg:` / `max-lg:`), matching
  * `COMPACT_QUERY` in `layout.service.ts`, so there is no frame where both or
  * neither render.
+ *
+ * WAITING, AT THREE SCOPES. Until the first screen has painted, the static
+ * splash in `index.html` covers everything (see `core/boot-splash.ts`). After
+ * that, `<ak-activity-bar>` along the top edge covers any navigation or
+ * request in flight, and each screen shows its own data loading in place.
+ * DESIGN.md, "Loading and waiting", has the rules.
  */
 @Component({
   selector: 'ak-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, MatIconModule, AppearanceMenuComponent, KillSwitchComponent],
+  imports: [
+    RouterOutlet,
+    RouterLink,
+    RouterLinkActive,
+    MatIconModule,
+    ActivityBarComponent,
+    AppearanceMenuComponent,
+    KillSwitchComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <ak-activity-bar />
+
     <div class="flex min-h-dvh flex-col">
       <!--
         The chrome is for signed-in users. On the sign-in and sign-up screens
@@ -89,7 +128,11 @@ interface TabItem {
         </header>
       }
 
-      <main class="ak-content w-full flex-1" [class.ak-content--bare]="!auth.isAuthenticated()">
+      <main
+        class="ak-content w-full flex-1"
+        [class.ak-content--bare]="!auth.isAuthenticated()"
+        [attr.aria-busy]="activity.navigating() || null"
+      >
         <router-outlet />
       </main>
 
@@ -213,9 +256,39 @@ export class AppComponent implements OnInit {
   ];
 
   private readonly router = inject(Router);
+  private readonly injector = inject(Injector);
   private readonly connectorStore = inject(ConnectorStore);
   private readonly brokerLinksStore = inject(BrokerLinksStore);
   protected readonly auth = inject(AuthStore);
+  protected readonly activity = inject(ActivityService);
+
+  constructor() {
+    // The splash stays up until the FIRST navigation has settled and painted:
+    // the guard behind it awaits the session, so by then the shell knows
+    // whether to draw the nav, and the screen underneath is already drawn.
+    // Subscribed here, in the constructor, because the router starts that
+    // navigation straight after this component is created and its events
+    // are not replayed to late subscribers.
+    this.router.events
+      .pipe(filter(settlesFirstScreen), take(1), takeUntilDestroyed())
+      .subscribe(() => afterNextRender(dismissBootSplash, { injector: this.injector }));
+
+    // Loaded whenever someone BECOMES signed in, not once at startup: signing
+    // in on the sign-in screen does not reload the page, and a one-shot load
+    // in `ngOnInit` (which is what this was) left every screen that reads
+    // these two stores — the order ticket, the chart, the watchlist — waiting
+    // for data nobody had asked for. Not before sign-in, either: both
+    // endpoints 401 for an anonymous caller. Sign-out reloads the page, so
+    // there is no signed-out transition to handle here.
+    effect(() => {
+      if (this.auth.isAuthenticated()) {
+        untracked(() => {
+          this.connectorStore.load();
+          this.brokerLinksStore.load();
+        });
+      }
+    });
+  }
 
   /** The current path, without query or fragment — what the bottom bar highlights against. */
   private readonly path = toSignal(
@@ -239,18 +312,31 @@ export class AppComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
-    // The session has to be known before anything else is fetched: every store
-    // below calls an endpoint that 401s for an anonymous caller, and firing
-    // them first just fills the console with errors on the sign-in screen.
+    // The session has to be known before anything else is fetched — see the
+    // effect in the constructor, which this settles.
     await this.auth.restore();
-
-    if (this.auth.isAuthenticated()) {
-      this.connectorStore.load();
-      this.brokerLinksStore.load();
-    }
   }
 }
 
 function stripQuery(url: string): string {
   return url.split(/[?#]/, 1)[0] ?? url;
+}
+
+/**
+ * True for the router event after which the screen will not change on its
+ * own. A redirect (signed out, so off to /sign-in) or a superseded navigation
+ * cancels one navigation only to start another, so neither counts.
+ *
+ * An error counts on purpose. A failed lazy chunk leaves the page blank
+ * either way, and a blank page with the nav and the kill switch on it beats a
+ * splash that never lifts.
+ */
+function settlesFirstScreen(event: Event): boolean {
+  if (event instanceof NavigationCancel) {
+    return (
+      event.code !== NavigationCancellationCode.Redirect &&
+      event.code !== NavigationCancellationCode.SupersededByNewNavigation
+    );
+  }
+  return event instanceof NavigationEnd || event instanceof NavigationError || event instanceof NavigationSkipped;
 }

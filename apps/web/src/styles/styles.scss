@@ -360,14 +360,6 @@ mat-icon.mat-icon {
 .ak-between { justify-content: space-between; }
 .ak-strong { font-weight: 500; }
 
-.ak-loading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 32px;
-  color: var(--color-text-secondary);
-}
-
 // ---- Badges -----------------------------------------------------------------
 .ak-badge {
   display: inline-flex;

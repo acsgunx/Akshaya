@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RouterLink } from '@angular/router';
 
 import { BrokerLinksStore } from '../../core/broker-links.store';
@@ -13,6 +12,7 @@ import type { InstrumentKey, TimeFrame } from '../../core/models';
 import { formatInstrumentLabel } from '../../core/models';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { PriceChartComponent } from '../../shared/price-chart/price-chart.component';
 import { StaleBannerComponent } from '../../shared/stale-banner/stale-banner.component';
 import { ChartStore } from './chart.store';
@@ -39,11 +39,11 @@ import { ChartStore } from './chart.store';
   imports: [
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule,
     RouterLink,
     MoneyPipe,
     ConnectionStatusComponent,
     EmptyStateComponent,
+    LoadingStateComponent,
     PriceChartComponent,
     StaleBannerComponent,
   ],

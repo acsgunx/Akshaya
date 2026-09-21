@@ -1,8 +1,14 @@
 <section>
   <header class="mb-3.5 flex items-center gap-4">
     <h1 class="mr-auto text-[22px] font-bold">Dashboard</h1>
-    <button mat-icon-button (click)="refresh()" [disabled]="store.loading()" aria-label="Refresh portfolio">
-      <mat-icon>refresh</mat-icon>
+    <!-- Spins while a refresh is in flight: the figures below stay up, so this is the only sign they are being replaced. -->
+    <button
+      mat-icon-button
+      (click)="refresh()"
+      [disabled]="store.loading()"
+      [attr.aria-label]="store.loading() ? 'Refreshing portfolio' : 'Refresh portfolio'"
+    >
+      <mat-icon [class.animate-spin]="store.loading()">refresh</mat-icon>
     </button>
   </header>
 
@@ -19,7 +25,7 @@
   }
 
   @if (store.loading() && !store.snapshot()) {
-    <div class="flex items-center gap-2.5 p-8 text-text-secondary"><mat-spinner diameter="28" /> Loading portfolio…</div>
+    <ak-loading-state label="Loading portfolio…" />
   } @else if (store.snapshot(); as snapshot) {
     @if (snapshot.isPartial) {
       <!--
