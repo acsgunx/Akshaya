@@ -305,17 +305,36 @@ padding so nothing sits under the notch or the home indicator; form fields at
 and never zooms back; and `<meta name="theme-color">` kept in step with the
 top bar by `AppearanceStore`, so the browser's own toolbar blends into the app.
 
-### Two traps for anyone writing compact markup
+### Global CSS stays beneath the utilities
 
-Both come from unlayered CSS beating Tailwind's layered utilities, whatever
-the specificity:
+Tailwind emits its utilities inside `@layer utilities`, and in the cascade an
+unlayered declaration beats every layered one, whatever the specificity. So
+any global rule written outside a layer silently wins over every utility on
+the elements it matches. That used to zero the margin of every `<p>` and
+`<h1>` whatever its `mt-*` said, and pin every `<mat-icon>` at 24px in its
+parent's colour whatever its `size-*` or `text-*` said. Both are fixed in
+`styles.scss`, and the rules for keeping them fixed are:
 
-- The reset in `styles.scss` zeroes margin on `p`, `h1`–`h4`, `figure`, `dd`
-  and margin and padding on `ul` / `ol`. A `mt-1` on a `<p>` or a `px-4` on a
-  `<ul>` silently does nothing — put the spacing on a `div` or the `li`.
-- Material's `mat-icon` rule sets `color`, `width` and `height`. A colour or
-  size utility on a `<mat-icon>` needs the `!` form (`text-text-tertiary!`),
-  the same convention already used to beat Material's buttons.
+- **Element defaults go in `@layer base`**, alongside Tailwind's preflight.
+  The reset block in `styles.scss` is there; anything added to it must be too.
+- **`<mat-icon>` takes utilities as-is** — `text-warning`, `size-[18px]
+  text-[18px]`, `max-lg:hidden`. A `revert-layer` rule in `styles.scss`
+  demotes Material's icon defaults below the utilities. Size an icon with both
+  a box and a glyph utility (`size-[18px] text-[18px]`); either alone leaves
+  the other at 24px, and the box clips the glyph.
+- **Material's own components still need the `!` form.** Buttons, form
+  fields, menus and chips style themselves with unlayered class rules, so a
+  utility that fights one of their properties loses: `font-semibold!` on a
+  `mat-stroked-button`, `px-2.5!` on the nav link. Icons *inside* those
+  components are sized by Material's contextual rules for the same reason —
+  leave them to it.
+
+Two things in `styles.scss` are still unlayered. The focus ring and the
+`td`/`th` tabular-nums rule are unlayered on purpose, so no utility can switch
+them off. The pending-migration block (`ak-page-head`, `ak-col-*`, `ak-card`,
+…) is unlayered only because it hasn't been migrated yet. A utility on the same
+element as one of those classes loses on any property the class sets, so don't
+mix the two. Migrate the element instead.
 
 ## Why the order ticket and broker-link wizard don't "know" a broker's name
 

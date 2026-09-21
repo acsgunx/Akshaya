@@ -27,7 +27,7 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
     @if (store.state().isEngaged) {
       <button
         mat-flat-button
-        class="ak-btn-danger inline-flex items-center gap-1.5 font-semibold whitespace-nowrap"
+        class="ak-btn-danger inline-flex items-center gap-1.5 font-semibold! whitespace-nowrap"
         [disabled]="store.busy()"
         matTooltip="All trading is halted. Click to resume."
         (click)="disengage()"
@@ -43,7 +43,7 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
     } @else {
       <button
         mat-stroked-button
-        class="inline-flex items-center gap-1.5 font-semibold whitespace-nowrap"
+        class="inline-flex items-center gap-1.5 font-semibold! whitespace-nowrap"
         [disabled]="store.busy()"
         matTooltip="Immediately stop all new orders across every linked broker."
         (click)="engage()"
