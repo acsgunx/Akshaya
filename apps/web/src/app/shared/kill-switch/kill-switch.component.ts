@@ -33,7 +33,12 @@ import { ConfirmDialogService } from '../confirm-dialog/confirm-dialog.service';
         (click)="disengage()"
       >
         <mat-icon aria-hidden="true">block</mat-icon>
-        Trading halted — resume
+        <!--
+          Shorter on a phone, where the full label would push the top bar past
+          the screen edge — the one place this control must never be.
+        -->
+        <span class="lg:hidden">Halted · Resume</span>
+        <span class="max-lg:hidden">Trading halted — resume</span>
       </button>
     } @else {
       <button

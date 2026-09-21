@@ -37,12 +37,34 @@ body {
   height: 100%;
 }
 
+html {
+  // iOS inflates body text in landscape unless told not to, which breaks every
+  // fixed numeric column width in DESIGN.md's "price cells must never jitter".
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text-primary);
   font: 400 14px/1.45 var(--mat-sys-plain-font-family, sans-serif);
   -webkit-font-smoothing: antialiased;
+  // Every interactive element here has its own pressed/hover state; the grey
+  // flash WebKit paints on top of it just reads as lag.
+  -webkit-tap-highlight-color: transparent;
+}
+
+// No double-tap-to-zoom delay on anything tappable. Pinch zoom is untouched —
+// this only removes the wait for a possible second tap.
+a,
+button,
+[role='button'],
+input,
+select,
+textarea,
+label {
+  touch-action: manipulation;
 }
 
 h1,
@@ -160,6 +182,49 @@ th {
 .ak-btn-danger {
   background: var(--color-danger) !important;
   color: #fff !important;
+}
+
+// Directional filled buttons — the order ticket's submit, the watchlist's
+// Buy/Sell, "Cancel all". Global rather than in the ticket's own stylesheet,
+// where they used to live and therefore silently did nothing anywhere else.
+// The sell foreground is near-black rather than white: amber at this
+// saturation fails 4.5:1 against white text.
+.ak-btn-buy {
+  background: var(--color-buy) !important;
+  color: #fff !important;
+}
+
+.ak-btn-sell {
+  background: var(--color-sell) !important;
+  color: #1a1200 !important;
+}
+
+// ---- Touch ------------------------------------------------------------------
+// Touch-sized Material controls come from `_theme.scss`, which only applies the
+// dense -2 variant to a fine pointer.
+@media (pointer: coarse) {
+  // iOS Safari zooms the whole page into any focused field whose text is under
+  // 16px, and does not zoom back out. Material's field text follows the theme's
+  // body size, so this pins the floor rather than trusting it.
+  .mat-mdc-form-field {
+    --mat-form-field-container-text-size: max(16px, 1em);
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+// Compact: the bottom tab bar owns the bottom edge of the screen. A snackbar —
+// the error interceptor opens one for every failed request — would otherwise
+// land on top of it and hide all navigation behind an error message. `:has`
+// so the sign-in screen, which has no tab bar, keeps the stock position.
+@media (width < 64rem) {
+  body:has(.ak-bottom-nav) .mat-mdc-snack-bar-container {
+    margin-bottom: calc(4rem + env(safe-area-inset-bottom) + 8px);
+  }
 }
 
 // Material buttons that carry a spinner while pending.

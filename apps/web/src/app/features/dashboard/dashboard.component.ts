@@ -2,8 +2,11 @@ import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@a
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { RouterLink } from '@angular/router';
 
 import { ConnectorStore } from '../../core/connector.store';
+import { InstrumentPipe } from '../../core/instrument.pipe';
+import { LayoutService } from '../../core/layout.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
@@ -21,12 +24,24 @@ import { DashboardStore } from './dashboard.store';
 @Component({
   selector: 'ak-dashboard',
   standalone: true,
-  imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule, MoneyPipe, QuantityPipe, ConnectionStatusComponent, EmptyStateComponent, VenueClockComponent],
+  imports: [
+    MatButtonModule,
+    MatIconModule,
+    MatProgressSpinnerModule,
+    RouterLink,
+    InstrumentPipe,
+    MoneyPipe,
+    QuantityPipe,
+    ConnectionStatusComponent,
+    EmptyStateComponent,
+    VenueClockComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.component.html',
 })
 export class DashboardComponent implements OnInit {
   protected readonly store = inject(DashboardStore);
+  protected readonly layout = inject(LayoutService);
   private readonly connectorStore = inject(ConnectorStore);
 
   /** Unique venues across every manifest this tenant can reach — drives the session strip, never a hardcoded exchange list. */

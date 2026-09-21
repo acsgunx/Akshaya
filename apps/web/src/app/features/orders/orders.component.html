@@ -1,13 +1,17 @@
 <section>
-  <header class="ak-page-head ak-row">
-    <h1>Orders</h1>
-    <div class="flex items-center gap-2">
+  <header class="ak-page-head ak-row max-lg:flex-wrap">
+    <!-- Compact only: Orders and Fills share one tab, so the Fills button below is desktop-only. -->
+    <ak-section-tabs class="basis-full" label="Orders and fills" [tabs]="ordersTabs" />
+    <h1 class="max-lg:sr-only">Orders</h1>
+    <div class="flex items-center gap-2 max-lg:w-full max-lg:justify-between">
       <mat-button-toggle-group [value]="store.openOnly()" (change)="store.setOpenOnly($event.value)" aria-label="Filter">
         <mat-button-toggle [value]="false">All</mat-button-toggle>
         <mat-button-toggle [value]="true">Open only</mat-button-toggle>
       </mat-button-toggle-group>
 
-      <a mat-stroked-button routerLink="/fills">Fills</a>
+      @if (!layout.compact()) {
+        <a mat-stroked-button routerLink="/fills">Fills</a>
+      }
 
       @if (hasWorkingOrders()) {
         <button
@@ -81,6 +85,78 @@
     <div class="ak-loading"><mat-spinner diameter="28" /> Loading orders…</div>
   } @else if (store.orders().length === 0) {
     <ak-empty-state icon="receipt_long" title="No orders" description="Orders placed from the order ticket will appear here." />
+  } @else if (layout.compact()) {
+    <!--
+      COMPACT: one card per order. The two statuses stay side by side exactly as on desktop — the
+      canonical state as a badge, the broker's own words verbatim under it — because the class
+      doc's reason for showing both does not get weaker on a smaller screen.
+    -->
+    <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Orders">
+      @for (order of store.orders(); track order.id) {
+        <li class="cv-auto-[104px] border-b border-border px-4 py-3 last:border-b-0">
+          <div class="flex items-center justify-between gap-3">
+            <p class="flex min-w-0 items-baseline gap-2">
+              <span
+                class="shrink-0 text-xs font-bold uppercase"
+                [class.text-buy]="order.side === 'buy'"
+                [class.text-sell]="order.side === 'sell'"
+                >{{ sideLabel(order.side) }}</span
+              >
+              <span class="truncate text-[15px] font-semibold">{{ order.instrument | akInstrument }}</span>
+            </p>
+
+            @if (isOrderUnresolved(order)) {
+              <!-- Never a status and never an action on an unresolved order — see the desktop row. -->
+              <span class="ak-badge ak-badge--warn">Checking with broker…</span>
+            } @else {
+              <span
+                class="ak-badge"
+                [class.ak-badge--info]="isOrderStateWorking(order.state)"
+                [class.ak-badge--ok]="order.state === 'filled'"
+                [class.ak-badge--bad]="order.state === 'rejected' || order.state === 'expired'"
+              >
+                {{ order.state }}
+              </span>
+            }
+          </div>
+
+          <div class="mt-1 flex items-baseline justify-between gap-3 text-xs text-text-secondary">
+            <span class="min-w-0 truncate tabular-nums">
+              {{ orderTypeLabel(order.orderType) }} ·
+              {{ order.filledQuantity | akQuantity: { fractional: true } }} / {{ order.quantity | akQuantity: { fractional: true } }} filled
+            </span>
+            <span class="shrink-0 text-[13px] font-medium text-text-primary tabular-nums">
+              {{ order.limitPrice ?? order.averagePrice | akMoney }}
+            </span>
+          </div>
+
+          @if (order.statusMessage) {
+            <div class="mt-1 line-clamp-2 text-xs text-text-tertiary">{{ order.statusMessage }}</div>
+          }
+
+          @if (!isOrderStateTerminal(order.state) && !isOrderUnresolved(order)) {
+            <div class="mt-2.5 flex flex-wrap gap-2">
+              @if (canModify(order)) {
+                <button mat-stroked-button type="button" (click)="openModify(order)">
+                  <mat-icon aria-hidden="true">edit</mat-icon>
+                  Modify
+                </button>
+              }
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="store.cancellingIds().has(order.id)"
+                (click)="cancel(order)"
+                [attr.aria-label]="'Cancel order for ' + order.instrument"
+              >
+                <mat-icon aria-hidden="true">close</mat-icon>
+                Cancel
+              </button>
+            </div>
+          }
+        </li>
+      }
+    </ul>
   } @else {
     <div class="ak-thead" role="row">
       <span>Instrument</span>

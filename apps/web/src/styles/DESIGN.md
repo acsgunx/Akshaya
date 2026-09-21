@@ -239,6 +239,84 @@ genuinely wants keyboard speed over pointing.
   visible `:focus-visible` ring (see `styles.scss`) — never a `div` with a
   click handler and no keyboard path.
 
+## Small screens
+
+Below Tailwind's `lg` breakpoint (64rem, 1024px) the app switches to a
+**compact layout**. The number is not a phone size on purpose: the desktop top
+bar needs ~960px before its links, the kill switch and the account link stop
+overflowing, and the nine-column order blotter squeezes its instrument column
+to nothing well before that. A portrait tablet is better served by the compact
+layout than by a squeezed desktop.
+
+**One breakpoint, two ways to read it.** Anything that is only styling uses
+`lg:` / `max-lg:` utilities. Anything that is different *markup* — a grid row
+versus a card, a virtual-scroll viewport versus a plain list — branches on
+`LayoutService.compact()` (`core/layout.service.ts`), whose `COMPACT_QUERY` is
+the exact complement of `lg:`. They cannot disagree about a given width. Don't
+render both layouts and hide one with CSS: it doubles the DOM, and on the
+watchlist it doubles every row's live subscription.
+
+The rules the compact screens follow:
+
+- **Navigation is a bottom tab bar**, five destinations, in the thumb's reach.
+  The app has eight screens, so related ones share a tab and switch with
+  `<ak-section-tabs>` at the top of each: Holdings | Positions (Portfolio),
+  Orders | Fills, Account | Brokers. They stay separate routes with their own
+  deep links. **The kill switch stays in the top bar**, always visible — on a
+  phone the old top nav pushed it off the right edge, which is the one place
+  it must never be.
+- **Blotters become lists, P&L first.** A phone has room for four of the
+  holdings grid's eight columns, and the ones it used to keep were the ones a
+  phone user checks least. Each row leads with the symbol on the left and the
+  number the user opened the app for (P&L, LTP, order status) on the right;
+  supporting figures sit on a second and third line. Never drop the P&L column
+  to make a table fit.
+- **Symbol first, venue second.** `XNSE:HDFCBANK:Equity` truncated to fit a
+  narrow cell becomes `XNSE:HD…` — the part every row shares survives and the
+  part that tells rows apart is cut. Use the `akInstrument` pipe: `'symbol'`
+  for the headline, `'detail'` for the venue and contract underneath.
+- **Actions live behind a tap, and they are labelled.** Tapping a row expands
+  it to show its broker legs and their actions (Sell, Exit, Add, Convert,
+  Modify, Cancel) as buttons with words on them. The desktop's icon-only
+  buttons lean on hover tooltips, and a finger cannot hover.
+- **Lists scroll with the page and are not virtualised.** The CDK viewport
+  needs a fixed row height and its own inner scroll box; compact rows expand in
+  place, and a scroll box inside a scrolling page traps the thumb. The
+  `cv-auto-[<height>]` utility (`content-visibility: auto`) lets the browser
+  skip off-screen rows instead.
+- **Nothing may be wider than the screen.** On a phone, overflow widens the
+  layout viewport and the fixed tab bar slides off the bottom with it. The
+  page content clips horizontal overflow as a safety net, but it is a net:
+  size things to fit (see the fills date range, which drops Apply to its own
+  row rather than squeeze three controls into 343px).
+
+Two things are keyed on the **pointer**, not the width, because they are about
+fingers rather than room:
+
+- **Density.** Material runs at density -2 only under `(pointer: fine)` (see
+  `_theme.scss`). A finger gets stock-size controls — 40px buttons and 48px
+  touch targets instead of 32px — whatever the screen width.
+- **Keyboard hints** (the order ticket's `B` / `S` / `Esc`) are hidden under
+  `pointer-coarse:`.
+
+And for iOS specifically: `viewport-fit=cover` with `env(safe-area-inset-*)`
+padding so nothing sits under the notch or the home indicator; form fields at
+16px or larger on touch, because Safari zooms the page into any smaller field
+and never zooms back; and `<meta name="theme-color">` kept in step with the
+top bar by `AppearanceStore`, so the browser's own toolbar blends into the app.
+
+### Two traps for anyone writing compact markup
+
+Both come from unlayered CSS beating Tailwind's layered utilities, whatever
+the specificity:
+
+- The reset in `styles.scss` zeroes margin on `p`, `h1`–`h4`, `figure`, `dd`
+  and margin and padding on `ul` / `ol`. A `mt-1` on a `<p>` or a `px-4` on a
+  `<ul>` silently does nothing — put the spacing on a `div` or the `li`.
+- Material's `mat-icon` rule sets `color`, `width` and `height`. A colour or
+  size utility on a `<mat-icon>` needs the `!` form (`text-text-tertiary!`),
+  the same convention already used to beat Material's buttons.
+
 ## Why the order ticket and broker-link wizard don't "know" a broker's name
 
 This is a UX rule as much as an architecture one: the moment either component

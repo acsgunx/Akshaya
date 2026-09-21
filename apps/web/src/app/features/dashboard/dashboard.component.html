@@ -121,6 +121,36 @@
         <h2 class="text-sm font-bold">Open positions ({{ snapshot.positions.length }})</h2>
         @if (snapshot.positions.length === 0) {
           <ak-empty-state icon="show_chart" title="No open positions" [compact]="true" />
+        } @else if (layout.compact()) {
+          <!--
+            Compact: two lines per position, P&L top-right, instead of a six-column table. The
+            margin sits on a wrapper because the global reset zeroes any margin utility on a <ul>.
+          -->
+          <div class="mt-1.5">
+            <ul role="list">
+              @for (pos of snapshot.positions; track pos.groupKey) {
+                <li class="flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-b-0">
+                  <div class="min-w-0">
+                    <p class="truncate text-[13px] font-semibold">{{ pos.instrument | akInstrument }}</p>
+                    <p class="text-xs text-text-secondary tabular-nums">
+                      {{ pos.netQuantity | akQuantity }} × {{ pos.averagePrice | akMoney }}
+                    </p>
+                  </div>
+                  <div class="shrink-0 text-right">
+                    <p
+                      class="text-[13px] font-semibold tabular-nums"
+                      [class.text-buy]="!pos.unrealisedPnl || +pos.unrealisedPnl.amount >= 0"
+                      [class.text-sell]="pos.unrealisedPnl && +pos.unrealisedPnl.amount < 0"
+                    >
+                      {{ pos.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
+                    </p>
+                    <p class="text-xs text-text-tertiary tabular-nums">LTP {{ pos.lastPrice | akMoney }}</p>
+                  </div>
+                </li>
+              }
+            </ul>
+          </div>
+          <a mat-button routerLink="/positions" class="mt-2">View all positions</a>
         } @else {
           <table class="mt-3 w-full border-collapse text-[13px]">
             <thead>

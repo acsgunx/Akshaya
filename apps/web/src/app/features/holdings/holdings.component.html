@@ -1,13 +1,16 @@
 <section>
-  <header class="ak-page-head">
-    <div>
+  <header class="ak-page-head max-lg:items-center">
+    <!-- Compact only: Holdings and Positions share the Portfolio tab. -->
+    <ak-section-tabs class="flex-1" label="Portfolio" [tabs]="portfolioTabs" />
+    <!-- The tabs above already say where you are on a phone; the heading stays for screen readers. -->
+    <div class="max-lg:sr-only">
       <h1>Holdings</h1>
       <p class="ak-sub">Delivery stock settled in your demat account, blended across every linked broker.</p>
     </div>
     <button
       mat-icon-button
       type="button"
-      class="ak-focus-halo"
+      class="ak-focus-halo shrink-0"
       aria-label="Refresh holdings"
       [disabled]="store.loading()"
       (click)="store.refresh(undefined)"
@@ -63,117 +66,253 @@
       }
     </div>
 
-    <div class="ak-thead" role="row">
-      <span></span>
-      <span>Instrument</span>
-      <span class="ak-col-qty">Qty</span>
-      <span class="ak-col-price">Avg cost</span>
-      <span class="ak-col-price">Last</span>
-      <span class="ak-col-pnl">Value</span>
-      <span class="ak-col-pnl">Unrealised</span>
-      <span class="ak-col-return">Return</span>
-    </div>
+    @if (layout.compact()) {
+      <!--
+        COMPACT: one row per holding, three lines, P&L first.
 
-    <!-- Virtualised: only visible rows render, even with a few thousand holdings. -->
-    <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport">
-      <div *cdkVirtualFor="let holding of holdings(); trackBy: trackByGroupKey">
-        <div class="ak-trow" role="row">
-          <button
-            type="button"
-            class="ak-expand ak-focus-halo"
-            [attr.aria-expanded]="isExpanded(holding.groupKey)"
-            [attr.aria-label]="'Toggle brokers holding ' + holding.instrument"
-            (click)="toggle(holding.groupKey)"
-            [disabled]="holding.legs.length <= 1"
-          >
-            @if (holding.legs.length > 1) {
-              <mat-icon class="ak-i-sm" aria-hidden="true">{{
-                isExpanded(holding.groupKey) ? 'expand_more' : 'chevron_right'
-              }}</mat-icon>
-            }
-          </button>
+        The desktop grid cannot survive a phone — at 390px it has room for four of its eight
+        columns, and the ones it used to keep (qty, avg cost, last) are the ones a phone user
+        checks LEAST. What they open the app for is "am I up or down, and by how much", so
+        that is the top-right of every row, where the eye lands, with return % under it.
 
-          <span class="ak-row ak-truncate ak-strong">
-            {{ holding.instrument }}
-            @if (holding.legs.length > 1) {
-              <span class="ak-badge">{{ holding.legs.length }} brokers</span>
-            }
-            @if (isPledged(holding)) {
-              <!--
-                Pledged stock is collateral and cannot be freely sold. A trader looking at a
-                quantity they cannot actually sell needs to know before they try, not after the
-                broker rejects the order.
-              -->
-              <span
-                class="ak-badge ak-badge--warn"
-                [attr.title]="(holding.pledgedQuantity | akQuantity: { fractional: true }) + ' pledged as collateral'"
-              >
-                <mat-icon class="ak-i-xs" aria-hidden="true">lock</mat-icon>
-                {{ holding.pledgedQuantity | akQuantity: { fractional: true } }} pledged
-              </span>
-            }
-          </span>
-
-          <span class="ak-col-qty">{{ holding.quantity | akQuantity: { fractional: true } }}</span>
-          <span class="ak-col-price">{{ holding.averagePrice | akMoney }}</span>
-          <span class="ak-col-price">{{ holding.lastPrice | akMoney }}</span>
-          <span class="ak-col-pnl">{{ holding.currentValue | akMoney }}</span>
-          <span
-            class="ak-col-pnl"
-            [class.ak-buy-text]="!holding.unrealisedPnl || +holding.unrealisedPnl.amount >= 0"
-            [class.ak-sell-text]="holding.unrealisedPnl && +holding.unrealisedPnl.amount < 0"
-          >
-            {{ holding.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
-          </span>
-          <span
-            class="ak-col-return"
-            [class.ak-buy-text]="(returnFor(holding) ?? 0) >= 0"
-            [class.ak-sell-text]="(returnFor(holding) ?? 0) < 0"
-          >
-            @if (returnFor(holding); as ret) {
-              {{ ret | percent: '1.2-2' }}
-            } @else {
-              —
-            }
-          </span>
-        </div>
-
-        @if (isExpanded(holding.groupKey)) {
-          <div class="ak-legs">
-            @for (leg of holding.legs; track leg.brokerLinkId) {
-              <div class="ak-tleg" role="row">
-                <span></span>
-                <span class="ak-truncate">{{ leg.displayName }}</span>
-                <span class="ak-col-qty">{{ leg.quantity | akQuantity: { fractional: true } }}</span>
-                <span class="ak-col-price">{{ leg.averagePrice | akMoney }}</span>
-                <span class="ak-col-price">{{ leg.lastPrice | akMoney }}</span>
-                <span class="ak-col-pnl">{{ leg.currentValue | akMoney }}</span>
-                <span class="ak-col-pnl">{{ leg.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}</span>
-                <!--
-                  Sell hangs off the LEG, because only a leg names the account
-                  that actually holds the stock. It opens the ticket staged to
-                  sell the FREE quantity — pledged stock is collateral and the
-                  broker will refuse an order against it, so offering the full
-                  holding here would set the trader up for a rejection.
-                -->
-                <span class="ak-col-return flex items-center justify-end">
-                  @if (sellableOf(leg) > 0) {
-                    <a
-                      class="ak-iconbtn ak-focus-halo ak-sell-text"
-                      [routerLink]="['/trade', leg.brokerLinkId, holding.instrument]"
-                      [queryParams]="{ side: 'sell', quantity: sellableOf(leg), product: 'delivery' }"
-                      [attr.aria-label]="'Sell ' + holding.instrument + ' at ' + leg.displayName"
-                      matTooltip="Sell from this account"
-                    >
-                      <mat-icon class="ak-i-sm" aria-hidden="true">remove_circle_outline</mat-icon>
-                    </a>
-                  }
+        Not virtualised: the CDK viewport needs a fixed row height and its own inner scroll
+        box, and this list has neither — rows expand in place and scroll with the page.
+        `cv-auto` lets the browser skip off-screen rows instead, which is what keeps a long
+        book cheap here.
+      -->
+      <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Holdings">
+        @for (holding of holdings(); track holding.groupKey) {
+          <li class="cv-auto-[92px] border-b border-border last:border-b-0">
+            <button
+              type="button"
+              class="ak-focus-halo flex w-full items-center gap-2 px-4 py-3 text-left active:bg-surface-2"
+              [attr.aria-expanded]="isExpanded(holding.groupKey)"
+              [disabled]="holding.legs.length === 0"
+              (click)="toggle(holding.groupKey)"
+            >
+              <span class="block min-w-0 flex-1">
+                <span class="flex items-baseline justify-between gap-3">
+                  <span class="min-w-0 truncate">
+                    <span class="text-[15px] font-semibold">{{ holding.instrument | akInstrument }}</span>
+                    <span class="ml-1.5 text-[11px] text-text-tertiary">{{ holding.instrument | akInstrument: 'detail' }}</span>
+                  </span>
+                  <span
+                    class="shrink-0 text-[15px] font-semibold tabular-nums"
+                    [class.text-buy]="!holding.unrealisedPnl || +holding.unrealisedPnl.amount >= 0"
+                    [class.text-sell]="holding.unrealisedPnl && +holding.unrealisedPnl.amount < 0"
+                  >
+                    {{ holding.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
+                  </span>
                 </span>
-              </div>
+
+                <span class="mt-1 flex items-baseline justify-between gap-3 text-xs text-text-secondary">
+                  <span class="min-w-0 truncate tabular-nums">
+                    Qty {{ holding.quantity | akQuantity: { fractional: true } }} · Avg {{ holding.averagePrice | akMoney }}
+                  </span>
+                  <span
+                    class="shrink-0 tabular-nums"
+                    [class.text-buy]="(returnFor(holding) ?? 0) >= 0"
+                    [class.text-sell]="(returnFor(holding) ?? 0) < 0"
+                  >
+                    @if (returnFor(holding); as ret) {
+                      {{ ret > 0 ? '+' : '' }}{{ ret | percent: '1.2-2' }}
+                    } @else {
+                      —
+                    }
+                  </span>
+                </span>
+
+                <span class="mt-0.5 flex items-baseline justify-between gap-3 text-xs text-text-tertiary">
+                  <span class="min-w-0 truncate tabular-nums">LTP {{ holding.lastPrice | akMoney }}</span>
+                  <span class="shrink-0 tabular-nums">Value {{ holding.currentValue | akMoney }}</span>
+                </span>
+
+                @if (holding.legs.length > 1 || isPledged(holding)) {
+                  <span class="mt-1.5 flex flex-wrap gap-1.5">
+                    @if (holding.legs.length > 1) {
+                      <span class="ak-badge">{{ holding.legs.length }} brokers</span>
+                    }
+                    @if (isPledged(holding)) {
+                      <span class="ak-badge ak-badge--warn">
+                        <mat-icon class="ak-i-xs" aria-hidden="true">lock</mat-icon>
+                        {{ holding.pledgedQuantity | akQuantity: { fractional: true } }} pledged
+                      </span>
+                    }
+                  </span>
+                }
+              </span>
+
+              <mat-icon
+                class="shrink-0 text-text-tertiary! transition-transform duration-(--duration-ak)"
+                [class.rotate-180]="isExpanded(holding.groupKey)"
+                aria-hidden="true"
+                >expand_more</mat-icon
+              >
+            </button>
+
+            @if (isExpanded(holding.groupKey)) {
+              <!--
+                The accounts holding this stock, each with its own Sell. Sell hangs off the LEG for
+                the same reason as on desktop: only a leg names the account that actually holds the
+                shares, and it pre-fills the FREE quantity, never the pledged part.
+              -->
+              <ul
+                class="border-t border-border bg-surface-2"
+                role="list"
+                [attr.aria-label]="'Accounts holding ' + (holding.instrument | akInstrument)"
+              >
+                @for (leg of holding.legs; track leg.brokerLinkId) {
+                  <li class="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-b-0">
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-[13px] font-medium">{{ leg.displayName }}</p>
+                      <p class="text-xs text-text-secondary tabular-nums">
+                        Qty {{ leg.quantity | akQuantity: { fractional: true } }} · Avg {{ leg.averagePrice | akMoney }}
+                      </p>
+                      <p class="text-xs tabular-nums text-text-tertiary">
+                        P&amp;L {{ leg.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
+                        @if (+leg.pledgedQuantity > 0) {
+                          · <span class="text-warning">{{ leg.pledgedQuantity | akQuantity: { fractional: true } }} pledged</span>
+                        }
+                      </p>
+                    </div>
+                    @if (sellableOf(leg) > 0) {
+                      <a
+                        mat-stroked-button
+                        class="shrink-0 text-sell!"
+                        [routerLink]="['/trade', leg.brokerLinkId, holding.instrument]"
+                        [queryParams]="{ side: 'sell', quantity: sellableOf(leg), product: 'delivery' }"
+                        [attr.aria-label]="'Sell ' + holding.instrument + ' at ' + leg.displayName"
+                      >
+                        Sell
+                      </a>
+                    } @else {
+                      <span class="shrink-0 text-xs text-text-tertiary">All pledged</span>
+                    }
+                  </li>
+                }
+              </ul>
             }
-          </div>
+          </li>
         }
+      </ul>
+    } @else {
+      <div class="ak-thead" role="row">
+        <span></span>
+        <span>Instrument</span>
+        <span class="ak-col-qty">Qty</span>
+        <span class="ak-col-price">Avg cost</span>
+        <span class="ak-col-price">Last</span>
+        <span class="ak-col-pnl">Value</span>
+        <span class="ak-col-pnl">Unrealised</span>
+        <span class="ak-col-return">Return</span>
       </div>
-    </cdk-virtual-scroll-viewport>
+
+      <!-- Virtualised: only visible rows render, even with a few thousand holdings. -->
+      <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport">
+        <div *cdkVirtualFor="let holding of holdings(); trackBy: trackByGroupKey">
+          <div class="ak-trow" role="row">
+            <!--
+              Expandable even with ONE leg, as on the positions blotter: the leg row is where Sell
+              lives, and a single broker is the common case. Gating on two legs left Sell
+              unreachable for most holdings.
+            -->
+            <button
+              type="button"
+              class="ak-expand ak-focus-halo"
+              [attr.aria-expanded]="isExpanded(holding.groupKey)"
+              [attr.aria-label]="'Show brokers and actions for ' + holding.instrument"
+              (click)="toggle(holding.groupKey)"
+              [disabled]="holding.legs.length === 0"
+            >
+              @if (holding.legs.length > 0) {
+                <mat-icon class="ak-i-sm" aria-hidden="true">{{
+                  isExpanded(holding.groupKey) ? 'expand_more' : 'chevron_right'
+                }}</mat-icon>
+              }
+            </button>
+
+            <span class="ak-row ak-truncate ak-strong">
+              {{ holding.instrument }}
+              @if (holding.legs.length > 1) {
+                <span class="ak-badge">{{ holding.legs.length }} brokers</span>
+              }
+              @if (isPledged(holding)) {
+                <!--
+                  Pledged stock is collateral and cannot be freely sold. A trader looking at a
+                  quantity they cannot actually sell needs to know before they try, not after the
+                  broker rejects the order.
+                -->
+                <span
+                  class="ak-badge ak-badge--warn"
+                  [attr.title]="(holding.pledgedQuantity | akQuantity: { fractional: true }) + ' pledged as collateral'"
+                >
+                  <mat-icon class="ak-i-xs" aria-hidden="true">lock</mat-icon>
+                  {{ holding.pledgedQuantity | akQuantity: { fractional: true } }} pledged
+                </span>
+              }
+            </span>
+
+            <span class="ak-col-qty">{{ holding.quantity | akQuantity: { fractional: true } }}</span>
+            <span class="ak-col-price">{{ holding.averagePrice | akMoney }}</span>
+            <span class="ak-col-price">{{ holding.lastPrice | akMoney }}</span>
+            <span class="ak-col-pnl">{{ holding.currentValue | akMoney }}</span>
+            <span
+              class="ak-col-pnl"
+              [class.ak-buy-text]="!holding.unrealisedPnl || +holding.unrealisedPnl.amount >= 0"
+              [class.ak-sell-text]="holding.unrealisedPnl && +holding.unrealisedPnl.amount < 0"
+            >
+              {{ holding.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
+            </span>
+            <span
+              class="ak-col-return"
+              [class.ak-buy-text]="(returnFor(holding) ?? 0) >= 0"
+              [class.ak-sell-text]="(returnFor(holding) ?? 0) < 0"
+            >
+              @if (returnFor(holding); as ret) {
+                {{ ret | percent: '1.2-2' }}
+              } @else {
+                —
+              }
+            </span>
+          </div>
+
+          @if (isExpanded(holding.groupKey)) {
+            <div class="ak-legs">
+              @for (leg of holding.legs; track leg.brokerLinkId) {
+                <div class="ak-tleg" role="row">
+                  <span></span>
+                  <span class="ak-truncate">{{ leg.displayName }}</span>
+                  <span class="ak-col-qty">{{ leg.quantity | akQuantity: { fractional: true } }}</span>
+                  <span class="ak-col-price">{{ leg.averagePrice | akMoney }}</span>
+                  <span class="ak-col-price">{{ leg.lastPrice | akMoney }}</span>
+                  <span class="ak-col-pnl">{{ leg.currentValue | akMoney }}</span>
+                  <span class="ak-col-pnl">{{ leg.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}</span>
+                  <!--
+                    Sell hangs off the LEG, because only a leg names the account
+                    that actually holds the stock. It opens the ticket staged to
+                    sell the FREE quantity — pledged stock is collateral and the
+                    broker will refuse an order against it, so offering the full
+                    holding here would set the trader up for a rejection.
+                  -->
+                  <span class="ak-col-return flex items-center justify-end">
+                    @if (sellableOf(leg) > 0) {
+                      <a
+                        class="ak-iconbtn ak-focus-halo ak-sell-text"
+                        [routerLink]="['/trade', leg.brokerLinkId, holding.instrument]"
+                        [queryParams]="{ side: 'sell', quantity: sellableOf(leg), product: 'delivery' }"
+                        [attr.aria-label]="'Sell ' + holding.instrument + ' at ' + leg.displayName"
+                        matTooltip="Sell from this account"
+                      >
+                        <mat-icon class="ak-i-sm" aria-hidden="true">remove_circle_outline</mat-icon>
+                      </a>
+                    }
+                  </span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </cdk-virtual-scroll-viewport>
+    }
   }
 </section>

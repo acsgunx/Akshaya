@@ -1,4 +1,4 @@
-// Two rules, both for things a utility class genuinely cannot express.
+// A few rules, each for something a utility class genuinely cannot express.
 @reference '../../../styles/tailwind.css';
 
 :host {
@@ -29,4 +29,12 @@
 // filling the screen without pushing the toolbar off the top.
 .ak-chart-card {
   --ak-chart-height: clamp(320px, calc(100vh - 260px), 780px);
+}
+
+// Compact: `dvh` so the chart tracks the visible viewport as a phone's toolbars collapse, less
+// the bottom tab bar, and a lower floor so a landscape phone still shows the whole card.
+@media (width < 64rem) {
+  .ak-chart-card {
+    --ak-chart-height: clamp(240px, calc(100dvh - 340px), 780px);
+  }
 }

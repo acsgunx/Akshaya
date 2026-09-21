@@ -37,6 +37,19 @@
     />
   } @else if (store.watched().length === 0) {
     <ak-empty-state icon="visibility" title="Your watchlist is empty" description="Search above to add an instrument." />
+  } @else if (layout.compact()) {
+    <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Watchlist">
+      @for (instrument of store.watched(); track instrument.key) {
+        <li class="border-b border-border last:border-b-0">
+          <ak-watchlist-row
+            [compact]="true"
+            [instrument]="instrument"
+            [brokerLinkId]="store.brokerLinkId() ?? ''"
+            (remove)="removeInstrument($event)"
+          />
+        </li>
+      }
+    </ul>
   } @else {
     <div class="ak-thead" role="row">
       <span>Instrument</span>

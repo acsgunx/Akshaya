@@ -7,6 +7,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 
 import { BrokerLinksStore } from '../../core/broker-links.store';
+import { LayoutService } from '../../core/layout.service';
 import type { InstrumentDefinition } from '../../core/models';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { WatchlistRowComponent } from './watchlist-row.component';
@@ -36,6 +37,7 @@ import { WatchlistStore } from './watchlist.store';
 })
 export class WatchlistComponent {
   protected readonly store = inject(WatchlistStore);
+  protected readonly layout = inject(LayoutService);
   private readonly brokerLinks = inject(BrokerLinksStore);
   protected readonly searchControl = new FormControl<string>('', { nonNullable: true });
 

@@ -56,7 +56,8 @@
               (click)="stageSide('buy')"
             >
               <span aria-hidden="true">▲</span> Buy
-              <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">B</span>
+              <!-- Keyboard hints mean nothing on a touchscreen, so a coarse pointer does not get them. -->
+              <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px] pointer-coarse:hidden">B</span>
             </button>
             <button
               type="button"
@@ -67,7 +68,7 @@
               (click)="stageSide('sell')"
             >
               <span aria-hidden="true">▼</span> Sell
-              <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">S</span>
+              <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px] pointer-coarse:hidden">S</span>
             </button>
           </div>
 
@@ -210,7 +211,8 @@
             </p>
           }
 
-          <footer class="flex items-center justify-end gap-2">
+          <!-- Full-width on a phone: the primary action of the screen, in reach of a thumb. -->
+          <footer class="flex items-center justify-end gap-2 max-lg:*:flex-1">
             <button
               mat-flat-button
               type="button"
@@ -282,7 +284,7 @@
             <p class="flex items-start gap-1.5 text-xs text-text-secondary">This broker does not provide a pre-trade cost estimate.</p>
           }
 
-          <footer class="flex items-center justify-end gap-2">
+          <footer class="flex items-center justify-end gap-2 max-lg:*:flex-1">
             <button mat-button type="button" (click)="backToForm()">Back</button>
             <button mat-flat-button type="button" [class]="isBuy() ? 'ak-btn-buy' : 'ak-btn-sell'" (click)="confirmSubmit()">
               Confirm {{ sideLabel(form.controls.side.value) }}
@@ -330,7 +332,7 @@
       }
     }
 
-    <p class="text-center text-[11px] text-text-tertiary">
+    <p class="text-center text-[11px] text-text-tertiary pointer-coarse:hidden">
       <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">B</span> Buy · <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">S</span> Sell · <span class="rounded-xs bg-surface-3 px-1.5 py-px font-mono text-[10px]">Esc</span> Cancel
     </p>
   </section>

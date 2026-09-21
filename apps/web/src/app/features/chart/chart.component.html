@@ -4,8 +4,8 @@
   serves only daily bars is supposed to render exactly one button here.
 -->
 <section>
-  <header class="mb-3.5 flex items-center gap-4">
-    <div>
+  <header class="mb-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+    <div class="min-w-0">
       <h1 class="text-[22px] font-bold">{{ instrumentLabel() }}</h1>
       <p class="mt-1 text-[13px] text-text-secondary">
         {{ manifest()?.displayName || link()?.nickname || 'Loading broker…' }}
@@ -36,7 +36,8 @@
       description="Live prices still stream on the watchlist and the order ticket. Historical bars need a broker whose connector declares them."
     />
   } @else {
-    <div class="mb-3 flex items-center gap-1" role="group" aria-label="Chart timeframe">
+    <!-- Scrolls sideways rather than wrapping when a broker declares more timeframes than fit. -->
+    <div class="mb-3 flex items-center gap-1 overflow-x-auto" role="group" aria-label="Chart timeframe">
       @for (frame of timeFrames(); track frame) {
         <button
           type="button"

@@ -11,6 +11,8 @@ import { filter } from 'rxjs';
 
 import { BrokerLinksStore } from '../../core/broker-links.store';
 import { ConnectorStore } from '../../core/connector.store';
+import { InstrumentPipe } from '../../core/instrument.pipe';
+import { LayoutService } from '../../core/layout.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import { orderTypeLabel, sideLabel } from '../../core/labels';
@@ -18,6 +20,7 @@ import { canModifyField, isOrderStateTerminal, isOrderStateWorking, isOrderUnres
 import type { ConnectorManifest, ModifyOrderRequest, OrderRecord } from '../../core/models';
 import { ConfirmDialogService } from '../../shared/confirm-dialog/confirm-dialog.service';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { ORDERS_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import { ModifyOrderDialogComponent, ModifyOrderDialogData } from './modify-order-dialog.component';
 import { OrdersStore } from './orders.store';
 
@@ -53,9 +56,11 @@ const ModifiableFields = ['quantity', 'limitPrice', 'triggerPrice', 'orderType',
     MatProgressSpinnerModule,
     MatTooltipModule,
     RouterLink,
+    InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
+    SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './orders.component.html',
@@ -68,6 +73,8 @@ export class OrdersComponent implements OnInit {
   private readonly brokerLinksStore = inject(BrokerLinksStore);
 
   protected readonly store = inject(OrdersStore);
+  protected readonly layout = inject(LayoutService);
+  protected readonly ordersTabs = ORDERS_TABS;
   protected readonly orderTypeLabel = orderTypeLabel;
   protected readonly sideLabel = sideLabel;
   protected readonly isOrderStateWorking = isOrderStateWorking;

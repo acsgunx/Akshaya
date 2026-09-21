@@ -9,11 +9,14 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RouterLink } from '@angular/router';
 
+import { InstrumentPipe } from '../../core/instrument.pipe';
 import { sideLabel } from '../../core/labels';
+import { LayoutService } from '../../core/layout.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import type { TradeRecord } from '../../core/models';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { ORDERS_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import { FillsStore } from './fills.store';
 
 /**
@@ -44,17 +47,30 @@ import { FillsStore } from './fills.store';
     MatInputModule,
     MatProgressSpinnerModule,
     RouterLink,
+    InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
+    SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section>
-      <header class="ak-page-head ak-row">
-        <h1>Fills</h1>
-        <div class="flex items-end gap-2">
-          <form [formGroup]="range" class="flex items-end gap-2">
+      <header class="ak-page-head ak-row max-lg:flex-wrap">
+        <!-- Compact only: Orders and Fills share one tab, so the Orders button below is desktop-only. -->
+        <ak-section-tabs class="basis-full" label="Orders and fills" [tabs]="ordersTabs" />
+        <h1 class="max-lg:sr-only">Fills</h1>
+        <div class="flex items-end gap-2 max-lg:w-full">
+          <!--
+            On a phone: the two dates side by side, Apply full width under them. Three across does
+            not fit — a date field needs ~150px to show "dd/mm/yyyy" and its picker icon. Material
+            pins a field's inner box at 180px, which is released here so the grid decides.
+          -->
+          <form
+            [formGroup]="range"
+            class="flex items-end gap-2 max-lg:grid max-lg:w-full max-lg:grid-cols-2
+                   max-lg:[&_.mat-mdc-form-field-infix]:w-auto!"
+          >
             <mat-form-field appearance="outline" subscriptSizing="dynamic">
               <mat-label>From</mat-label>
               <input matInput type="date" formControlName="from" />
@@ -63,9 +79,11 @@ import { FillsStore } from './fills.store';
               <mat-label>To</mat-label>
               <input matInput type="date" formControlName="to" />
             </mat-form-field>
-            <button mat-stroked-button type="button" (click)="applyRange()">Apply</button>
+            <button mat-stroked-button type="button" class="max-lg:col-span-2" (click)="applyRange()">Apply</button>
           </form>
-          <a mat-stroked-button routerLink="/orders">Orders</a>
+          @if (!layout.compact()) {
+            <a mat-stroked-button routerLink="/orders">Orders</a>
+          }
         </div>
       </header>
 
@@ -106,6 +124,38 @@ import { FillsStore } from './fills.store';
           {{ store.trades().length }} execution(s) · {{ orderCount() }} order(s)
         </p>
 
+        @if (layout.compact()) {
+          <!-- COMPACT: one card per execution, value top-right; the same facts as the desktop row. -->
+          <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Fills">
+            @for (trade of store.trades(); track trade.tradeId) {
+              <li class="cv-auto-[84px] border-b border-border px-4 py-3 last:border-b-0">
+                <div class="flex items-baseline justify-between gap-3">
+                  <p class="flex min-w-0 items-baseline gap-2">
+                    <span
+                      class="shrink-0 text-xs font-bold uppercase"
+                      [class.text-buy]="trade.side === 'buy'"
+                      [class.text-sell]="trade.side === 'sell'"
+                      >{{ sideLabel(trade.side) }}</span
+                    >
+                    <span class="truncate text-[15px] font-semibold">{{ trade.instrument | akInstrument }}</span>
+                  </p>
+                  <span class="shrink-0 text-[15px] font-semibold tabular-nums">{{ valueOf(trade) | akMoney }}</span>
+                </div>
+                <div class="mt-1 flex items-baseline justify-between gap-3 text-xs text-text-secondary">
+                  <span class="tabular-nums">
+                    {{ trade.quantity | akQuantity: { fractional: true } }} &#64; {{ trade.price | akMoney }}
+                  </span>
+                  <span class="shrink-0 tabular-nums">{{ trade.executedAt | date: 'dd MMM HH:mm:ss' }}</span>
+                </div>
+                <div class="mt-0.5 flex items-baseline justify-between gap-3 text-xs text-text-tertiary">
+                  <span class="min-w-0 truncate tabular-nums">Order {{ trade.brokerOrderId }}</span>
+                  <!-- An em dash, never a zero — see the desktop row. -->
+                  <span class="shrink-0 tabular-nums">Charges {{ trade.charges ? (trade.charges | akMoney) : '—' }}</span>
+                </div>
+              </li>
+            }
+          </ul>
+        } @else {
         <div class="ak-thead" role="row">
           <span>Time</span>
           <span>Instrument</span>
@@ -136,6 +186,7 @@ import { FillsStore } from './fills.store';
             <span class="ak-truncate ak-muted tabular-nums">{{ trade.brokerOrderId }}</span>
           </div>
         </cdk-virtual-scroll-viewport>
+        }
       }
     </section>
   `,
@@ -143,6 +194,8 @@ import { FillsStore } from './fills.store';
 })
 export class FillsComponent implements OnInit {
   protected readonly store = inject(FillsStore);
+  protected readonly layout = inject(LayoutService);
+  protected readonly ordersTabs = ORDERS_TABS;
   protected readonly sideLabel = sideLabel;
 
   protected readonly range = new FormGroup({

@@ -1,10 +1,17 @@
-// Everything on this screen is utilities in the template except the three
+// Everything on this screen is utilities in the template except the
 // things below, each of which a utility class genuinely cannot express.
 @reference '../../../styles/tailwind.css';
 
 :host {
   display: block;
   max-width: 420px;
+}
+
+// A phone gets the whole width; the 420px cap is for a desktop column, not a 390px screen.
+@media (width < 64rem) {
+  :host {
+    max-width: none;
+  }
 }
 
 // ---- Side toggle ---------------------------------------------------------
@@ -25,17 +32,5 @@
   @apply border-sell bg-sell-surface text-sell;
 }
 
-// ---- Directional submit buttons -------------------------------------------
-// `!important` because these have to beat Material's own filled-button colour
-// token, which a utility class loses to — the same reason `.ak-btn-danger`
-// lives in styles.scss. The sell foreground is near-black rather than white:
-// amber at this saturation fails 4.5:1 against white text.
-.ak-btn-buy {
-  background: var(--color-buy) !important;
-  color: #fff !important;
-}
-
-.ak-btn-sell {
-  background: var(--color-sell) !important;
-  color: #1a1200 !important;
-}
+// The directional submit buttons (`.ak-btn-buy` / `.ak-btn-sell`) are global,
+// in styles.scss, because the watchlist and orders screens use them too.
