@@ -131,7 +131,10 @@ jobs:
       # is what Persistence__SqlitePath=/home/data/... is for. If someone leaves the setting on its
       # relative default, the database lands under the deployed folder and this deploy silently
       # erases every account. Refuse instead.
-      - name: Verify the database is not inside the deployment folder
+      #
+      # It also puts Persistence__Mode back to Sqlite if it was left on InMemory — the one setting
+      # here that is safer to correct than to refuse. See the comment on that block.
+      - name: Verify the database is persistent and outside the deployment folder
         run: |
           path=$(az webapp config appsettings list \
             --name "${{ vars.AZURE_WEBAPP_NAME }}" \
@@ -143,8 +146,23 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --query "[?name=='Persistence__Mode'].value | [0]" -o tsv)
 
-          if [ "$mode" = "Postgres" ] || [ "$mode" = "InMemory" ]; then
-            echo "Persistence__Mode is $mode — no SQLite file to protect."
+          # InMemory keeps accounts in the process, so every restart — including the one this deploy
+          # is about to cause — empties the store and re-seeds a fresh account with a new password.
+          # It is a useful switch for diagnosing a startup failure, and exactly the kind that gets
+          # left on afterwards. There is no deployed use for it, so put it back rather than refuse:
+          # refusing would leave the site on InMemory until someone noticed the red run.
+          if [ "$mode" = "InMemory" ]; then
+            echo "::warning::Persistence__Mode was InMemory, which loses every account on restart. Setting it back to Sqlite."
+            az webapp config appsettings set \
+              --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --settings Persistence__Mode=Sqlite \
+              --output none
+            mode=Sqlite
+          fi
+
+          if [ "$mode" = "Postgres" ]; then
+            echo "Persistence__Mode is Postgres — no SQLite file to protect."
             exit 0
           fi
 
