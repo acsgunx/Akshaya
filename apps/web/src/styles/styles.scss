@@ -52,7 +52,11 @@
   body {
     background: var(--color-bg);
     color: var(--color-text-primary);
-    font: 400 14px/1.45 var(--mat-sys-plain-font-family, sans-serif);
+    // `--font-sans` from tailwind.css, the token source. Material 22's
+    // `mat.theme()` emits no `--mat-sys-plain-font-family` — only per-role
+    // variables like `--mat-sys-body-medium-font` — so pointing at that name
+    // silently fell back to the platform's generic sans-serif.
+    font: 400 14px/1.45 var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
 
