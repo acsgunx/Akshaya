@@ -6,6 +6,7 @@ import { tapResponse } from '@ngrx/operators';
 
 import { ApiService } from './api.service';
 import type { BrokerLink } from './models';
+import { problemDetail } from './models';
 
 interface State {
   readonly links: readonly BrokerLink[];
@@ -66,7 +67,7 @@ export const BrokerLinksStore = signalStore(
                 });
               },
               error: (err: unknown) =>
-                patchState(store, { loading: false, error: err instanceof Error ? err.message : 'Could not load broker links.' }),
+                patchState(store, { loading: false, error: problemDetail(err, 'Could not load broker links.') }),
             }),
           ),
         ),

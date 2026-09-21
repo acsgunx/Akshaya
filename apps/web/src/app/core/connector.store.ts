@@ -6,6 +6,7 @@ import { tapResponse } from '@ngrx/operators';
 
 import { ApiService } from './api.service';
 import type { ConnectorManifest } from './models';
+import { problemDetail } from './models';
 
 interface ConnectorState {
   readonly manifests: readonly ConnectorManifest[];
@@ -47,7 +48,7 @@ export const ConnectorStore = signalStore(
               error: (err: unknown) =>
                 patchState(store, {
                   loading: false,
-                  error: err instanceof Error ? err.message : 'Could not load connectors.',
+                  error: problemDetail(err, 'Could not load connectors.'),
                 }),
             }),
           ),

@@ -21,20 +21,30 @@ public sealed class ZerodhaMarketData : IConnectorMarketData
     private readonly ZerodhaOptions _options;
     private readonly ISymbolTranslator _symbols;
     private readonly ZerodhaInstrumentCache _instruments;
+    private readonly Func<CancellationToken, Task<Result>> _ensureInstruments;
     private readonly IClock _clock;
     private readonly TimeZoneInfo _venueZone;
 
+    /// <param name="api">The connector's HTTP client.</param>
+    /// <param name="options">Endpoint and timeout configuration.</param>
+    /// <param name="symbols">Canonical keys to Kite's symbols.</param>
+    /// <param name="instruments">The instrument master: history and option chains need its tokens.</param>
+    /// <param name="ensureInstruments">Loads the master if this process has not yet. Without it a
+    /// cold process could never chart anything, because nothing else loads it.</param>
+    /// <param name="clock">Stamps quotes.</param>
     internal ZerodhaMarketData(
         ZerodhaApi api,
         ZerodhaOptions options,
         ISymbolTranslator symbols,
         ZerodhaInstrumentCache instruments,
+        Func<CancellationToken, Task<Result>> ensureInstruments,
         IClock clock)
     {
         _api = api;
         _options = options;
         _symbols = symbols;
         _instruments = instruments;
+        _ensureInstruments = ensureInstruments;
         _clock = clock;
         _venueZone = ZerodhaTime.ResolveZone(options.VenueTimeZoneId);
     }
@@ -192,11 +202,28 @@ public sealed class ZerodhaMarketData : IConnectorMarketData
             return Result<CandleSeries>.Failure(interval.Error);
         }
 
+        // A token miss on a cold process means the master is not loaded yet, not that the
+        // instrument does not exist. Load it (once, process-wide) before deciding.
         if (!_instruments.TryGetToken(request.Instrument, out var token))
         {
-            return Result<CandleSeries>.Failure(_instruments.IsLoaded
-                ? ConnectorErrors.InstrumentNotFound(request.Instrument)
-                : ZerodhaErrors.MasterNotLoaded($"Charting {request.Instrument}"));
+            var loaded = await _ensureInstruments(ct).ConfigureAwait(false);
+            if (loaded.IsFailure)
+            {
+                return Result<CandleSeries>.Failure(loaded.Error);
+            }
+
+            if (!_instruments.TryGetToken(request.Instrument, out token))
+            {
+                return Result<CandleSeries>.Failure(new Error(
+                    ConnectorErrorCodes.InstrumentNotFound,
+                    $"Kite does not list {request.Instrument.Symbol}, so it has no price history for it.",
+                    VendorCode: null,
+                    VendorMessage: null,
+                    Context: new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["instrument"] = request.Instrument.ToString(),
+                    }));
+            }
         }
 
         var path = string.Format(
@@ -278,29 +305,33 @@ public sealed class ZerodhaMarketData : IConnectorMarketData
     /// exactly "the contracts, plus their quotes", and both halves are the broker's own data.
     ///
     /// What is genuinely absent is greeks — and the contract has no field for them, so nothing is
-    /// lost. What this DOES depend on is the instrument master being ingested, which is why the
-    /// failure says so rather than reporting the underlying as unknown.
+    /// lost. What this DOES depend on is the instrument master, which is loaded first if this
+    /// process does not have it yet.
     /// </remarks>
     public async Task<Result<OptionChain>> GetOptionChainAsync(
         InstrumentKey underlying,
         DateOnly expiry,
         CancellationToken ct = default)
     {
+        var loaded = await _ensureInstruments(ct).ConfigureAwait(false);
+        if (loaded.IsFailure)
+        {
+            return Result<OptionChain>.Failure(loaded.Error);
+        }
+
         var contracts = _instruments.OptionsFor(underlying, expiry);
         if (contracts.Count == 0)
         {
-            return Result<OptionChain>.Failure(_instruments.IsLoaded
-                ? new Error(
-                    ConnectorErrorCodes.InstrumentNotFound,
-                    $"Kite lists no {expiry:yyyy-MM-dd} option contracts on {underlying.Symbol}.",
-                    VendorCode: null,
-                    VendorMessage: null,
-                    Context: new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["underlying"] = underlying.Symbol,
-                        ["expiry"] = expiry.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                    })
-                : ZerodhaErrors.MasterNotLoaded($"The {underlying.Symbol} option chain"));
+            return Result<OptionChain>.Failure(new Error(
+                ConnectorErrorCodes.InstrumentNotFound,
+                $"Kite lists no {expiry:yyyy-MM-dd} option contracts on {underlying.Symbol}.",
+                VendorCode: null,
+                VendorMessage: null,
+                Context: new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["underlying"] = underlying.Symbol,
+                    ["expiry"] = expiry.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                }));
         }
 
         var wanted = new Dictionary<string, InstrumentKey>(StringComparer.OrdinalIgnoreCase);

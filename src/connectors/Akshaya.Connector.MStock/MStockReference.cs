@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Akshaya.Connectors.Abstractions;
+using Akshaya.Connectors.Sdk;
 using Akshaya.SharedKernel;
 
 namespace Akshaya.Connector.MStock;
@@ -12,33 +13,47 @@ namespace Akshaya.Connector.MStock;
 ///
 /// mStock publishes it as one CSV covering every tradable contract on NSE and BSE — well over
 /// two hundred thousand rows once the weekly option chains are in it, and several times that
-/// on an expiry week. It is streamed and parsed row by row: buffering it produces a
-/// large-object-heap allocation measured in hundreds of megabytes, and doing that on an API
-/// process that is also routing orders is not acceptable.
+/// on an expiry week. It is streamed and parsed row by row rather than read into one string:
+/// buffering the raw text produces a large-object-heap allocation measured in hundreds of
+/// megabytes, and doing that on an API process that is also routing orders is not acceptable.
 ///
 /// Parsing is by COLUMN NAME, never by position. mStock has added columns mid-file-format
 /// before, and a positional parser silently reads the wrong column when that happens — which
 /// means silently wrong strikes and expiries, which means orders on the wrong contract.
+///
+/// The parsed rows live in a PROCESS-WIDE cache (<see cref="SharedInstrumentMaster{TCache}"/>),
+/// not in this connector instance. Connectors are built per request; a per-instance cache was
+/// empty on every request, which is why charts and the price socket — both addressed by numeric
+/// token — never worked. Anything that needs the master calls <see cref="EnsureLoadedAsync"/>,
+/// which downloads it once for the whole process and then answers from memory.
 /// </summary>
 public sealed class MStockReference : IConnectorReference
 {
     private readonly MStockApi _api;
     private readonly MStockOptions _options;
-    private readonly MStockInstrumentCache _cache;
+    private readonly SharedInstrumentMaster<MStockInstrumentCache> _master;
+    private readonly IClock _clock;
 
     /// <summary>Creates the reference-data facet.</summary>
-    internal MStockReference(MStockApi api, MStockOptions options, MStockInstrumentCache cache)
+    internal MStockReference(
+        MStockApi api,
+        MStockOptions options,
+        SharedInstrumentMaster<MStockInstrumentCache> master,
+        IClock clock)
     {
         _api = api;
         _options = options;
-        _cache = cache;
+        _master = master;
+        _clock = clock;
     }
+
+    private MStockInstrumentCache Cache => _master.Cache;
 
     /// <inheritdoc />
     /// <remarks>
-    /// This is also what populates <see cref="MStockInstrumentCache"/>, which the symbol
-    /// translator, the chart routes and the streaming socket all depend on. Enumerating with a
-    /// filter still caches every row seen, because the next caller's filter will be different.
+    /// Served from the shared cache, which is loaded first if this process does not have a
+    /// fresh copy. The platform's search index and this connector's own token lookups therefore
+    /// share one download instead of each fetching the file.
     ///
     /// The contract's signature has no failure channel — you cannot return a
     /// <c>Result</c> from an <see cref="IAsyncEnumerable{T}"/> — so a download failure throws
@@ -52,52 +67,14 @@ public sealed class MStockReference : IConnectorReference
         AssetClass? assetClass = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var download = await _api
-            .GetRawStreamAsync(_options.ScriptMasterPath, query: null, ct)
-            .ConfigureAwait(false);
-
-        if (download.IsFailure)
+        var loaded = await EnsureLoadedAsync(ct).ConfigureAwait(false);
+        if (loaded.IsFailure)
         {
-            throw new MStockReferenceException(download.Error);
+            throw new MStockReferenceException(loaded.Error);
         }
 
-        await using var stream = download.Value;
-        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-
-        var headerLine = await reader.ReadLineAsync(ct).ConfigureAwait(false);
-        if (headerLine is null)
+        foreach (var record in Cache.Snapshot())
         {
-            throw new MStockReferenceException(new Error(
-                ConnectorErrorCodes.BrokerUnavailable,
-                "mStock's script master came back empty."));
-        }
-
-        var header = MStockCsv.BuildHeader(headerLine);
-        var batch = new List<MStockInstrumentRecord>(capacity: 4096);
-
-        while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
-        {
-            if (line.Length == 0)
-            {
-                continue;
-            }
-
-            if (!MStockCsv.TryParseRow(line, header, out var record))
-            {
-                // A row we cannot parse is skipped rather than fatal. One malformed line in
-                // two hundred thousand must not abort the nightly ingest; the parse failures
-                // are counted so the ingest job can alarm if the rate is abnormal.
-                _cache.RecordSkippedRow();
-                continue;
-            }
-
-            batch.Add(record);
-            if (batch.Count == batch.Capacity)
-            {
-                _cache.AddRange(batch);
-                batch.Clear();
-            }
-
             if (venue is { } wantedVenue && record.Definition.Key.Venue != wantedVenue)
             {
                 continue;
@@ -110,13 +87,6 @@ public sealed class MStockReference : IConnectorReference
 
             yield return record.Definition;
         }
-
-        if (batch.Count > 0)
-        {
-            _cache.AddRange(batch);
-        }
-
-        _cache.MarkLoaded();
     }
 
     /// <inheritdoc />
@@ -130,7 +100,7 @@ public sealed class MStockReference : IConnectorReference
             return Result<InstrumentDefinition>.Failure(ensured.Error);
         }
 
-        return _cache.TryGetDefinition(key, out var definition)
+        return Cache.TryGetDefinition(key, out var definition)
             ? definition
             : Result<InstrumentDefinition>.Failure(ConnectorErrors.InstrumentNotFound(key));
     }
@@ -152,33 +122,79 @@ public sealed class MStockReference : IConnectorReference
             return Result<IReadOnlyList<InstrumentDefinition>>.Failure(ensured.Error);
         }
 
-        return Result<IReadOnlyList<InstrumentDefinition>>.Success(_cache.Search(query, limit));
+        return Result<IReadOnlyList<InstrumentDefinition>>.Success(Cache.Search(query, limit));
     }
 
     /// <summary>
-    /// Loads the master once per connector if nobody has already. The download is expensive
-    /// enough that a resolve which triggers it is worth doing exactly once.
+    /// Loads the master into the shared cache unless this process already holds a fresh copy.
+    /// Charts and the price socket call this before looking up a token, so the first chart after
+    /// a restart waits for the download instead of failing.
     /// </summary>
-    private async Task<Result> EnsureLoadedAsync(CancellationToken ct)
+    internal Task<Result> EnsureLoadedAsync(CancellationToken ct) =>
+        _master.EnsureLoadedAsync(DownloadAsync, _clock, ct);
+
+    /// <summary>
+    /// Downloads and parses the whole master, then swaps it into the cache in one step. Nothing
+    /// is published until the file has been read to the end, so a download that dies halfway
+    /// leaves the previous master in place rather than half of a new one.
+    /// </summary>
+    private async Task<Result> DownloadAsync(CancellationToken ct)
     {
-        if (_cache.IsLoaded)
+        var download = await _api
+            .GetRawStreamAsync(_options.ScriptMasterPath, query: null, ct)
+            .ConfigureAwait(false);
+
+        if (download.IsFailure)
         {
-            return Result.Success();
+            return Result.Failure(download.Error);
         }
 
-        try
+        await using var stream = download.Value;
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+
+        var headerLine = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+        if (headerLine is null)
         {
-            await foreach (var _ in GetInstrumentsAsync(ct: ct).ConfigureAwait(false))
+            return Result.Failure(new Error(
+                ConnectorErrorCodes.BrokerUnavailable,
+                "mStock sent an empty instrument list. Try again in a few minutes."));
+        }
+
+        var header = MStockCsv.BuildHeader(headerLine);
+        var records = new List<MStockInstrumentRecord>(capacity: 65_536);
+        var skipped = 0;
+
+        while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
+        {
+            if (line.Length == 0)
             {
-                // Enumerated purely for the side effect of filling the cache; the rows
-                // themselves are held there, not here.
+                continue;
             }
-        }
-        catch (MStockReferenceException ex)
-        {
-            return Result.Failure(ex.Error);
+
+            if (!MStockCsv.TryParseRow(line, header, out var record))
+            {
+                // A row we cannot parse is skipped rather than fatal. One malformed line in
+                // two hundred thousand must not abort the load; the count is reported by the
+                // connector's health check so an abnormal rate is visible.
+                skipped++;
+                continue;
+            }
+
+            records.Add(record);
         }
 
+        if (records.Count == 0)
+        {
+            // Never cached as "mStock lists nothing": that would leave every chart failing with
+            // "instrument not found" until the next refresh, twelve hours away.
+            return Result.Failure(new Error(
+                ConnectorErrorCodes.BrokerUnavailable,
+                "mStock's instrument list could not be read. Try again in a few minutes.",
+                VendorCode: null,
+                VendorMessage: $"{skipped} rows, none parseable."));
+        }
+
+        Cache.Replace(records, skipped);
         return Result.Success();
     }
 }
@@ -231,21 +247,24 @@ public sealed record MStockInstrumentRecord(
 ///
 /// Shared by every facet of one connector instance: the symbol translator resolves monthly
 /// expiries through it, the chart routes need its numeric tokens, and the streaming socket
-/// receives ticks that carry a token and nothing else. It is fed by
-/// <see cref="MStockReference.GetInstrumentsAsync"/>.
+/// receives ticks that carry a token and nothing else. It is filled by
+/// <see cref="MStockReference"/> and held process-wide through
+/// <see cref="SharedInstrumentMaster{TCache}"/>, so it outlives any one connector.
 ///
-/// Thread-safe by construction — the ingest writes while quote and order paths read.
+/// Thread-safe by construction — a reload swaps in a new generation while quote and order
+/// paths read the old one.
 /// </summary>
 public sealed class MStockInstrumentCache : IMStockInstrumentLookup, IDisposable
 {
-    private readonly Dictionary<string, MStockInstrumentRecord> _byNative =
+    // Not readonly: Replace swaps in a whole new generation under the write lock.
+    private Dictionary<string, MStockInstrumentRecord> _byNative =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly Dictionary<InstrumentKey, MStockInstrumentRecord> _byKey = [];
+    private Dictionary<InstrumentKey, MStockInstrumentRecord> _byKey = [];
 
-    private readonly Dictionary<uint, MStockInstrumentRecord> _byToken = [];
+    private Dictionary<uint, MStockInstrumentRecord> _byToken = [];
 
-    private readonly List<MStockInstrumentRecord> _all = [];
+    private List<MStockInstrumentRecord> _all = [];
 
     private readonly ReaderWriterLockSlim _gate = new(LockRecursionPolicy.NoRecursion);
 
@@ -282,19 +301,64 @@ public sealed class MStockInstrumentCache : IMStockInstrumentLookup, IDisposable
         {
             foreach (var record in records)
             {
-                _all.Add(record);
-                _byNative[NativeKey(record.TradingSymbol, record.Exchange)] = record;
-                _byKey[record.Definition.Key] = record;
-
-                if (record.InstrumentToken != 0)
-                {
-                    _byToken[record.InstrumentToken] = record;
-                }
+                Index(record, _all, _byNative, _byKey, _byToken);
             }
         }
         finally
         {
             _gate.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Replaces the whole master with a freshly parsed one and marks it loaded.
+    ///
+    /// REPLACE, never append. The cache is process-wide and reloaded twice a day; appending would
+    /// hold every row twice by the afternoon and keep yesterday's expired contracts forever. The
+    /// new generation is built outside the lock and published in one swap, so a reader sees
+    /// either the old master or the new one, never a mixture or a half-built index.
+    /// </summary>
+    public void Replace(IReadOnlyList<MStockInstrumentRecord> records, int skippedRows)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+
+        var all = new List<MStockInstrumentRecord>(records.Count);
+        var byNative = new Dictionary<string, MStockInstrumentRecord>(records.Count, StringComparer.OrdinalIgnoreCase);
+        var byKey = new Dictionary<InstrumentKey, MStockInstrumentRecord>(records.Count);
+        var byToken = new Dictionary<uint, MStockInstrumentRecord>(records.Count);
+
+        foreach (var record in records)
+        {
+            Index(record, all, byNative, byKey, byToken);
+        }
+
+        _gate.EnterWriteLock();
+        try
+        {
+            _all = all;
+            _byNative = byNative;
+            _byKey = byKey;
+            _byToken = byToken;
+            Volatile.Write(ref _skippedRows, skippedRows);
+            IsLoaded = true;
+        }
+        finally
+        {
+            _gate.ExitWriteLock();
+        }
+    }
+
+    /// <summary>A point-in-time copy of every row, safe to enumerate while a reload runs.</summary>
+    public IReadOnlyList<MStockInstrumentRecord> Snapshot()
+    {
+        _gate.EnterReadLock();
+        try
+        {
+            return _all.ToArray();
+        }
+        finally
+        {
+            _gate.ExitReadLock();
         }
     }
 
@@ -493,6 +557,23 @@ public sealed class MStockInstrumentCache : IMStockInstrumentLookup, IDisposable
 
     private static string NativeKey(string tradingSymbol, string exchange) =>
         $"{exchange.ToUpperInvariant()}:{tradingSymbol.ToUpperInvariant()}";
+
+    private static void Index(
+        MStockInstrumentRecord record,
+        List<MStockInstrumentRecord> all,
+        Dictionary<string, MStockInstrumentRecord> byNative,
+        Dictionary<InstrumentKey, MStockInstrumentRecord> byKey,
+        Dictionary<uint, MStockInstrumentRecord> byToken)
+    {
+        all.Add(record);
+        byNative[NativeKey(record.TradingSymbol, record.Exchange)] = record;
+        byKey[record.Definition.Key] = record;
+
+        if (record.InstrumentToken != 0)
+        {
+            byToken[record.InstrumentToken] = record;
+        }
+    }
 
     /// <inheritdoc />
     public void Dispose() => _gate.Dispose();

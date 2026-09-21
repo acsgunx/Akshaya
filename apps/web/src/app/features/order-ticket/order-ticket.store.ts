@@ -7,6 +7,7 @@ import { tapResponse } from '@ngrx/operators';
 import { ApiService } from '../../core/api.service';
 import type { HttpErrorResponse } from '@angular/common/http';
 import type { ApiProblem, InstrumentDefinition, OrderActionResult, OrderEstimate, PlaceOrderRequest } from '../../core/models';
+import { problemDetail } from '../../core/models';
 
 export type OrderTicketPhase = 'form' | 'reviewing' | 'submitting' | 'submitted' | 'failed';
 
@@ -84,7 +85,7 @@ export const OrderTicketStore = signalStore(
               error: (err: unknown) =>
                 patchState(store, {
                   instrumentLoading: false,
-                  instrumentError: err instanceof Error ? err.message : 'Could not load instrument details.',
+                  instrumentError: problemDetail(err, 'Could not load instrument details.'),
                 }),
             }),
           ),

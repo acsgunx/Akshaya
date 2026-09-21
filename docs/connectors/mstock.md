@@ -158,11 +158,28 @@ default is how a rejected order shows as open.
 - **Symbols carry a series suffix on NSE cash** (`INFY-EQ`) but not on BSE. The translator prefers
   the script master and falls back to structural rules while the master is still ingesting — a
   cold start must not look like an outage.
-- **The socket identifies instruments by numeric token only**, so streaming cannot work at all
-  until the script master is loaded. The connector's health check reports this as degraded, not
-  unhealthy: an un-ingested master still permits trading through the structural fallback.
+- **The socket and the chart routes identify instruments by numeric token only**, so neither works
+  without the script master. The master is held once per process (`SharedInstrumentMaster` in the
+  SDK), not per connector instance — connectors are request-scoped, and a per-instance cache was
+  empty on every request, so charts and live prices never worked. The first chart, live-price
+  subscription or search after a restart downloads it; everything after that reads memory. It is
+  reloaded after twelve hours, and a failed reload keeps serving the previous copy.
 - **The script master is a large CSV.** It is streamed and parsed, not buffered. Skipped rows are
   counted and surfaced in health — a non-zero count is worth an alert.
+- **Every API call must come from an IP registered on the API key.** SEBI's retail-algo rules make
+  brokers restrict API access to a static IP, and mStock enforces it on every route — quotes and
+  the script master included, not only orders. A call from anywhere else fails with
+  `APIKeyException` / "Primary and Secondary IP Address are not matching with current IP
+  address." Despite the exception type, **the key is fine**: regenerating it changes nothing. The
+  fix is to register the public IP of the machine running Akshaya as the primary or secondary IP
+  in the mStock API portal. The error mapper recognises this text and says so rather than
+  reporting an expired key.
+  - Running locally: that is your connection's public IP, which most home ISPs change from time to
+    time.
+  - On Azure App Service: outbound traffic leaves from one of several shared addresses
+    (`az webapp show -g <rg> -n <app> --query possibleOutboundIpAddresses`), more than the two
+    mStock accepts, and they are not reserved for you. A fixed egress IP needs VNet integration
+    with a NAT gateway on a static public IP; register that one address.
 
 ## Smoke test — run this before trusting anything
 

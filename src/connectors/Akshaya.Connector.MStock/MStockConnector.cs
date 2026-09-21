@@ -15,11 +15,12 @@ namespace Akshaya.Connector.MStock;
 ///
 /// Two lifetime details worth knowing before you change anything:
 ///
-/// 1. The instrument cache is shared by reference between the reference, market-data and
-///    stream facets. It holds the parsed script master — hundreds of thousands of rows — and
-///    the stream facet cannot work without it at all, because mStock's socket identifies
-///    instruments by numeric token and nothing else. One cache per connector instance, never
-///    one per facet.
+/// 1. The instrument cache is shared by every connector instance in the process, not owned by
+///    this one. It holds the parsed script master — hundreds of thousands of rows — and the
+///    chart routes and the socket cannot work without it at all, because mStock identifies
+///    instruments there by numeric token and nothing else. Connectors are built per request,
+///    so a cache owned by the instance was empty on every request; see
+///    <see cref="SharedInstrumentMaster{TCache}"/>. The instance never disposes it.
 ///
 /// 2. Facets are built eagerly in the constructor rather than lazily per property. A lazy
 ///    property that constructs an <see cref="MStockApi"/> on first touch would quietly create
@@ -30,6 +31,7 @@ namespace Akshaya.Connector.MStock;
 public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
 {
     private readonly MStockApi _api;
+    private readonly SharedInstrumentMaster<MStockInstrumentCache> _master;
     private readonly MStockInstrumentCache _instruments;
     private readonly MStockStream? _stream;
     private bool _disposed;
@@ -56,7 +58,11 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
         Options = options;
         Errors = new MStockErrorMapper();
 
-        _instruments = new MStockInstrumentCache();
+        // Keyed by endpoint so the sandbox and production never share a list.
+        _master = SharedInstrumentMaster.For(
+            options.BaseUrl.AbsoluteUri,
+            static () => new MStockInstrumentCache());
+        _instruments = _master.Cache;
 
         // The symbol translator prefers the script master when it is loaded and falls back to
         // structural rules (INFY -> INFY-EQ, expiry/strike composition for F&O) when it is not.
@@ -67,16 +73,17 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
         _api = MStockApi.Create(options, Errors, session, logger: Logger);
 
         AuthFacet = new MStockAuth(options, Errors, Clock);
+        ReferenceFacet = new MStockReference(_api, options, _master, Clock);
         OrdersFacet = new MStockOrders(_api, options, Symbols, Clock);
         PortfolioFacet = new MStockPortfolio(_api, options, Symbols, _instruments);
-        MarketDataFacet = new MStockMarketData(_api, options, Symbols, Clock, _instruments);
-        ReferenceFacet = new MStockReference(_api, options, _instruments);
+        MarketDataFacet = new MStockMarketData(
+            _api, options, Symbols, Clock, _instruments, ReferenceFacet.EnsureLoadedAsync);
 
         // No session means no socket. The unauthenticated instance exists only to run the
         // login handshake, and the contract says callers must handle a null Stream.
         _stream = session is null
             ? null
-            : new MStockStream(options, session, _instruments, Clock);
+            : new MStockStream(options, session, _instruments, Clock, ReferenceFacet.EnsureLoadedAsync);
     }
 
     /// <summary>Endpoint and timeout configuration, exposed for diagnostics.</summary>
@@ -89,8 +96,8 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
     public ISymbolTranslator Symbols { get; }
 
     /// <summary>
-    /// The parsed script master. Exposed so the host's daily ingest job can populate it and so
-    /// health checks can report how many instruments are loaded and how many rows were skipped.
+    /// The parsed script master, shared process-wide. Exposed so health checks can report how
+    /// many instruments are loaded and how many rows were skipped.
     /// </summary>
     public MStockInstrumentCache Instruments => _instruments;
 
@@ -159,7 +166,8 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
             {
                 Detail = Join(
                     health.Detail,
-                    "Script master not yet ingested; symbol resolution is using structural fallback."),
+                    "Script master not loaded yet; it loads on the first chart, live price or "
+                    + "search, and symbol resolution uses the structural fallback until then."),
             };
         }
 
@@ -190,15 +198,16 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
 
         _disposed = true;
 
-        // Socket first: it holds a reference to the cache and will log against a disposed
-        // lookup if the cache goes first.
+        // Socket first: it may still be resolving ticks, and a tick arriving mid-teardown should
+        // not race the HTTP client going away.
         if (_stream is not null)
         {
             await _stream.DisposeAsync().ConfigureAwait(false);
         }
 
+        // The instrument cache is NOT disposed: it is process-wide and other connector instances
+        // are reading it right now.
         await _api.DisposeAsync().ConfigureAwait(false);
-        _instruments.Dispose();
 
         // Chain to the base, as ConnectorBase.DisposeAsync's own documentation requires. Until this
         // method carried `override` it hid the base instead, so this never ran.

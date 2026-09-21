@@ -70,6 +70,11 @@ public sealed class FyersErrorMapper : IVendorErrorMapper
     /// <inheritdoc />
     public string? MapToCanonicalCode(VendorErrorContext context)
     {
+        if (IsUnregisteredIp(context.VendorMessage))
+        {
+            return ConnectorErrorCodes.NotSupported;
+        }
+
         if (TryReadVendorCode(context.VendorCode, out var code))
         {
             var mapped = MapVendorCode(code, context.Path);
@@ -113,7 +118,11 @@ public sealed class FyersErrorMapper : IVendorErrorMapper
             + "in one day blocks the account for the rest of the day.",
         ConnectorErrorCodes.Timeout => "FYERS did not respond in time.",
         ConnectorErrorCodes.BrokerUnavailable => "FYERS is currently unavailable.",
-        ConnectorErrorCodes.NotSupported => "FYERS does not permit this action on this account.",
+        ConnectorErrorCodes.NotSupported => IsUnregisteredIp(context.VendorMessage)
+            ? "FYERS only accepts API orders from the static IP registered on your FYERS API app, and "
+              + "this app is connecting from a different one. In the FYERS API dashboard, register the "
+              + "public IP of the machine or server running Akshaya, then try again."
+            : "FYERS does not permit this action on this account.",
         ConnectorErrorCodes.InvalidRequest => WithBrokerWords("FYERS rejected the request as invalid.", context),
 
         // NO OPINION: SAY WHAT THE BROKER SAID. Our own wording is better than a vendor's ONLY
@@ -269,6 +278,20 @@ public sealed class FyersErrorMapper : IVendorErrorMapper
 
         return null;
     }
+
+    /// <summary>
+    /// Whether the broker refused the request because of the IP address it came from.
+    ///
+    /// SEBI's retail-algo rules require API orders to come from a static IP the user has registered
+    /// with the broker. The refusal arrives under whatever exception type the broker files it with,
+    /// and treating it as a session or permission problem sends the user round a login loop that
+    /// cannot help, so it is recognised from the text and checked before the type.
+    /// </summary>
+    private static bool IsUnregisteredIp(string? message) =>
+        !string.IsNullOrWhiteSpace(message)
+        && Contains(
+            message.ToUpperInvariant(),
+            "IP ADDRESS", "STATIC IP", "REGISTERED IP", "WHITELIST", "WHITE LIST", "WHITE-LIST");
 
     private static bool Contains(string haystack, params ReadOnlySpan<string> needles)
     {

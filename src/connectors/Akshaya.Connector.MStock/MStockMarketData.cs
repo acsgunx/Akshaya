@@ -27,22 +27,32 @@ public sealed class MStockMarketData : IConnectorMarketData
     private readonly MStockOptions _options;
     private readonly ISymbolTranslator _symbols;
     private readonly IMStockInstrumentLookup? _instruments;
+    private readonly Func<CancellationToken, Task<Result>>? _ensureInstruments;
     private readonly IClock _clock;
     private readonly TimeZoneInfo _venueZone;
 
     /// <summary>Creates the market-data facet.</summary>
+    /// <param name="api">The connector's HTTP client.</param>
+    /// <param name="options">Endpoint and timeout configuration.</param>
+    /// <param name="symbols">Canonical keys to mStock's quote keys.</param>
+    /// <param name="clock">Stamps quotes.</param>
+    /// <param name="instruments">The script master, for the numeric tokens the chart routes take.</param>
+    /// <param name="ensureInstruments">Loads the script master if this process has not yet.
+    /// Without it a cold process could never chart anything, because nothing else loads it.</param>
     internal MStockMarketData(
         MStockApi api,
         MStockOptions options,
         ISymbolTranslator symbols,
         IClock clock,
-        IMStockInstrumentLookup? instruments = null)
+        IMStockInstrumentLookup? instruments = null,
+        Func<CancellationToken, Task<Result>>? ensureInstruments = null)
     {
         _api = api;
         _options = options;
         _symbols = symbols;
         _clock = clock;
         _instruments = instruments;
+        _ensureInstruments = ensureInstruments;
         _venueZone = MStockTime.ResolveZone(options.VenueTimeZoneId);
     }
 
@@ -171,17 +181,13 @@ public sealed class MStockMarketData : IConnectorMarketData
                 "The history window ends before it begins."));
         }
 
-        // The chart routes are addressed by numeric instrument token, not by trading symbol,
-        // so the script master has to be loaded. Saying so beats a 404 with no explanation.
-        if (_instruments is null || !_instruments.TryGetToken(request.Instrument, out var token))
+        var resolved = await ResolveTokenAsync(request.Instrument, ct).ConfigureAwait(false);
+        if (resolved.IsFailure)
         {
-            return Result<CandleSeries>.Failure(new Error(
-                ConnectorErrorCodes.InstrumentNotFound,
-                $"mStock's chart routes are addressed by instrument token and none is known for "
-                + $"{request.Instrument}. Load the script master "
-                + "(IConnectorReference.GetInstrumentsAsync) before requesting history."));
+            return Result<CandleSeries>.Failure(resolved.Error);
         }
 
+        var token = resolved.Value;
         var path = interval.Value.Intraday
             ? string.Format(
                 CultureInfo.InvariantCulture,
@@ -225,6 +231,51 @@ public sealed class MStockMarketData : IConnectorMarketData
             Currency = Inr,
             Candles = candles,
         };
+    }
+
+    /// <summary>
+    /// The numeric token mStock's chart routes are addressed by — they take nothing else.
+    ///
+    /// A miss on a cold process is not an answer: it means the script master has not been loaded
+    /// yet, so it is loaded (once, for the whole process) and the lookup retried. Only a miss
+    /// against a loaded master means mStock genuinely does not list the instrument.
+    /// </summary>
+    private async Task<Result<uint>> ResolveTokenAsync(InstrumentKey instrument, CancellationToken ct)
+    {
+        if (_instruments is not null && _instruments.TryGetToken(instrument, out var token))
+        {
+            return token;
+        }
+
+        if (_instruments is not null && _ensureInstruments is not null)
+        {
+            var loaded = await _ensureInstruments(ct).ConfigureAwait(false);
+            if (loaded.IsFailure)
+            {
+                // The broker's own reason — an unregistered IP, an expired key — is the useful
+                // part, and it is already worded for the user.
+                return Result<uint>.Failure(loaded.Error);
+            }
+
+            if (_instruments.TryGetToken(instrument, out token))
+            {
+                return token;
+            }
+        }
+
+        // "NSE", not the MIC "XNSE": this sentence is read by a trader, not a developer.
+        var exchange = MStockMaps.ToNativeExchange(instrument.Venue, instrument.AssetClass);
+        var where = exchange.IsSuccess ? $" on {exchange.Value}" : string.Empty;
+
+        return Result<uint>.Failure(new Error(
+            ConnectorErrorCodes.InstrumentNotFound,
+            $"mStock does not list {instrument.Symbol}{where}, so it has no price history for it.",
+            VendorCode: null,
+            VendorMessage: null,
+            Context: new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["instrument"] = instrument.ToString(),
+            }));
     }
 
     /// <inheritdoc />

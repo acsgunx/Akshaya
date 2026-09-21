@@ -45,6 +45,7 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
     private readonly MStockOptions _options;
     private readonly BrokerSession _session;
     private readonly IMStockInstrumentLookup _instruments;
+    private readonly Func<CancellationToken, Task<Result>>? _ensureInstruments;
     private readonly IClock _clock;
 
     private readonly Channel<StreamEvent> _events = Channel.CreateBounded<StreamEvent>(
@@ -68,15 +69,23 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
     private long _unresolvedTicks;
 
     /// <summary>Creates the streaming facet.</summary>
+    /// <param name="options">Endpoint and limits.</param>
+    /// <param name="session">The session the socket authenticates with.</param>
+    /// <param name="instruments">The script master: the socket speaks numeric tokens only.</param>
+    /// <param name="clock">Stamps ticks and drives the staleness watchdog.</param>
+    /// <param name="ensureInstruments">Loads the script master if this process has not yet.
+    /// Without it, the first subscription after a restart could never resolve a token.</param>
     public MStockStream(
         MStockOptions options,
         BrokerSession session,
         IMStockInstrumentLookup instruments,
-        IClock clock)
+        IClock clock,
+        Func<CancellationToken, Task<Result>>? ensureInstruments = null)
     {
         _options = options;
         _session = session;
         _instruments = instruments;
+        _ensureInstruments = ensureInstruments;
         _clock = clock;
         _lastMessageAt = clock.UtcNow;
     }
@@ -167,6 +176,18 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
             return Result.Success();
         }
 
+        // A token miss on a cold process means the script master is not loaded yet, not that the
+        // instrument does not exist. Load it (once, process-wide) before deciding.
+        if (_ensureInstruments is not null
+            && instruments.Any(instrument => !_instruments.TryGetToken(instrument, out _)))
+        {
+            var loaded = await _ensureInstruments(ct).ConfigureAwait(false);
+            if (loaded.IsFailure)
+            {
+                return loaded;
+            }
+        }
+
         var tokens = new List<uint>(instruments.Count);
         foreach (var instrument in instruments)
         {
@@ -174,8 +195,7 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
             {
                 return Result.Failure(new Error(
                     ConnectorErrorCodes.InstrumentNotFound,
-                    $"mStock subscribes by numeric instrument token and none is known for "
-                    + $"{instrument}. Load the script master before subscribing.",
+                    $"mStock does not list {instrument.Symbol}, so there is no live price for it.",
                     VendorCode: null,
                     VendorMessage: null,
                     Context: new Dictionary<string, string>(StringComparer.Ordinal)

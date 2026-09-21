@@ -313,10 +313,10 @@ public sealed partial class ZerodhaSymbolTranslator(IZerodhaInstrumentLookup? in
 
         return Result<InstrumentKey>.Failure(new Error(
             ConnectorErrorCodes.InstrumentNotFound,
-            $"'{qualified}' is a monthly {assetClass} on {underlying}. Its symbol encodes the expiry "
-            + "month but not the expiry date, and the exchange has changed its expiry weekday, so the "
-            + "date cannot be reconstructed from the symbol. Load the Kite instrument master "
-            + "(IConnectorReference.GetInstrumentsAsync) so the exact expiry is known.",
+            $"'{qualified}' is a monthly {assetClass.ToString().ToLowerInvariant()} on {underlying}: its symbol gives the "
+            + "expiry month but not the day, and the exact date comes from Zerodha's instrument list, which this "
+            + "server has not downloaded yet. It downloads the first time a chart, a live price or the "
+            + "instrument search is opened; try again after that.",
             VendorCode: qualified,
             VendorMessage: null,
             Context: new Dictionary<string, string>(StringComparer.Ordinal)

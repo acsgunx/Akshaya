@@ -54,9 +54,32 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
     /// </summary>
     private const string ApiKeyException = "APIKeyException";
 
+    /// <summary>
+    /// What to tell someone whose request came from an IP address their API key does not list.
+    ///
+    /// SEBI's retail-algo rules require API orders to come from a static IP registered with the
+    /// broker, and mStock enforces it on every route with "Primary and Secondary IP Address are
+    /// not matching with current IP address." — under the APIKeyException type. Reporting that as
+    /// an expired key (which this mapper used to) sends the user to regenerate a key that is fine,
+    /// and the next request fails exactly the same way. The fix is in the mStock API portal, and
+    /// it is about the machine Akshaya runs on, which is not necessarily the one the user is at.
+    /// </summary>
+    private const string UnregisteredIpMessage =
+        "mStock only accepts API calls from the IP addresses registered on your API key, and this "
+        + "app is connecting from a different one. In the mStock API portal, register the public IP "
+        + "of the machine or server running Akshaya as your primary or secondary IP, then try again.";
+
     /// <inheritdoc />
     public string? MapToCanonicalCode(VendorErrorContext context)
     {
+        // Checked BEFORE the exception type, because the type is misleading here: mStock reports
+        // an unregistered IP as an APIKeyException, and treating it as an expired key sends the
+        // user off to regenerate a key that is perfectly fine.
+        if (IsUnregisteredIp(context.VendorMessage))
+        {
+            return ConnectorErrorCodes.NotSupported;
+        }
+
         // A recognised Kite-lineage exception type is the strongest signal there is.
         if (!string.IsNullOrWhiteSpace(context.VendorCode))
         {
@@ -127,7 +150,9 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
         ConnectorErrorCodes.RateLimited => "Too many requests to mStock; wait and retry.",
         ConnectorErrorCodes.Timeout => "mStock did not respond in time.",
         ConnectorErrorCodes.BrokerUnavailable => "mStock is currently unavailable.",
-        ConnectorErrorCodes.NotSupported => "mStock does not permit this action on this account.",
+        ConnectorErrorCodes.NotSupported => IsUnregisteredIp(context.VendorMessage)
+            ? UnregisteredIpMessage
+            : "mStock does not permit this action on this account.",
         ConnectorErrorCodes.InvalidRequest => "mStock rejected the request as invalid.",
 
         // NO OPINION: SAY WHAT THE BROKER SAID.
@@ -203,6 +228,11 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
         var vendorMessage = payload.Message ?? payload.RawSnippet;
         var message = payload.Message ?? "mStock reported an error.";
 
+        if (IsUnregisteredIp(payload.Message))
+        {
+            return new Error(ConnectorErrorCodes.NotSupported, UnregisteredIpMessage, vendorCode, vendorMessage);
+        }
+
         var code = payload.ErrorType switch
         {
             TokenException => statusCode is 403 or 401
@@ -256,6 +286,14 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
 
         return $"{ours} mStock said: \"{theirs}\"";
     }
+
+    /// <summary>
+    /// Whether mStock refused the request because of where it came from. Matched on the text, since
+    /// the error type it arrives under (APIKeyException) also covers a genuinely expired key.
+    /// </summary>
+    private static bool IsUnregisteredIp(string? message) =>
+        !string.IsNullOrWhiteSpace(message)
+        && ContainsAny(message, "ip address", "static ip", "registered ip", "whitelist", "white list", "white-list");
 
     private static string? ClassifyFromMessage(string? message)
     {

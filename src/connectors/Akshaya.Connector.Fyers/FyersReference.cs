@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Akshaya.Connectors.Abstractions;
+using Akshaya.Connectors.Sdk;
 using Akshaya.SharedKernel;
 
 namespace Akshaya.Connector.Fyers;
@@ -48,25 +49,90 @@ public sealed partial class FyersReference : IConnectorReference
         "BSE_FO.csv",
     ];
 
-    private const int BatchSize = 2_000;
-
     private readonly FyersApi _api;
-    private readonly FyersInstrumentCache _cache;
+    private readonly SharedInstrumentMaster<FyersInstrumentCache> _master;
+    private readonly IClock _clock;
 
-    internal FyersReference(FyersApi api, FyersInstrumentCache cache)
+    internal FyersReference(FyersApi api, SharedInstrumentMaster<FyersInstrumentCache> master, IClock clock)
     {
         _api = api;
-        _cache = cache;
+        _master = master;
+        _clock = clock;
     }
 
+    private FyersInstrumentCache Cache => _master.Cache;
+
     /// <inheritdoc />
+    /// <remarks>
+    /// Served from the process-wide cache, which is loaded first if this process has no fresh copy.
+    /// Connectors are built per request, so a cache owned by one instance was empty on every
+    /// request; sharing it is what lets the symbol translator resolve BSE series and monthly
+    /// expiries at all. A master that cannot be loaded throws <see cref="FyersReferenceException"/>:
+    /// the contract has no failure channel, and an empty sequence would read as "FYERS lists nothing".
+    /// </remarks>
     public async IAsyncEnumerable<InstrumentDefinition> GetInstrumentsAsync(
         Venue? venue = null,
         AssetClass? assetClass = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var batch = new List<FyersInstrumentRecord>(BatchSize);
-        var anyFileRead = false;
+        var loaded = await EnsureLoadedAsync(ct).ConfigureAwait(false);
+        if (loaded.IsFailure)
+        {
+            throw new FyersReferenceException(loaded.Error);
+        }
+
+        foreach (var definition in Filter(Cache.Snapshot(), venue, assetClass))
+        {
+            yield return definition;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<InstrumentDefinition>> ResolveAsync(InstrumentKey key, CancellationToken ct = default)
+    {
+        var loaded = await EnsureLoadedAsync(ct).ConfigureAwait(false);
+        if (loaded.IsFailure)
+        {
+            return Result<InstrumentDefinition>.Failure(loaded.Error);
+        }
+
+        return Cache.TryGetDefinition(key, out var definition)
+            ? Result<InstrumentDefinition>.Success(definition)
+            : Result<InstrumentDefinition>.Failure(ConnectorErrors.InstrumentNotFound(key));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<InstrumentDefinition>>> SearchAsync(
+        string query,
+        int limit = 20,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Result<IReadOnlyList<InstrumentDefinition>>.Success([]);
+        }
+
+        var loaded = await EnsureLoadedAsync(ct).ConfigureAwait(false);
+        if (loaded.IsFailure)
+        {
+            return Result<IReadOnlyList<InstrumentDefinition>>.Failure(loaded.Error);
+        }
+
+        return Result<IReadOnlyList<InstrumentDefinition>>.Success(Cache.Search(query, limit));
+    }
+
+    /// <summary>Loads the master into the process-wide cache unless a fresh copy is already there.</summary>
+    internal Task<Result> EnsureLoadedAsync(CancellationToken ct) =>
+        _master.EnsureLoadedAsync(DownloadAsync, _clock, ct);
+
+    /// <summary>
+    /// Downloads and parses every master file, then swaps the result into the cache in one step.
+    /// </summary>
+    private async Task<Result> DownloadAsync(CancellationToken ct)
+    {
+        var records = new List<FyersInstrumentRecord>(capacity: 65_536);
+        var skipped = 0;
+        Error? firstFailure = null;
 
         foreach (var file in MasterFiles)
         {
@@ -75,14 +141,12 @@ public sealed partial class FyersReference : IConnectorReference
             var stream = await _api.GetSymbolMasterAsync(file, ct).ConfigureAwait(false);
             if (stream.IsFailure)
             {
-                // One unavailable file must not abandon the ingest. A trader with the cash master
+                // One unavailable file must not abandon the load. A trader with the cash master
                 // loaded can trade equities; refusing to load anything because the BSE derivatives
-                // file 404'd would take that away for no reason. The miss is visible in the
-                // connector's health, which reports how many rows were skipped and loaded.
+                // file 404'd would take that away for no reason.
+                firstFailure ??= stream.Error;
                 continue;
             }
-
-            anyFileRead = true;
 
             await using var body = stream.Value;
             using var reader = new StreamReader(body);
@@ -95,65 +159,30 @@ public sealed partial class FyersReference : IConnectorReference
                     // sovereign gold bonds, mutual funds — land here alongside genuinely broken
                     // ones. Both are counted; a sudden jump in the count is the signal that the
                     // file's shape changed.
-                    _cache.RecordSkippedRow();
+                    skipped++;
                     continue;
                 }
 
-                batch.Add(record);
-
-                if (batch.Count >= BatchSize)
-                {
-                    _cache.AddRange(batch);
-                    foreach (var item in Filter(batch, venue, assetClass))
-                    {
-                        yield return item;
-                    }
-
-                    batch.Clear();
-                }
+                records.Add(record);
             }
         }
 
-        if (batch.Count > 0)
+        // Only claim the master is loaded if something actually arrived. Marking it loaded after
+        // four failed downloads would leave the translator with nothing to look anything up in,
+        // and nothing would retry for twelve hours.
+        if (records.Count == 0)
         {
-            _cache.AddRange(batch);
-            foreach (var item in Filter(batch, venue, assetClass))
-            {
-                yield return item;
-            }
+            return Result.Failure(firstFailure ?? new Error(
+                ConnectorErrorCodes.BrokerUnavailable,
+                "FYERS's instrument list could not be read. Try again in a few minutes."));
         }
 
-        // Only claim the master is loaded if at least one file actually arrived. Marking it
-        // loaded after four failed downloads would silence the symbol translator's "load the
-        // master" guidance while leaving it with nothing to look anything up in.
-        if (anyFileRead)
-        {
-            _cache.MarkLoaded();
-        }
+        Cache.Replace(records, skipped);
+        return Result.Success();
     }
 
-    /// <inheritdoc />
-    public Task<Result<InstrumentDefinition>> ResolveAsync(InstrumentKey key, CancellationToken ct = default) =>
-        Task.FromResult(_cache.TryGetDefinition(key, out var definition)
-            ? Result<InstrumentDefinition>.Success(definition)
-            : Result<InstrumentDefinition>.Failure(_cache.IsLoaded
-                ? ConnectorErrors.InstrumentNotFound(key)
-                : new Error(
-                    ConnectorErrorCodes.InstrumentNotFound,
-                    $"{key} could not be resolved because the FYERS symbol master has not been "
-                    + "ingested yet. Run IConnectorReference.GetInstrumentsAsync first.")));
-
-    /// <inheritdoc />
-    public Task<Result<IReadOnlyList<InstrumentDefinition>>> SearchAsync(
-        string query,
-        int limit = 20,
-        CancellationToken ct = default) =>
-        Task.FromResult(string.IsNullOrWhiteSpace(query)
-            ? Result<IReadOnlyList<InstrumentDefinition>>.Success([])
-            : Result<IReadOnlyList<InstrumentDefinition>>.Success(_cache.Search(query, limit)));
-
     private static IEnumerable<InstrumentDefinition> Filter(
-        List<FyersInstrumentRecord> batch,
+        IReadOnlyList<FyersInstrumentRecord> batch,
         Venue? venue,
         AssetClass? assetClass)
     {
@@ -391,24 +420,58 @@ public sealed partial class FyersReference : IConnectorReference
 }
 
 /// <summary>
+/// Thrown when the symbol master cannot be loaded at all.
+///
+/// It exists because <see cref="IConnectorReference.GetInstrumentsAsync"/> returns a bare
+/// <see cref="IAsyncEnumerable{T}"/> with nowhere to put a <see cref="Result"/> failure, and an
+/// empty sequence would read as "FYERS lists no instruments". Callers that need the canonical error
+/// read <see cref="Error"/>.
+/// </summary>
+public sealed class FyersReferenceException : Exception
+{
+    /// <summary>Creates the exception from a canonical error.</summary>
+    public FyersReferenceException(Error error)
+        : base(error.ToString()) => Error = error;
+
+    /// <summary>Creates the exception with a message only.</summary>
+    public FyersReferenceException(string message)
+        : base(message) => Error = new Error(ConnectorErrorCodes.Unknown, message);
+
+    /// <summary>Creates the exception with a message and an inner cause.</summary>
+    public FyersReferenceException(string message, Exception innerException)
+        : base(message, innerException) => Error = new Error(ConnectorErrorCodes.Unknown, message);
+
+    /// <summary>Creates an empty exception. Present to satisfy the exception design guidelines.</summary>
+    public FyersReferenceException()
+        : this("FYERS's instrument list could not be read.")
+    {
+    }
+
+    /// <summary>The canonical error this exception carries.</summary>
+    public Error Error { get; }
+}
+
+/// <summary>
 /// The parsed symbol master, shared by reference, market data and orders.
 ///
-/// One cache per connector instance, held by <see cref="FyersConnector"/> and passed by
-/// reference to every facet that needs it. Reads vastly outnumber writes — the master is written
+/// One cache per PROCESS, held through <see cref="SharedInstrumentMaster{TCache}"/> and passed to
+/// every facet that needs it. Connectors are built per request, so a cache owned by one instance
+/// was empty on every request. Reads vastly outnumber writes — the master is written
 /// once a day and read on every order — so a reader-writer lock is the right shape here rather
 /// than a lock or a concurrent dictionary per index.
 /// </summary>
 public sealed class FyersInstrumentCache : IFyersInstrumentLookup, IDisposable
 {
-    private readonly Dictionary<string, FyersInstrumentRecord> _byTicker =
+    // Not readonly: Replace swaps in a whole new generation under the write lock.
+    private Dictionary<string, FyersInstrumentRecord> _byTicker =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly Dictionary<InstrumentKey, FyersInstrumentRecord> _byKey = [];
+    private Dictionary<InstrumentKey, FyersInstrumentRecord> _byKey = [];
 
-    private readonly Dictionary<string, FyersInstrumentRecord> _byToken =
+    private Dictionary<string, FyersInstrumentRecord> _byToken =
         new(StringComparer.Ordinal);
 
-    private readonly List<FyersInstrumentRecord> _all = [];
+    private List<FyersInstrumentRecord> _all = [];
 
     private readonly ReaderWriterLockSlim _gate = new(LockRecursionPolicy.NoRecursion);
 
@@ -451,19 +514,81 @@ public sealed class FyersInstrumentCache : IFyersInstrumentLookup, IDisposable
         {
             foreach (var record in records)
             {
-                _all.Add(record);
-                _byTicker[record.SymbolTicker] = record;
-                _byKey[record.Definition.Key] = record;
-
-                if (record.FyToken.Length > 0)
-                {
-                    _byToken[record.FyToken] = record;
-                }
+                Index(record, _all, _byTicker, _byKey, _byToken);
             }
         }
         finally
         {
             _gate.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Replaces the whole master with a freshly parsed one and marks it loaded.
+    ///
+    /// REPLACE, never append: the cache is process-wide and reloaded twice a day, and appending
+    /// would double every row by the afternoon and keep expired contracts forever. The new
+    /// generation is built outside the lock and published in one swap, so a reader never sees a
+    /// half-built index.
+    /// </summary>
+    public void Replace(IReadOnlyList<FyersInstrumentRecord> records, int skippedRows)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+
+        var all = new List<FyersInstrumentRecord>(records.Count);
+        var byTicker = new Dictionary<string, FyersInstrumentRecord>(records.Count, StringComparer.OrdinalIgnoreCase);
+        var byKey = new Dictionary<InstrumentKey, FyersInstrumentRecord>(records.Count);
+        var byToken = new Dictionary<string, FyersInstrumentRecord>(records.Count, StringComparer.Ordinal);
+
+        foreach (var record in records)
+        {
+            Index(record, all, byTicker, byKey, byToken);
+        }
+
+        _gate.EnterWriteLock();
+        try
+        {
+            _all = all;
+            _byTicker = byTicker;
+            _byKey = byKey;
+            _byToken = byToken;
+            Volatile.Write(ref _skippedRows, skippedRows);
+            IsLoaded = true;
+        }
+        finally
+        {
+            _gate.ExitWriteLock();
+        }
+    }
+
+    /// <summary>A point-in-time copy of every row, safe to enumerate while a reload runs.</summary>
+    public IReadOnlyList<FyersInstrumentRecord> Snapshot()
+    {
+        _gate.EnterReadLock();
+        try
+        {
+            return _all.ToArray();
+        }
+        finally
+        {
+            _gate.ExitReadLock();
+        }
+    }
+
+    private static void Index(
+        FyersInstrumentRecord record,
+        List<FyersInstrumentRecord> all,
+        Dictionary<string, FyersInstrumentRecord> byTicker,
+        Dictionary<InstrumentKey, FyersInstrumentRecord> byKey,
+        Dictionary<string, FyersInstrumentRecord> byToken)
+    {
+        all.Add(record);
+        byTicker[record.SymbolTicker] = record;
+        byKey[record.Definition.Key] = record;
+
+        if (record.FyToken.Length > 0)
+        {
+            byToken[record.FyToken] = record;
         }
     }
 

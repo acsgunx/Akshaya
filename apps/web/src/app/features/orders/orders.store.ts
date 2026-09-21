@@ -8,6 +8,7 @@ import { ApiService } from '../../core/api.service';
 import { staleOnBrokerLinkChange } from '../../core/broker-links.store';
 import { MarketDataService } from '../../core/market-data.service';
 import type { CancelAllRequest, CancelAllResult, ModifyOrderRequest, OrderRecord } from '../../core/models';
+import { problemDetail } from '../../core/models';
 
 interface State {
   readonly orders: readonly OrderRecord[];
@@ -56,7 +57,7 @@ export const OrdersStore = signalStore(
             tapResponse({
               next: (orders) => patchState(store, { orders, loading: false, loadedAt: Date.now() }),
               error: (err: unknown) =>
-                patchState(store, { loading: false, error: err instanceof Error ? err.message : 'Could not load orders.' }),
+                patchState(store, { loading: false, error: problemDetail(err, 'Could not load orders.') }),
             }),
           ),
         ),
@@ -91,7 +92,7 @@ export const OrdersStore = signalStore(
                 // thing this screen can get wrong.
                 patchState(store, {
                   cancellingIds: remaining,
-                  error: err instanceof Error ? err.message : 'The broker refused the cancel. The order is still live.',
+                  error: problemDetail(err, 'The broker refused the cancel. The order is still live.'),
                 });
                 store.refresh();
               },
@@ -110,7 +111,7 @@ export const OrdersStore = signalStore(
               next: () => store.refresh(),
               error: (err: unknown) =>
                 patchState(store, {
-                  error: err instanceof Error ? err.message : 'The broker refused the amendment.',
+                  error: problemDetail(err, 'The broker refused the amendment.'),
                 }),
             }),
           ),
@@ -138,7 +139,7 @@ export const OrdersStore = signalStore(
               error: (err: unknown) => {
                 patchState(store, {
                   cancelAllInFlight: false,
-                  error: err instanceof Error ? err.message : 'Cancel-all failed. Orders may still be live.',
+                  error: problemDetail(err, 'Cancel-all failed. Orders may still be live.'),
                 });
                 store.refresh();
               },

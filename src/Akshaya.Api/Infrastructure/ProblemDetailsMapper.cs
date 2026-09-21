@@ -157,7 +157,10 @@ public static class ProblemDetailsMapper
         StatusCodes.Status409Conflict => "Not possible right now.",
         StatusCodes.Status422UnprocessableEntity => "The order was refused.",
         StatusCodes.Status429TooManyRequests => "Too many requests.",
-        StatusCodes.Status501NotImplemented => "Your broker does not support this.",
+        // "Won't allow", not "does not support": 501 also carries refusals that are about the
+        // account rather than the broker's feature set — an unregistered IP address, a segment the
+        // account is not activated for — and "does not support" contradicts the detail beneath it.
+        StatusCodes.Status501NotImplemented => "Your broker won't allow this.",
         StatusCodes.Status503ServiceUnavailable => "Your broker is unavailable.",
         StatusCodes.Status504GatewayTimeout => "Your broker did not answer in time.",
         _ => "Something went wrong.",
