@@ -41,5 +41,9 @@ export interface SignInRequest {
   readonly password: string;
 }
 
-/** Mirrors the backend's own minimum; the server re-validates regardless. */
-export const MINIMUM_PASSWORD_LENGTH = 10;
+/**
+ * Mirrors UserAccountService.MinimumPasswordLength on the server, which re-validates regardless.
+ * The two are separate constants in separate languages, so change them TOGETHER: when only the
+ * server moved, the form kept refusing passwords the API would have accepted.
+ */
+export const MINIMUM_PASSWORD_LENGTH = 4;
