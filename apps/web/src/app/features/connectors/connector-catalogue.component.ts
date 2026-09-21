@@ -6,6 +6,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { ConnectorStore } from '../../core/connector.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { ACCOUNT_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 
 /**
  * Lists every broker the platform knows about, purely from their manifests.
@@ -16,12 +17,13 @@ import { EmptyStateComponent } from '../../shared/empty-state/empty-state.compon
 @Component({
   selector: 'ak-connector-catalogue',
   standalone: true,
-  imports: [RouterLink, MatButtonModule, MatIconModule, MatProgressSpinnerModule, EmptyStateComponent],
+  imports: [RouterLink, MatButtonModule, MatIconModule, MatProgressSpinnerModule, EmptyStateComponent, SectionTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './connector-catalogue.component.html',
 })
 export class ConnectorCatalogueComponent implements OnInit {
   protected readonly store = inject(ConnectorStore);
+  protected readonly accountTabs = ACCOUNT_TABS;
 
   ngOnInit(): void {
     if (this.store.isEmpty()) {

@@ -150,6 +150,39 @@
 }
 
 /* -----------------------------------------------------------------------------
+   Small screens
+   -----------------------------------------------------------------------------
+   The compact layout switches at `lg` (64rem) — see `COMPACT_QUERY` in
+   `layout.service.ts`, which must stay the exact complement of `lg:`.
+--------------------------------------------------------------------------- */
+
+/*
+  Horizontal page padding that also clears the notch and rounded corners of a
+  phone in landscape. Only non-zero because index.html opts in with
+  `viewport-fit=cover`; the 1rem floor is the ordinary page gutter.
+*/
+@utility px-safe {
+  padding-left: max(--spacing(4), env(safe-area-inset-left));
+  padding-right: max(--spacing(4), env(safe-area-inset-right));
+}
+
+/*
+  Lets the browser skip layout and paint for list items scrolled out of view,
+  while `contain-intrinsic-size: auto` remembers each one's real height once
+  it has been rendered, so the scrollbar does not jump.
+
+  This is what the compact card lists use INSTEAD of the CDK virtual-scroll
+  viewport the desktop blotters sit in: that viewport needs one fixed row
+  height and its own inner scroll container, and on a phone a card that
+  expands in place and a list that scrolls with the page are both
+  non-negotiable. Pass the estimated height as the value: `cv-auto-[88px]`.
+*/
+@utility cv-auto-* {
+  content-visibility: auto;
+  contain-intrinsic-size: auto --value([length]);
+}
+
+/* -----------------------------------------------------------------------------
    Colour-vision-deficiency alternate
    -----------------------------------------------------------------------------
    A luminance-separated pair for the rare viewer who still finds blue/amber

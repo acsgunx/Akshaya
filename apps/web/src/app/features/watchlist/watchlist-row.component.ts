@@ -1,9 +1,11 @@
 import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 
+import { InstrumentPipe } from '../../core/instrument.pipe';
 import { MarketDataService } from '../../core/market-data.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import type { InstrumentDefinition } from '../../core/models';
@@ -29,9 +31,93 @@ type FlashDirection = 'up' | 'down' | undefined;
 @Component({
   selector: 'ak-watchlist-row',
   standalone: true,
-  imports: [DecimalPipe, MatIconModule, MatTooltipModule, RouterLink, MoneyPipe, ConnectionStatusComponent],
+  imports: [
+    DecimalPipe,
+    MatButtonModule,
+    MatIconModule,
+    MatTooltipModule,
+    RouterLink,
+    InstrumentPipe,
+    MoneyPipe,
+    ConnectionStatusComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    @if (compact()) {
+      <!--
+        COMPACT: name and venue left, price and day change right — the two numbers anyone
+        glancing at a watchlist wants. Everything else is one tap away rather than squeezed
+        into 32px icon columns a finger cannot hit reliably.
+      -->
+      <button
+        type="button"
+        class="ak-focus-halo flex w-full items-center gap-3 px-4 py-3 text-left active:bg-surface-2"
+        [attr.aria-expanded]="actionsOpen()"
+        (click)="actionsOpen.set(!actionsOpen())"
+      >
+        <span class="block min-w-0 flex-1">
+          <span class="block truncate text-[15px] font-semibold">{{ instrument().key | akInstrument }}</span>
+          <span class="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-text-tertiary">
+            <span class="truncate">{{ instrument().key | akInstrument: 'detail' }} · {{ instrument().currency }}</span>
+            <ak-connection-status label="" [streamState]="connectionState()" [isDataStale]="isStale()" />
+          </span>
+        </span>
+        <span class="block shrink-0 text-right">
+          <!-- Same fixed-width, background-only flash as the desktop cell — see the class doc. -->
+          <span class="ak-col-price block rounded-xs px-1 text-[15px] font-semibold" [class]="flashClass()">
+            {{ quote()?.lastPrice | akMoney }}
+          </span>
+          <span
+            class="block px-1 text-xs tabular-nums"
+            [class.text-buy]="changeIsUp()"
+            [class.text-sell]="changeIsUp() === false"
+          >
+            @if (changePercent(); as pct) {
+              {{ pct > 0 ? '+' : '' }}{{ pct | number: '1.2-2' }}%
+            } @else {
+              &nbsp;
+            }
+          </span>
+        </span>
+      </button>
+
+      @if (actionsOpen()) {
+        <!-- As on desktop, Buy and Sell only open the ticket staged to that side; nothing is placed here. -->
+        <div class="flex items-center gap-2 px-4 pb-3">
+          <a
+            mat-flat-button
+            class="ak-btn-buy flex-1"
+            [routerLink]="['/trade', brokerLinkId(), instrument().key]"
+            [queryParams]="{ side: 'buy' }"
+            [attr.aria-label]="'Buy ' + instrument().key"
+            >Buy</a
+          >
+          <a
+            mat-flat-button
+            class="ak-btn-sell flex-1"
+            [routerLink]="['/trade', brokerLinkId(), instrument().key]"
+            [queryParams]="{ side: 'sell' }"
+            [attr.aria-label]="'Sell ' + instrument().key"
+            >Sell</a
+          >
+          <a
+            mat-icon-button
+            [routerLink]="['/chart', brokerLinkId(), instrument().key]"
+            [attr.aria-label]="'Open chart for ' + instrument().key"
+          >
+            <mat-icon aria-hidden="true">candlestick_chart</mat-icon>
+          </a>
+          <button
+            mat-icon-button
+            type="button"
+            (click)="remove.emit(instrument().key)"
+            [attr.aria-label]="'Remove ' + instrument().key + ' from watchlist'"
+          >
+            <mat-icon aria-hidden="true">delete_outline</mat-icon>
+          </button>
+        </div>
+      }
+    } @else {
     <div class="ak-trow ak-wl-row" role="row">
       <span class="ak-truncate ak-strong" role="cell">{{ instrument().name || instrument().key }}</span>
       <span class="ak-caption" role="cell">{{ instrument().currency }}</span>
@@ -93,6 +179,7 @@ type FlashDirection = 'up' | 'down' | undefined;
         <mat-icon class="ak-i-sm" aria-hidden="true">close</mat-icon>
       </button>
     </div>
+    }
   `,
   // The grid columns come from the parent watchlist (`--ak-cols`), so the row can never
   // fall out of alignment with the header it sits under. Everything else is a primitive.
@@ -112,6 +199,12 @@ export class WatchlistRowComponent {
   readonly brokerLinkId = input.required<string>();
 
   readonly remove = output<string>();
+
+  /** Card layout for the compact screen, where the parent drops the grid header. */
+  readonly compact = input(false);
+
+  /** Compact only: whether this row's action strip (Buy, Sell, Chart, Remove) is showing. */
+  protected readonly actionsOpen = signal(false);
 
   protected readonly quote = computed(() => this.marketData.tickFor(this.instrument().key)());
   protected readonly ageMs = computed(() => this.marketData.ageMsFor(this.instrument().key)());

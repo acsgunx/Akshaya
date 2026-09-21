@@ -1,5 +1,6 @@
 import { ApplicationConfig, provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
+import { MAT_DIALOG_DEFAULT_OPTIONS, MatDialogConfig } from '@angular/material/dialog';
 import { provideRouter, withComponentInputBinding, withViewTransitions } from '@angular/router';
 
 import { routes } from './app.routes';
@@ -20,6 +21,12 @@ export const appConfig: ApplicationConfig = {
     // fetch rather than XHR: no zone.js in this app, and fetch is the backend
     // the framework now optimises for. Interceptors are unaffected.
     provideHttpClient(withFetch(), withInterceptors([authInterceptor, errorInterceptor])),
+    // Dialogs ask for a fixed width (440px for modify/convert, 420px for the
+    // confirm) and Material caps that at 80vw — on a 390px phone, a 312px
+    // dialog with a type-to-confirm field and two buttons in it. A 16px gutter
+    // each side is the most a phone can spare. Spread over the stock config so
+    // every other default (focus restore, close on navigation) is kept.
+    { provide: MAT_DIALOG_DEFAULT_OPTIONS, useValue: { ...new MatDialogConfig(), maxWidth: 'calc(100vw - 32px)' } },
     // NOTE: no `provideAnimations`. Angular Material 22 drives its own
     // transitions from CSS and AG Grid ships its own, so `@angular/animations`
     // is not a dependency of this app at all — that whole runtime is out of

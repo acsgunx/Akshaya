@@ -11,6 +11,8 @@ import { filter } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { BrokerLinksStore } from '../../core/broker-links.store';
 import { ConnectorStore } from '../../core/connector.store';
+import { InstrumentPipe } from '../../core/instrument.pipe';
+import { LayoutService } from '../../core/layout.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import { positionEffectLabel } from '../../core/labels';
@@ -18,6 +20,7 @@ import type { BlendedPosition, ConnectorManifest, ConvertPositionRequest, Broker
 import { problemDetail } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { PORTFOLIO_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './convert-position-dialog.component';
 
 /**
@@ -45,9 +48,11 @@ import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './con
     MatIconModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
+    InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
+    SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './positions.component.html',
@@ -61,6 +66,8 @@ export class PositionsComponent implements OnInit {
   private readonly brokerLinksStore = inject(BrokerLinksStore);
 
   protected readonly store = inject(DashboardStore);
+  protected readonly layout = inject(LayoutService);
+  protected readonly portfolioTabs = PORTFOLIO_TABS;
   protected readonly positionEffectLabel = positionEffectLabel;
 
   private readonly expanded = signal<ReadonlySet<string>>(new Set());
@@ -95,6 +102,12 @@ export class PositionsComponent implements OnInit {
 
   protected trackByGroupKey(_index: number, pos: BlendedPosition): string {
     return pos.groupKey;
+  }
+
+  /** True when the position has booked a non-zero realised P&L — the compact row shows it only then. */
+  protected hasRealised(pos: BlendedPosition): boolean {
+    const realised = Number(pos.realisedPnl?.amount);
+    return Number.isFinite(realised) && realised !== 0;
   }
 
   /**

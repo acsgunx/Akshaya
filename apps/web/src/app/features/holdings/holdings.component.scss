@@ -40,16 +40,6 @@
   font-weight: 600;
 }
 
-@media (max-width: 900px) {
-  // Drop the two widest numeric columns rather than letting the grid squeeze every cell into
-  // illegibility. Value and return stay recoverable by expanding a row.
-  :host {
-    --ak-cols: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-pnl-width);
-  }
-
-  .ak-thead > :nth-child(n + 6),
-  .ak-trow > :nth-child(n + 6),
-  .ak-tleg > :nth-child(n + 6) {
-    display: none;
-  }
-}
+// No narrow-width column dropping. It used to hide Value, Unrealised and Return below 900px —
+// the P&L column is the one number a phone user came to see. Below `lg` the grid is not
+// rendered at all now; the template switches to the card list instead (`LayoutService`).

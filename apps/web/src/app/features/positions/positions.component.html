@@ -1,6 +1,18 @@
 <section>
-  <header class="ak-page-head">
-    <h1>Positions</h1>
+  <header class="ak-page-head max-lg:items-center">
+    <!-- Compact only: Holdings and Positions share the Portfolio tab. -->
+    <ak-section-tabs class="flex-1" label="Portfolio" [tabs]="portfolioTabs" />
+    <h1 class="max-lg:sr-only">Positions</h1>
+    <button
+      mat-icon-button
+      type="button"
+      class="ak-focus-halo shrink-0"
+      aria-label="Refresh positions"
+      [disabled]="store.loading()"
+      (click)="store.refresh(undefined)"
+    >
+      <mat-icon>refresh</mat-icon>
+    </button>
   </header>
 
   @if (conversionError(); as error) {
@@ -14,6 +26,134 @@
     <div class="ak-loading"><mat-spinner diameter="28" /> Loading positions…</div>
   } @else if (positions().length === 0) {
     <ak-empty-state icon="show_chart" title="No open positions" description="Positions across every linked broker will appear here." />
+  } @else if (layout.compact()) {
+    <!--
+      COMPACT: one row per blended position, P&L top-right where the eye lands. Tapping a row
+      opens its broker legs, and the actions live there — for the reason in the class doc: only
+      a leg names one account and one product. Labelled buttons rather than the desktop's icon
+      buttons, because the tooltips that explain those icons need a hover a finger cannot do.
+    -->
+    <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Positions">
+      @for (pos of positions(); track pos.groupKey) {
+        <li class="cv-auto-[76px] border-b border-border last:border-b-0">
+          <button
+            type="button"
+            class="ak-focus-halo flex w-full items-center gap-2 px-4 py-3 text-left active:bg-surface-2"
+            [attr.aria-expanded]="isExpanded(pos.groupKey)"
+            [disabled]="pos.legs.length === 0"
+            (click)="toggle(pos.groupKey)"
+          >
+            <span class="block min-w-0 flex-1">
+              <span class="flex items-baseline justify-between gap-3">
+                <span class="min-w-0 truncate">
+                  <span class="text-[15px] font-semibold">{{ pos.instrument | akInstrument }}</span>
+                  <span class="ml-1.5 text-[11px] text-text-tertiary">{{ pos.instrument | akInstrument: 'detail' }}</span>
+                </span>
+                <span
+                  class="shrink-0 text-[15px] font-semibold tabular-nums"
+                  [class.text-buy]="!pos.unrealisedPnl || +pos.unrealisedPnl.amount >= 0"
+                  [class.text-sell]="pos.unrealisedPnl && +pos.unrealisedPnl.amount < 0"
+                >
+                  {{ pos.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
+                </span>
+              </span>
+
+              <span class="mt-1 flex items-baseline justify-between gap-3 text-xs text-text-secondary">
+                <span class="min-w-0 truncate tabular-nums">
+                  <!-- The sign carries direction as text as well as colour, per DESIGN.md. -->
+                  <span [class.text-sell]="+pos.netQuantity < 0">Net {{ pos.netQuantity | akQuantity: { fractional: true } }}</span>
+                  · Avg {{ pos.averagePrice | akMoney }}
+                </span>
+                <span class="shrink-0 tabular-nums">LTP {{ pos.lastPrice | akMoney }}</span>
+              </span>
+
+              @if (pos.legs.length > 1 || hasRealised(pos)) {
+                <span class="mt-1 flex items-center justify-between gap-3 text-xs text-text-tertiary">
+                  <span>
+                    @if (pos.legs.length > 1) {
+                      <span class="ak-badge">{{ pos.legs.length }} brokers</span>
+                    }
+                  </span>
+                  @if (hasRealised(pos)) {
+                    <span class="shrink-0 tabular-nums">Realised {{ pos.realisedPnl | akMoney: { signDisplay: 'exceptZero' } }}</span>
+                  }
+                </span>
+              }
+            </span>
+
+            <mat-icon
+              class="shrink-0 text-text-tertiary! transition-transform duration-(--duration-ak)"
+              [class.rotate-180]="isExpanded(pos.groupKey)"
+              aria-hidden="true"
+              >expand_more</mat-icon
+            >
+          </button>
+
+          @if (isExpanded(pos.groupKey)) {
+            <ul
+              class="border-t border-border bg-surface-2"
+              role="list"
+              [attr.aria-label]="'Accounts holding ' + (pos.instrument | akInstrument)"
+            >
+              @for (leg of pos.legs; track leg.brokerLinkId) {
+                <li class="border-b border-border px-4 py-3 last:border-b-0">
+                  <div class="flex items-baseline justify-between gap-3">
+                    <p class="min-w-0 truncate text-[13px] font-medium">
+                      {{ leg.displayName }}
+                      <span class="ml-1 text-xs font-normal text-text-tertiary">{{ positionEffectLabel(leg.positionEffect) }}</span>
+                    </p>
+                    <p class="shrink-0 text-[13px] tabular-nums">{{ leg.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}</p>
+                  </div>
+                  <div class="mt-0.5 text-xs text-text-secondary tabular-nums">
+                    Net {{ leg.netQuantity | akQuantity: { fractional: true } }} · Avg {{ leg.averagePrice | akMoney }}
+                  </div>
+
+                  <!--
+                    One row of equal buttons. Text only, with Material's side padding halved, so all
+                    three fit a 320px phone — with icons and stock padding, Convert wraps alone
+                    onto a second line.
+                  -->
+                  <div class="mt-2.5 grid grid-cols-3 gap-2 [--mat-button-outlined-horizontal-padding:--spacing(3)]">
+                    <!-- Opens the ticket pointed the other way. It does NOT place the order — see `exit`. -->
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="exit(pos, leg)"
+                      [attr.aria-label]="'Exit ' + pos.instrument + ' at ' + leg.displayName"
+                    >
+                      Exit
+                    </button>
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="addTo(pos, leg)"
+                      [attr.aria-label]="'Add to ' + pos.instrument + ' at ' + leg.displayName"
+                    >
+                      Add
+                    </button>
+                    @if (canConvert(leg)) {
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        [disabled]="isConverting(leg)"
+                        (click)="openConvert(pos, leg)"
+                        [attr.aria-label]="'Convert product for ' + pos.instrument + ' at ' + leg.displayName"
+                      >
+                        @if (isConverting(leg)) {
+                          <mat-spinner diameter="18" />
+                        } @else {
+                          Convert
+                        }
+                      </button>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </li>
+      }
+    </ul>
   } @else {
     <div class="ak-thead" role="row">
       <span></span>

@@ -52,6 +52,8 @@ export class AppearanceStore {
         root.removeAttribute('data-cvd-safe');
       }
 
+      syncBrowserToolbar();
+
       this.persist({ theme, cvdSafe });
     });
   }
@@ -87,5 +89,33 @@ export class AppearanceStore {
     } catch {
       // Preferences that cannot be saved still apply for this session.
     }
+  }
+}
+
+/**
+ * Points `<meta name="theme-color">` — which a mobile browser tints its own
+ * toolbar with, and which CSS cannot reach — at the top bar's surface colour.
+ *
+ * Resolved through a probe element rather than read off the custom property:
+ * the token is a `light-dark()` pair, and a custom property's computed value
+ * is that text verbatim, not the colour it resolves to under the current
+ * `color-scheme`. Reading it back, rather than restating a hex here, is what
+ * keeps the toolbar from drifting away from the bar it blends into.
+ */
+function syncBrowserToolbar(): void {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    return;
+  }
+
+  const probe = document.createElement('span');
+  probe.style.color = 'var(--color-surface-1)';
+  probe.hidden = true;
+  document.body.appendChild(probe);
+  const colour = getComputedStyle(probe).color;
+  probe.remove();
+
+  if (colour) {
+    meta.setAttribute('content', colour);
   }
 }

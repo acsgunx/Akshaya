@@ -39,8 +39,8 @@
       medium-weight: 500,
       regular-weight: 400,
     ),
-    // Trading UIs are dense by nature; stock M3 spacing wastes a row per row.
-    density: -2,
+    // No density here: stock (0) is the base, and the dense variant is opted
+    // into below for mouse users only.
   ));
 
   // Dark by default. A trading desk left open at 2am should not be a
@@ -85,6 +85,24 @@
   --ak-motion: var(--duration-ak);
   --ak-motion-flash: var(--duration-flash);
   --ak-ease: var(--ease-ak);
+}
+
+// Density: -2 for a mouse, stock for a finger.
+//
+// Trading UIs are dense by nature and stock M3 spacing wastes a row per row —
+// on a desk, with a mouse. A finger is not a mouse pointer: at -2 an icon
+// button is 32px, well under the 44px Apple and WCAG 2.5.8 ask for, and on a
+// screen where the button cancels an order a missed tap is not cosmetic.
+//
+// Written as "dense on a fine pointer" rather than "stock on a coarse one"
+// because Material only emits density tokens for a NON-zero density:
+// `mat.theme((density: 0))` inside a touch media query emits nothing, so it
+// cannot undo a -2 set unconditionally above. Keyed on the pointer, not the
+// width, so a narrow desktop window stays dense and a tablet does not.
+@media (pointer: fine) {
+  :root {
+    @include mat.theme((density: -2));
+  }
 }
 
 // Explicit light opt-in (a stored user preference, not a media query). Flipping

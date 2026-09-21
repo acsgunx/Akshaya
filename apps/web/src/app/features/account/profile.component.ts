@@ -9,6 +9,7 @@ import { AuthStore } from '../../core/auth.store';
 import { ConnectorStore } from '../../core/connector.store';
 import { ConfirmDialogService } from '../../shared/confirm-dialog/confirm-dialog.service';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { ACCOUNT_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import type { SavedCredential } from '../../core/models';
 
 /**
@@ -24,7 +25,7 @@ import type { SavedCredential } from '../../core/models';
 @Component({
   selector: 'ak-profile',
   standalone: true,
-  imports: [DatePipe, RouterLink, MatButtonModule, MatIconModule, EmptyStateComponent],
+  imports: [DatePipe, RouterLink, MatButtonModule, MatIconModule, EmptyStateComponent, SectionTabsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile.component.html',
   styleUrl: './profile.component.scss',
@@ -33,6 +34,7 @@ export class ProfileComponent implements OnInit {
   private readonly connectors = inject(ConnectorStore);
   private readonly confirm = inject(ConfirmDialogService);
   protected readonly auth = inject(AuthStore);
+  protected readonly accountTabs = ACCOUNT_TABS;
 
   ngOnInit(): void {
     void this.auth.loadSavedCredentials();

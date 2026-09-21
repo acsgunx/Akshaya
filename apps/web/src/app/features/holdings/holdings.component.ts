@@ -7,11 +7,14 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 
+import { InstrumentPipe } from '../../core/instrument.pipe';
+import { LayoutService } from '../../core/layout.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import type { BlendedHolding, BrokerHoldingLeg, CurrencyCode, Money } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { PORTFOLIO_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 
 /** Invested, current value and return for every holding in ONE currency. */
 export interface HoldingsTotal {
@@ -31,6 +34,10 @@ export interface HoldingsTotal {
  * Shares `DashboardStore`'s snapshot rather than issuing a second `GET /api/portfolio`, exactly
  * as the positions blotter does: two views of one snapshot cannot disagree with each other,
  * two independent fetches can.
+ *
+ * Two layouts over the same state: the virtualised grid at `lg` and up, and a card list below
+ * it (see `LayoutService`). They share the expanded set, so rotating a tablet keeps whatever
+ * row was open.
  */
 @Component({
   selector: 'ak-holdings',
@@ -43,9 +50,11 @@ export interface HoldingsTotal {
     MatProgressSpinnerModule,
     MatTooltipModule,
     RouterLink,
+    InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
+    SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './holdings.component.html',
@@ -53,6 +62,8 @@ export interface HoldingsTotal {
 })
 export class HoldingsComponent implements OnInit {
   protected readonly store = inject(DashboardStore);
+  protected readonly layout = inject(LayoutService);
+  protected readonly portfolioTabs = PORTFOLIO_TABS;
 
   /**
    * The quantity in this leg that can actually be sold: total less pledged.

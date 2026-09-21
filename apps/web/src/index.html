@@ -4,7 +4,13 @@
   <meta charset="utf-8" />
   <title>Akshaya</title>
   <base href="/" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- `viewport-fit=cover` lets the page draw under the notch and home indicator so the
+       shell can pad itself with `env(safe-area-inset-*)` — without it those insets read 0
+       and the bottom tab bar sits under the home indicator. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- Tints the mobile browser's own toolbar to match the top bar. Starts dark (the
+       default theme); `AppearanceStore` rewrites it when the user picks light. -->
+  <meta name="theme-color" content="#1a1d22" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <!-- Roboto + Material Symbols: self-hosted at build time in a real deploy; Google Fonts
        here only to keep this scaffold runnable without a font pipeline. -->

@@ -13,3 +13,23 @@
 // Only rendered when the user has more than one usable broker link.
 .ak-watchlist-link { width: 180px; }
 .ak-watchlist-search { width: 320px; }
+
+// Compact (below `lg` — see `COMPACT_QUERY` in layout.service.ts): the title on its own line,
+// then the link picker and the search box each full width. Side by side they leave a phone
+// about 150px to type an instrument name into.
+@media (width < 64rem) {
+  .ak-page-head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ak-page-head h1 {
+    flex-basis: 100%;
+  }
+
+  .ak-watchlist-link,
+  .ak-watchlist-search {
+    flex: 1 1 100%;
+    width: auto;
+  }
+}
