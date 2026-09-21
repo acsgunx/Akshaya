@@ -20,6 +20,7 @@ import type { BlendedPosition, ConnectorManifest, ConvertPositionRequest, Broker
 import { problemDetail } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { PORTFOLIO_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './convert-position-dialog.component';
 
@@ -52,6 +53,7 @@ import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './con
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
+    LoadingStateComponent,
     SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

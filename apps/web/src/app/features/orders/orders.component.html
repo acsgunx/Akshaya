@@ -82,7 +82,7 @@
   }
 
   @if (store.loading() && store.orders().length === 0) {
-    <div class="ak-loading"><mat-spinner diameter="28" /> Loading orders…</div>
+    <ak-loading-state label="Loading orders…" />
   } @else if (store.orders().length === 0) {
     <ak-empty-state icon="receipt_long" title="No orders" description="Orders placed from the order ticket will appear here." />
   } @else if (layout.compact()) {
@@ -149,8 +149,12 @@
                 (click)="cancel(order)"
                 [attr.aria-label]="'Cancel order for ' + order.instrument"
               >
-                <mat-icon aria-hidden="true">close</mat-icon>
-                Cancel
+                @if (store.cancellingIds().has(order.id)) {
+                  <mat-spinner diameter="18" />
+                } @else {
+                  <mat-icon aria-hidden="true">close</mat-icon>
+                }
+                {{ store.cancellingIds().has(order.id) ? 'Cancelling…' : 'Cancel' }}
               </button>
             </div>
           }
@@ -224,7 +228,11 @@
               [attr.aria-label]="'Cancel order for ' + order.instrument"
               matTooltip="Cancel"
             >
-              <mat-icon aria-hidden="true">close</mat-icon>
+              @if (store.cancellingIds().has(order.id)) {
+                <mat-spinner diameter="18" />
+              } @else {
+                <mat-icon aria-hidden="true">close</mat-icon>
+              }
             </button>
           }
         </span>

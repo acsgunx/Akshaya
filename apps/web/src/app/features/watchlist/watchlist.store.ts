@@ -1,5 +1,5 @@
-import { inject } from '@angular/core';
-import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
+import { computed, inject } from '@angular/core';
+import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { debounceTime, distinctUntilChanged, pipe, switchMap, tap } from 'rxjs';
 import { tapResponse } from '@ngrx/operators';
@@ -18,6 +18,13 @@ interface State {
   readonly brokerLinkId: string | undefined;
   readonly searchQuery: string;
   readonly searchResults: readonly InstrumentDefinition[];
+  /**
+   * The query `searchResults` answers, or `undefined` when they answer
+   * nothing yet. Without it, "no results" is ambiguous: typed but still
+   * inside the debounce, still in flight, and "the broker has nothing by
+   * that name" all look like an empty list.
+   */
+  readonly searchedQuery: string | undefined;
   readonly searching: boolean;
 }
 
@@ -26,6 +33,7 @@ const initialState: State = {
   brokerLinkId: undefined,
   searchQuery: '',
   searchResults: [],
+  searchedQuery: undefined,
   searching: false,
 };
 
@@ -42,13 +50,23 @@ interface PersistedWatchlist {
 export const WatchlistStore = signalStore(
   { providedIn: 'root' },
   withState(() => ({ ...initialState, ...loadPersisted() })),
+  withComputed((store) => ({
+    /** A search for exactly what is in the box has come back empty. */
+    noMatches: computed(
+      () =>
+        !store.searching() &&
+        store.searchResults().length === 0 &&
+        store.searchQuery().trim().length > 0 &&
+        store.searchedQuery() === store.searchQuery(),
+    ),
+  })),
   withMethods((store, api = inject(ApiService)) => ({
     /** Points the whole list at a linked account. Clears stale results from the previous one. */
     selectBrokerLink(brokerLinkId: string): void {
       if (store.brokerLinkId() === brokerLinkId) {
         return;
       }
-      patchState(store, { brokerLinkId, searchResults: [], searching: false });
+      patchState(store, { brokerLinkId, searchResults: [], searchedQuery: undefined, searching: false });
       persist(brokerLinkId, store.watched());
     },
 
@@ -60,14 +78,15 @@ export const WatchlistStore = signalStore(
         switchMap((query) => {
           const brokerLinkId = store.brokerLinkId();
           if (!brokerLinkId || query.trim().length < 1) {
-            patchState(store, { searchResults: [], searching: false });
+            patchState(store, { searchResults: [], searchedQuery: undefined, searching: false });
             return [];
           }
           patchState(store, { searching: true });
           return api.searchInstruments(brokerLinkId, query).pipe(
             tapResponse({
-              next: (results) => patchState(store, { searchResults: results, searching: false }),
-              error: () => patchState(store, { searchResults: [], searching: false }),
+              next: (results) => patchState(store, { searchResults: results, searchedQuery: query, searching: false }),
+              // A failure is not "no matches" — the error toast says what went wrong.
+              error: () => patchState(store, { searchResults: [], searchedQuery: undefined, searching: false }),
             }),
           );
         }),
@@ -79,7 +98,7 @@ export const WatchlistStore = signalStore(
         return;
       }
       const watched = [...store.watched(), instrument];
-      patchState(store, { watched, searchQuery: '', searchResults: [] });
+      patchState(store, { watched, searchQuery: '', searchResults: [], searchedQuery: undefined });
       persist(store.brokerLinkId(), watched);
     },
 

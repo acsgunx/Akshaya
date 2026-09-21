@@ -215,6 +215,60 @@ anything in ten seconds on a liquid instrument is itself a symptom.
   minutes) so a trader is never mid-order when a broker session dies — the
   ugliest possible time to discover it.
 
+## Loading and waiting
+
+The same principle, applied to the other end of a request: the user must
+always be able to tell **"working"** from **"done, and this is the answer"**.
+Confusing them is the waiting-room version of a stale number shown as live.
+An empty state shown before the data has arrived says "you have no linked
+brokers" to someone who has three, and they act on it.
+
+Waits are shown at three scopes, each with one job:
+
+- **Boot — the splash in `index.html`.** Static HTML and inline CSS, so it
+  paints before any JavaScript arrives. It stays up through the bundle
+  download, the session check (`/me`) and the first route's chunk, and leaves
+  once that screen has painted (`core/boot-splash.ts`). After 8 seconds it
+  says the wait is unusually long, and after 25 it offers a reload. If
+  bootstrap throws, it turns into an error instead of spinning forever.
+- **App-wide — `<ak-activity-bar>`.** A 2px bar on the top edge whenever a
+  navigation or an HTTP request is in flight (`core/activity.service.ts`,
+  fed by `activityInterceptor`). It is the answer to "did my tap do
+  anything?". It waits 200ms before appearing, because most cached switches
+  finish sooner and would only flicker it. Once shown it stays at least 300ms,
+  which also merges "route resolved, screen fetches" into one bar. It is
+  indeterminate on purpose: nothing here knows how long a broker will take,
+  and a bar that creeps to 90% and stalls claims knowledge it does not have.
+- **Local — on the thing that is waiting.** A screen's data is shown in place:
+  - `<ak-loading-state>` for a screen or a card whose data has not arrived;
+  - a spinning refresh icon when data is already on screen and being
+    replaced;
+  - a spinner in a button, with a verb ending in "-ing" ("Verifying…",
+    "Halting…", "Cancelling…"), when a control is busy.
+
+The rules:
+
+1. **Never show an empty state for data nobody has answered for yet.** Gate it
+   on the load having finished: the watchlist waits on
+   `BrokerLinksStore.signature`, the account page on `savedCredentialsLoading`.
+2. **Keep what is on screen while refreshing.** Blanking a blotter to show a
+   spinner loses the user's place. Show the refresh icon spinning instead.
+3. **Say what is loading.** "Loading holdings…", not a bare spinner.
+   `<ak-loading-state>` is a `role="status"` region, so a screen reader hears
+   the label too. After 8 seconds it adds a line saying the wait is unusually
+   long, since a spinner looks the same at 2s and at 40s.
+4. **A disabled control says why.** A greyed button with its normal label
+   reads as "unavailable", which on the kill switch is the worst possible
+   thing for it to say. Change the label to what it is doing.
+5. **Type-ahead opts out of the global bar** (`SKIP_ACTIVITY_BAR`). The field
+   shows its own spinner, and a bar pulsing on every pause in typing only
+   pulls the eye away from it.
+6. **Every animation has a reduced-motion form that still reads as busy.** The
+   global reduced-motion rule in `styles.scss` stops animations after one 1ms
+   run, which would leave an indeterminate segment parked off-screen. Pair
+   `animate-indeterminate` with `motion-reduce:animate-none
+   motion-reduce:w-full` so the bar is still visible, just static.
+
 ## The keyboard model
 
 Everything here is reachable and operable without a mouse, both because WCAG

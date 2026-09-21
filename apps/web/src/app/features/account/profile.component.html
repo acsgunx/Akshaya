@@ -45,7 +45,9 @@
       browser, so no page — including this one — can show you the values.
     </p>
 
-    @if (auth.savedCredentials().length === 0) {
+    @if (auth.savedCredentialsLoading() && auth.savedCredentials().length === 0) {
+      <ak-loading-state label="Loading saved logins…" [compact]="true" />
+    } @else if (auth.savedCredentials().length === 0) {
       <ak-empty-state
         icon="key_off"
         title="No saved logins yet"

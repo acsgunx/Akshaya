@@ -9,6 +9,7 @@ import { AuthStore } from '../../core/auth.store';
 import { ConnectorStore } from '../../core/connector.store';
 import { ConfirmDialogService } from '../../shared/confirm-dialog/confirm-dialog.service';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { ACCOUNT_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import type { SavedCredential } from '../../core/models';
 
@@ -25,7 +26,15 @@ import type { SavedCredential } from '../../core/models';
 @Component({
   selector: 'ak-profile',
   standalone: true,
-  imports: [DatePipe, RouterLink, MatButtonModule, MatIconModule, EmptyStateComponent, SectionTabsComponent],
+  imports: [
+    DatePipe,
+    RouterLink,
+    MatButtonModule,
+    MatIconModule,
+    EmptyStateComponent,
+    LoadingStateComponent,
+    SectionTabsComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile.component.html',
   styleUrl: './profile.component.scss',

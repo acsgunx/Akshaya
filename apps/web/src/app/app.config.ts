@@ -4,6 +4,7 @@ import { MAT_DIALOG_DEFAULT_OPTIONS, MatDialogConfig } from '@angular/material/d
 import { provideRouter, withComponentInputBinding, withViewTransitions } from '@angular/router';
 
 import { routes } from './app.routes';
+import { activityInterceptor } from './core/interceptors/activity.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { errorInterceptor } from './core/interceptors/error.interceptor';
 
@@ -20,7 +21,9 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes, withComponentInputBinding(), withViewTransitions()),
     // fetch rather than XHR: no zone.js in this app, and fetch is the backend
     // the framework now optimises for. Interceptors are unaffected.
-    provideHttpClient(withFetch(), withInterceptors([authInterceptor, errorInterceptor])),
+    // `activityInterceptor` first, so the bar spans everything after it,
+    // including the error toast's handling.
+    provideHttpClient(withFetch(), withInterceptors([activityInterceptor, authInterceptor, errorInterceptor])),
     // Dialogs ask for a fixed width (440px for modify/convert, 420px for the
     // confirm) and Material caps that at 80vw — on a 390px phone, a 312px
     // dialog with a type-to-confirm field and two buttons in it. A 16px gutter

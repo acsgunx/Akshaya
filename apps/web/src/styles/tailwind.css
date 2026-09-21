@@ -147,6 +147,28 @@
       background-color: var(--color-sell-surface);
     }
   }
+
+  /* Indeterminate activity, as `animate-indeterminate`: a segment sweeping
+     across its track, for waits whose length nobody knows (see
+     `activity-bar.component.ts`). Transform-only, so it never triggers
+     layout. `translateX` percentages are of the SEGMENT, which is 40% of the
+     track — 250% carries it fully past the right edge.
+
+     Pair it with `motion-reduce:animate-none motion-reduce:w-full`. The
+     reduced-motion net in `styles.scss` cuts every animation to one 1ms
+     iteration, which would park the segment off-screen and hide the bar
+     entirely; a static full-width bar still says "busy". */
+  --animate-indeterminate: indeterminate 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+
+  @keyframes indeterminate {
+    from {
+      transform: translateX(-100%);
+    }
+
+    to {
+      transform: translateX(250%);
+    }
+  }
 }
 
 /* -----------------------------------------------------------------------------

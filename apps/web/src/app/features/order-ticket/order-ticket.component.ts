@@ -26,6 +26,7 @@ import {
 import type { InstrumentKey, Money, OrderType, OrderVariety, PlaceOrderRequest, PositionEffect, Side, TimeInForce } from '../../core/models';
 import { canModifyField, formatInstrumentLabel, parseInstrumentKey } from '../../core/models';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { OrderTicketStore } from './order-ticket.store';
 
 interface OrderTicketFormControls {
@@ -69,6 +70,7 @@ interface OrderTicketFormControls {
     RouterLink,
     MoneyPipe,
     ConnectionStatusComponent,
+    LoadingStateComponent,
   ],
   providers: [OrderTicketStore],
   changeDetection: ChangeDetectionStrategy.OnPush,

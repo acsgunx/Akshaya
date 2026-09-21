@@ -7,11 +7,11 @@
       mat-icon-button
       type="button"
       class="ak-focus-halo shrink-0"
-      aria-label="Refresh positions"
+      [attr.aria-label]="store.loading() ? 'Refreshing positions' : 'Refresh positions'"
       [disabled]="store.loading()"
       (click)="store.refresh(undefined)"
     >
-      <mat-icon>refresh</mat-icon>
+      <mat-icon [class.animate-spin]="store.loading()">refresh</mat-icon>
     </button>
   </header>
 
@@ -23,7 +23,7 @@
   }
 
   @if (store.loading() && !store.snapshot()) {
-    <div class="ak-loading"><mat-spinner diameter="28" /> Loading positions…</div>
+    <ak-loading-state label="Loading positions…" />
   } @else if (positions().length === 0) {
     <ak-empty-state icon="show_chart" title="No open positions" description="Positions across every linked broker will appear here." />
   } @else if (layout.compact()) {

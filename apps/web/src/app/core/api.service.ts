@@ -1,7 +1,8 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
+import { SKIP_ACTIVITY_BAR } from './interceptors/activity.interceptor';
 import type {
   AuthCredentials,
   AuthStepWire,
@@ -223,7 +224,9 @@ export class ApiService {
       .set('brokerLinkId', brokerLinkId)
       .set('query', query)
       .set('limit', String(limit));
-    return this.http.get<readonly InstrumentDefinition[]>('/api/market-data/instruments/search', { params });
+    // Type-ahead: the field it is typed into shows its own spinner.
+    const context = new HttpContext().set(SKIP_ACTIVITY_BAR, true);
+    return this.http.get<readonly InstrumentDefinition[]>('/api/market-data/instruments/search', { params, context });
   }
 
   /**

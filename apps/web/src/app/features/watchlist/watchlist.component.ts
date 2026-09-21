@@ -4,12 +4,14 @@ import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 
 import { BrokerLinksStore } from '../../core/broker-links.store';
 import { LayoutService } from '../../core/layout.service';
 import type { InstrumentDefinition } from '../../core/models';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { WatchlistRowComponent } from './watchlist-row.component';
 import { WatchlistStore } from './watchlist.store';
 
@@ -27,8 +29,10 @@ import { WatchlistStore } from './watchlist.store';
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatProgressSpinnerModule,
     MatSelectModule,
     EmptyStateComponent,
+    LoadingStateComponent,
     WatchlistRowComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,6 +56,15 @@ export class WatchlistComponent {
   );
 
   protected readonly hasNoUsableLink = computed(() => this.usableLinks().length === 0);
+
+  /**
+   * The linked accounts are not known yet. `signature` is only set by a load
+   * that succeeded, so this also covers the moment before the shell's load has
+   * started; a failed load drops through to the empty state, as before.
+   */
+  protected readonly linksPending = computed(
+    () => this.brokerLinks.signature() === undefined && this.brokerLinks.error() === undefined,
+  );
 
   constructor() {
     this.searchControl.valueChanges.subscribe((value) => this.store.search(value));

@@ -25,10 +25,7 @@
   </header>
 
   @if (!manifest()) {
-    <div class="flex items-center gap-2.5 p-8 text-text-secondary">
-      <mat-spinner diameter="28" />
-      <span>Loading broker capabilities…</span>
-    </div>
+    <ak-loading-state label="Loading broker capabilities…" />
   } @else if (!supportsHistory()) {
     <ak-empty-state
       icon="show_chart"
@@ -61,16 +58,11 @@
 
     <div class="ak-chart-card rounded-lg border border-border bg-surface-1 p-3">
       @if (store.loading()) {
-        <div class="flex items-center gap-2.5 p-8 text-text-secondary">
-          <mat-spinner diameter="28" />
-          <span>
-            @if (timeFrame(); as frame) {
-              Loading {{ label(frame) }} bars…
-            } @else {
-              Loading bars…
-            }
-          </span>
-        </div>
+        @if (timeFrame(); as frame) {
+          <ak-loading-state label="Loading {{ label(frame) }} bars…" />
+        } @else {
+          <ak-loading-state label="Loading bars…" />
+        }
       } @else if (store.error(); as error) {
         <div
           class="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/12 px-3 py-2.5

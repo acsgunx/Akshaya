@@ -20,6 +20,7 @@ import { canModifyField, isOrderStateTerminal, isOrderStateWorking, isOrderUnres
 import type { ConnectorManifest, ModifyOrderRequest, OrderRecord } from '../../core/models';
 import { ConfirmDialogService } from '../../shared/confirm-dialog/confirm-dialog.service';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { ORDERS_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import { ModifyOrderDialogComponent, ModifyOrderDialogData } from './modify-order-dialog.component';
 import { OrdersStore } from './orders.store';
@@ -60,6 +61,7 @@ const ModifiableFields = ['quantity', 'limitPrice', 'triggerPrice', 'orderType',
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
+    LoadingStateComponent,
     SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

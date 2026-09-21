@@ -26,18 +26,86 @@
     href="https://fonts.googleapis.com/icon?family=Material+Icons"
     rel="stylesheet"
   />
+  <!-- A saved light theme, applied before first paint. `AppearanceStore` owns `data-theme`
+       from bootstrap on, reading the same key; without this a light-theme user gets a dark
+       splash that flips to light the moment the app starts. -->
+  <script>
+    try {
+      if (JSON.parse(localStorage.getItem('akshaya.appearance') || '{}').theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    } catch (e) {}
+  </script>
+  <!-- Boot splash — see `core/boot-splash.ts` for what it covers and who removes it. Inline
+       because it must paint before the stylesheet or the bundle arrive; the colours restate
+       `tailwind.css` tokens for the same reason. -->
+  <style>
+    #ak-boot {
+      color-scheme: dark;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 24px;
+      background: light-dark(#f4f6fa, #14161a);
+      color: light-dark(#383f4b, #98a1b3);
+      font: 400 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      text-align: center;
+      transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    :root[data-theme='light'] #ak-boot { color-scheme: light; }
+    #ak-boot[data-state='leaving'] { opacity: 0; pointer-events: none; }
+    #ak-boot p { margin: 0; }
+    #ak-boot a { color: light-dark(#7d00fa, #d5baff); }
+    .ak-boot-mark { font-size: 20px; font-weight: 700; color: light-dark(#14161a, #f4f6fa); }
+    .ak-boot-track { width: 160px; height: 2px; overflow: hidden; border-radius: 2px; background: light-dark(#e2e6ee, #2a2f38); }
+    .ak-boot-track::before {
+      content: '';
+      display: block;
+      width: 40%;
+      height: 100%;
+      background: light-dark(#7d00fa, #d5baff);
+      animation: ak-boot-sweep 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+    }
+    @keyframes ak-boot-sweep { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+    /* Room for every hint up front, so a hint appearing never nudges the wordmark. */
+    .ak-boot-status { display: grid; align-content: start; gap: 4px; min-height: 72px; max-width: 40ch; }
+    /* Timed hints: hidden (not just transparent, so a screen reader skips them too) until
+       their delay, then revealed inside the live region, which announces them. */
+    .ak-boot-hint { visibility: hidden; animation: ak-boot-reveal 0s forwards; }
+    .ak-boot-slow { animation-delay: 8s; }
+    .ak-boot-stuck { animation-delay: 25s; }
+    @keyframes ak-boot-reveal { to { visibility: visible; } }
+    .ak-boot-failed { display: none; }
+    #ak-boot[data-state='failed'] .ak-boot-failed { display: block; }
+    #ak-boot[data-state='failed'] :is(.ak-boot-track, .ak-boot-label, .ak-boot-hint) { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      #ak-boot { transition: none; }
+      .ak-boot-track::before { width: 100%; animation: none; }
+    }
+  </style>
+  <noscript>
+    <style>#ak-boot :is(.ak-boot-track, .ak-boot-label, .ak-boot-hint) { display: none; }</style>
+  </noscript>
 </head>
 <body>
-  <ak-root>
-    <!-- Static skeleton shown until the app bootstraps; avoids a blank white/black flash
-         because we are dark-by-default and the OS default background may not be. -->
-    <style>
-      ak-root:empty {
-        display: block;
-        min-height: 100vh;
-        background: #14161a;
-      }
-    </style>
-  </ak-root>
+  <div id="ak-boot">
+    <p class="ak-boot-mark">Akshaya</p>
+    <div class="ak-boot-track" aria-hidden="true"></div>
+    <div class="ak-boot-status" role="status">
+      <p class="ak-boot-label">Loading…</p>
+      <p class="ak-boot-hint ak-boot-slow">Still loading — this is taking longer than usual.</p>
+      <p class="ak-boot-hint ak-boot-stuck">Nothing yet? Check your connection, or <a href="">reload the page</a>.</p>
+      <p class="ak-boot-failed">
+        Akshaya could not start. <a href="">Reload the page</a> — if it keeps happening, the browser console has the details.
+      </p>
+      <noscript><p>Akshaya needs JavaScript to run. Turn it on for this site and reload.</p></noscript>
+    </div>
+  </div>
+  <ak-root></ak-root>
 </body>
 </html>

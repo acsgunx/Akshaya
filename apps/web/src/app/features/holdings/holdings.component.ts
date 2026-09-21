@@ -3,7 +3,6 @@ import { PercentPipe } from '@angular/common';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 
@@ -14,6 +13,7 @@ import { QuantityPipe } from '../../core/quantity.pipe';
 import type { BlendedHolding, BrokerHoldingLeg, CurrencyCode, Money } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { PORTFOLIO_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 
 /** Invested, current value and return for every holding in ONE currency. */
@@ -47,13 +47,13 @@ export interface HoldingsTotal {
     ScrollingModule,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule,
     MatTooltipModule,
     RouterLink,
     InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
     EmptyStateComponent,
+    LoadingStateComponent,
     SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

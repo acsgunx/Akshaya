@@ -1,7 +1,6 @@
 @if (!manifest()) {
-  <div class="mx-auto w-full max-w-115 overflow-hidden rounded-lg border border-border bg-surface-1 shadow-ak-2 flex items-center gap-2.5 p-8 text-text-secondary">
-    <mat-spinner diameter="24" />
-    <span>Loading broker details…</span>
+  <div class="mx-auto w-full max-w-115 overflow-hidden rounded-lg border border-border bg-surface-1 shadow-ak-2">
+    <ak-loading-state label="Loading broker details…" />
   </div>
 } @else {
   <section class="mx-auto w-full max-w-115 overflow-hidden rounded-lg border border-border bg-surface-1 shadow-ak-2" aria-label="Link a broker account">

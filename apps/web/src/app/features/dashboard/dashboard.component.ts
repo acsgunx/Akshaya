@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RouterLink } from '@angular/router';
 
 import { ConnectorStore } from '../../core/connector.store';
@@ -11,6 +10,7 @@ import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
+import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { VenueClockComponent } from '../../shared/venue-clock/venue-clock.component';
 import { DashboardStore } from './dashboard.store';
 
@@ -27,13 +27,13 @@ import { DashboardStore } from './dashboard.store';
   imports: [
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule,
     RouterLink,
     InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
     ConnectionStatusComponent,
     EmptyStateComponent,
+    LoadingStateComponent,
     VenueClockComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
