@@ -15,10 +15,11 @@ namespace Akshaya.Connector.Fyers;
 ///
 /// Three lifetime details worth knowing before you change anything:
 ///
-/// 1. The instrument cache is shared BY REFERENCE between the reference, market-data, portfolio
-///    and orders facets. It holds the parsed symbol master — a few hundred thousand rows across
-///    four files — and one cache per facet would both quadruple the memory and let the facets
-///    disagree about what a symbol means. One cache per connector instance.
+/// 1. The instrument cache is shared by every connector instance in the process, not owned by
+///    this one. It holds the parsed symbol master — a few hundred thousand rows across four
+///    files. Connectors are built per request, so a cache owned by the instance was empty on
+///    every request; see <see cref="SharedInstrumentMaster{TCache}"/>. The instance never
+///    disposes it.
 ///
 /// 2. Facets are built eagerly in the constructor rather than lazily per property. A lazy
 ///    property that constructed a <see cref="FyersApi"/> on first touch would quietly create a
@@ -65,7 +66,11 @@ public sealed class FyersConnector : ConnectorBase
         Options = options;
         Errors = new FyersErrorMapper();
 
-        Instruments = new FyersInstrumentCache();
+        // Keyed by where the master comes from, so a test double and production never share one.
+        var master = SharedInstrumentMaster.For(
+            options.SymbolMasterUrl.AbsoluteUri,
+            static () => new FyersInstrumentCache());
+        Instruments = master.Cache;
 
         // The translator prefers the symbol master when it is loaded and falls back to structural
         // rules (SBIN -> NSE:SBIN-EQ, expiry and strike composition for F&O) when it is not. The
@@ -79,7 +84,7 @@ public sealed class FyersConnector : ConnectorBase
         OrdersFacet = new FyersOrders(_api, options, Symbols, Clock, Logger);
         PortfolioFacet = new FyersPortfolio(_api, options, Symbols, Logger);
         MarketDataFacet = new FyersMarketData(_api, options, Symbols, Clock);
-        ReferenceFacet = new FyersReference(_api, Instruments);
+        ReferenceFacet = new FyersReference(_api, master, Clock);
     }
 
     /// <summary>Endpoint and timeout configuration, exposed for diagnostics.</summary>
@@ -92,8 +97,8 @@ public sealed class FyersConnector : ConnectorBase
     public ISymbolTranslator Symbols { get; }
 
     /// <summary>
-    /// The parsed symbol master. Exposed so the host's daily ingest job can populate it and so
-    /// health checks can report how many instruments are loaded and how many rows were skipped.
+    /// The parsed symbol master, shared process-wide. Exposed so health checks can report how many
+    /// instruments are loaded and how many rows were skipped.
     /// </summary>
     public FyersInstrumentCache Instruments { get; }
 
@@ -159,8 +164,9 @@ public sealed class FyersConnector : ConnectorBase
             {
                 Detail = Join(
                     health.Detail,
-                    "Symbol master not yet ingested; symbol resolution is using the structural fallback, "
-                    + "which cannot resolve BSE cash series or monthly derivative expiries."),
+                    "Symbol master not loaded yet; it loads on the first instrument search. Symbol "
+                    + "resolution uses the structural fallback until then, which cannot resolve BSE "
+                    + "cash series or monthly derivative expiries."),
             };
         }
 
@@ -192,8 +198,9 @@ public sealed class FyersConnector : ConnectorBase
 
         _disposed = true;
 
+        // The instrument cache is NOT disposed: it is process-wide and other connector instances
+        // are reading it right now.
         await _api.DisposeAsync().ConfigureAwait(false);
-        Instruments.Dispose();
 
         // The base suppresses finalization; doing it here as well would be harmless but would
         // hide the fact that this type is expected to chain.

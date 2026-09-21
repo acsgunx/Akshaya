@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using Akshaya.Connectors.Abstractions;
+using Akshaya.Connectors.Sdk;
 using Akshaya.SharedKernel;
 
 namespace Akshaya.Connector.Zerodha;
@@ -55,26 +56,99 @@ public sealed class ZerodhaReference : IConnectorReference
         ZerodhaMaps.ExchangeBfo,
     ];
 
-    private const int BatchSize = 2_000;
-
     private readonly ZerodhaApi _api;
     private readonly ZerodhaOptions _options;
-    private readonly ZerodhaInstrumentCache _cache;
+    private readonly SharedInstrumentMaster<ZerodhaInstrumentCache> _master;
+    private readonly IClock _clock;
 
-    internal ZerodhaReference(ZerodhaApi api, ZerodhaOptions options, ZerodhaInstrumentCache cache)
+    internal ZerodhaReference(
+        ZerodhaApi api,
+        ZerodhaOptions options,
+        SharedInstrumentMaster<ZerodhaInstrumentCache> master,
+        IClock clock)
     {
         _api = api;
         _options = options;
-        _cache = cache;
+        _master = master;
+        _clock = clock;
     }
 
+    private ZerodhaInstrumentCache Cache => _master.Cache;
+
     /// <inheritdoc />
+    /// <remarks>
+    /// Served from the process-wide cache, which is loaded first if this process has no fresh copy,
+    /// so the platform's search index and this connector's own token lookups share one download.
+    /// A master that cannot be loaded at all throws <see cref="ZerodhaReferenceException"/>: the
+    /// contract has no failure channel, and an empty sequence would read as "Kite lists nothing".
+    /// </remarks>
     public async IAsyncEnumerable<InstrumentDefinition> GetInstrumentsAsync(
         Venue? venue = null,
         AssetClass? assetClass = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var batch = new List<ZerodhaInstrumentRecord>(BatchSize);
+        var loaded = await EnsureLoadedAsync(ct).ConfigureAwait(false);
+        if (loaded.IsFailure)
+        {
+            throw new ZerodhaReferenceException(loaded.Error);
+        }
+
+        foreach (var definition in Filter(Cache.Snapshot(), venue, assetClass))
+        {
+            yield return definition;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<InstrumentDefinition>> ResolveAsync(InstrumentKey key, CancellationToken ct = default)
+    {
+        var loaded = await EnsureLoadedAsync(ct).ConfigureAwait(false);
+        if (loaded.IsFailure)
+        {
+            return Result<InstrumentDefinition>.Failure(loaded.Error);
+        }
+
+        return Cache.TryGetDefinition(key, out var definition)
+            ? Result<InstrumentDefinition>.Success(definition)
+            : Result<InstrumentDefinition>.Failure(ConnectorErrors.InstrumentNotFound(key));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<InstrumentDefinition>>> SearchAsync(
+        string query,
+        int limit = 20,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Result<IReadOnlyList<InstrumentDefinition>>.Success([]);
+        }
+
+        var loaded = await EnsureLoadedAsync(ct).ConfigureAwait(false);
+        if (loaded.IsFailure)
+        {
+            return Result<IReadOnlyList<InstrumentDefinition>>.Failure(loaded.Error);
+        }
+
+        return Result<IReadOnlyList<InstrumentDefinition>>.Success(Cache.Search(query, limit));
+    }
+
+    /// <summary>
+    /// Loads the master into the process-wide cache unless a fresh copy is already there. The
+    /// history route, the option chain and the socket call this before looking up a token, so the
+    /// first chart after a restart waits for the download instead of failing.
+    /// </summary>
+    internal Task<Result> EnsureLoadedAsync(CancellationToken ct) =>
+        _master.EnsureLoadedAsync(DownloadAsync, _clock, ct);
+
+    /// <summary>
+    /// Downloads and parses every segment, then swaps the result into the cache in one step.
+    /// </summary>
+    private async Task<Result> DownloadAsync(CancellationToken ct)
+    {
+        var records = new List<ZerodhaInstrumentRecord>(capacity: 65_536);
+        var skipped = 0;
+        Error? firstFailure = null;
         var anyFileRead = false;
 
         foreach (var segment in Segments)
@@ -85,10 +159,11 @@ public sealed class ZerodhaReference : IConnectorReference
             var stream = await _api.GetRawStreamAsync(path, ct).ConfigureAwait(false);
             if (stream.IsFailure)
             {
-                // One unavailable segment must not abandon the ingest. A trader with the cash
-                // master loaded can trade equities; refusing to load anything because the BFO dump
-                // timed out would take that away for no reason. The miss is visible in the
-                // connector's health, which reports how many rows were loaded and skipped.
+                // One unavailable segment must not abandon the load. A trader with the cash master
+                // loaded can trade equities; refusing to load anything because the BFO dump timed
+                // out would take that away for no reason. The FIRST failure is kept, because when
+                // every segment fails it is the reason worth showing — an unregistered IP, say.
+                firstFailure ??= stream.Error;
                 continue;
             }
 
@@ -104,7 +179,7 @@ public sealed class ZerodhaReference : IConnectorReference
             {
                 // A file whose header we cannot read is a file whose columns we would be guessing
                 // at. Skipping it loudly beats importing a hundred thousand mis-parsed rows.
-                _cache.RecordSkippedRow();
+                skipped++;
                 continue;
             }
 
@@ -115,59 +190,27 @@ public sealed class ZerodhaReference : IConnectorReference
                     // Rows for instrument types this connector does not trade land here alongside
                     // genuinely broken ones. Both are counted; a sudden jump in the count is the
                     // signal that the file's shape changed.
-                    _cache.RecordSkippedRow();
+                    skipped++;
                     continue;
                 }
 
-                batch.Add(record);
-
-                if (batch.Count >= BatchSize)
-                {
-                    _cache.AddRange(batch);
-                    foreach (var item in Filter(batch, venue, assetClass))
-                    {
-                        yield return item;
-                    }
-
-                    batch.Clear();
-                }
+                records.Add(record);
             }
         }
 
-        if (batch.Count > 0)
+        // Only claim the master is loaded if something actually arrived. Marking it loaded after
+        // four failed downloads would leave the socket and the history route with nothing to look
+        // a token up in, and nothing would retry for twelve hours.
+        if (!anyFileRead || records.Count == 0)
         {
-            _cache.AddRange(batch);
-            foreach (var item in Filter(batch, venue, assetClass))
-            {
-                yield return item;
-            }
+            return Result.Failure(firstFailure ?? new Error(
+                ConnectorErrorCodes.BrokerUnavailable,
+                "Kite's instrument list could not be read. Try again in a few minutes."));
         }
 
-        // Only claim the master is loaded if at least one segment actually arrived. Marking it
-        // loaded after four failed downloads would silence the "load the master" guidance while
-        // leaving the socket and the history route with nothing to look a token up in.
-        if (anyFileRead)
-        {
-            _cache.MarkLoaded();
-        }
+        Cache.Replace(records, skipped);
+        return Result.Success();
     }
-
-    /// <inheritdoc />
-    public Task<Result<InstrumentDefinition>> ResolveAsync(InstrumentKey key, CancellationToken ct = default) =>
-        Task.FromResult(_cache.TryGetDefinition(key, out var definition)
-            ? Result<InstrumentDefinition>.Success(definition)
-            : Result<InstrumentDefinition>.Failure(_cache.IsLoaded
-                ? ConnectorErrors.InstrumentNotFound(key)
-                : ZerodhaErrors.MasterNotLoaded($"Resolving {key}")));
-
-    /// <inheritdoc />
-    public Task<Result<IReadOnlyList<InstrumentDefinition>>> SearchAsync(
-        string query,
-        int limit = 20,
-        CancellationToken ct = default) =>
-        Task.FromResult(string.IsNullOrWhiteSpace(query)
-            ? Result<IReadOnlyList<InstrumentDefinition>>.Success([])
-            : Result<IReadOnlyList<InstrumentDefinition>>.Success(_cache.Search(query, limit)));
 
     /// <summary>
     /// Wraps the response in a <see cref="GZipStream"/> when it is actually gzipped.
@@ -192,7 +235,7 @@ public sealed class ZerodhaReference : IConnectorReference
     }
 
     private static IEnumerable<InstrumentDefinition> Filter(
-        List<ZerodhaInstrumentRecord> batch,
+        IReadOnlyList<ZerodhaInstrumentRecord> batch,
         Venue? venue,
         AssetClass? assetClass)
     {
@@ -524,24 +567,58 @@ internal sealed class ConcatenatedStream(byte[] prefix, Stream rest) : Stream
 }
 
 /// <summary>
+/// Thrown when the instrument master cannot be loaded at all.
+///
+/// It exists because <see cref="IConnectorReference.GetInstrumentsAsync"/> returns a bare
+/// <see cref="IAsyncEnumerable{T}"/> with nowhere to put a <see cref="Result"/> failure, and an
+/// empty sequence would read as "Kite lists no instruments". Callers that need the canonical error
+/// read <see cref="Error"/>.
+/// </summary>
+public sealed class ZerodhaReferenceException : Exception
+{
+    /// <summary>Creates the exception from a canonical error.</summary>
+    public ZerodhaReferenceException(Error error)
+        : base(error.ToString()) => Error = error;
+
+    /// <summary>Creates the exception with a message only.</summary>
+    public ZerodhaReferenceException(string message)
+        : base(message) => Error = new Error(ConnectorErrorCodes.Unknown, message);
+
+    /// <summary>Creates the exception with a message and an inner cause.</summary>
+    public ZerodhaReferenceException(string message, Exception innerException)
+        : base(message, innerException) => Error = new Error(ConnectorErrorCodes.Unknown, message);
+
+    /// <summary>Creates an empty exception. Present to satisfy the exception design guidelines.</summary>
+    public ZerodhaReferenceException()
+        : this("Kite's instrument list could not be read.")
+    {
+    }
+
+    /// <summary>The canonical error this exception carries.</summary>
+    public Error Error { get; }
+}
+
+/// <summary>
 /// The parsed instrument master, shared by reference, market data, orders, portfolio and the
 /// stream.
 ///
-/// One cache per connector instance, held by <see cref="ZerodhaConnector"/> and passed by
-/// reference to every facet that needs it. Reads vastly outnumber writes — the master is written
+/// One cache per PROCESS and endpoint, held through <see cref="SharedInstrumentMaster{TCache}"/>
+/// and passed to every facet that needs it. Connectors are built per request, so a cache owned by
+/// one instance was empty on every request. Reads vastly outnumber writes — the master is written
 /// once a day and read on every order and every tick — so a reader-writer lock is the right shape
 /// here rather than a lock or a concurrent dictionary per index.
 /// </summary>
 public sealed class ZerodhaInstrumentCache : IZerodhaInstrumentLookup, IDisposable
 {
-    private readonly Dictionary<string, ZerodhaInstrumentRecord> _bySymbol =
+    // Not readonly: Replace swaps in a whole new generation under the write lock.
+    private Dictionary<string, ZerodhaInstrumentRecord> _bySymbol =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly Dictionary<InstrumentKey, ZerodhaInstrumentRecord> _byKey = [];
+    private Dictionary<InstrumentKey, ZerodhaInstrumentRecord> _byKey = [];
 
-    private readonly Dictionary<uint, ZerodhaInstrumentRecord> _byToken = [];
+    private Dictionary<uint, ZerodhaInstrumentRecord> _byToken = [];
 
-    private readonly List<ZerodhaInstrumentRecord> _all = [];
+    private List<ZerodhaInstrumentRecord> _all = [];
 
     private readonly ReaderWriterLockSlim _gate = new(LockRecursionPolicy.NoRecursion);
 
@@ -584,16 +661,78 @@ public sealed class ZerodhaInstrumentCache : IZerodhaInstrumentLookup, IDisposab
         {
             foreach (var record in records)
             {
-                _all.Add(record);
-                _bySymbol[record.QualifiedSymbol] = record;
-                _byKey[record.Definition.Key] = record;
-                _byToken[record.InstrumentToken] = record;
+                Index(record, _all, _bySymbol, _byKey, _byToken);
             }
         }
         finally
         {
             _gate.ExitWriteLock();
         }
+    }
+
+    /// <summary>
+    /// Replaces the whole master with a freshly parsed one and marks it loaded.
+    ///
+    /// REPLACE, never append: the cache is process-wide and reloaded twice a day, and appending
+    /// would double every row by the afternoon and keep expired contracts forever. The new
+    /// generation is built outside the lock and published in one swap, so a reader never sees a
+    /// half-built index.
+    /// </summary>
+    public void Replace(IReadOnlyList<ZerodhaInstrumentRecord> records, int skippedRows)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+
+        var all = new List<ZerodhaInstrumentRecord>(records.Count);
+        var bySymbol = new Dictionary<string, ZerodhaInstrumentRecord>(records.Count, StringComparer.OrdinalIgnoreCase);
+        var byKey = new Dictionary<InstrumentKey, ZerodhaInstrumentRecord>(records.Count);
+        var byToken = new Dictionary<uint, ZerodhaInstrumentRecord>(records.Count);
+
+        foreach (var record in records)
+        {
+            Index(record, all, bySymbol, byKey, byToken);
+        }
+
+        _gate.EnterWriteLock();
+        try
+        {
+            _all = all;
+            _bySymbol = bySymbol;
+            _byKey = byKey;
+            _byToken = byToken;
+            Volatile.Write(ref _skippedRows, skippedRows);
+            IsLoaded = true;
+        }
+        finally
+        {
+            _gate.ExitWriteLock();
+        }
+    }
+
+    /// <summary>A point-in-time copy of every row, safe to enumerate while a reload runs.</summary>
+    public IReadOnlyList<ZerodhaInstrumentRecord> Snapshot()
+    {
+        _gate.EnterReadLock();
+        try
+        {
+            return _all.ToArray();
+        }
+        finally
+        {
+            _gate.ExitReadLock();
+        }
+    }
+
+    private static void Index(
+        ZerodhaInstrumentRecord record,
+        List<ZerodhaInstrumentRecord> all,
+        Dictionary<string, ZerodhaInstrumentRecord> bySymbol,
+        Dictionary<InstrumentKey, ZerodhaInstrumentRecord> byKey,
+        Dictionary<uint, ZerodhaInstrumentRecord> byToken)
+    {
+        all.Add(record);
+        bySymbol[record.QualifiedSymbol] = record;
+        byKey[record.Definition.Key] = record;
+        byToken[record.InstrumentToken] = record;
     }
 
     /// <summary>Marks the master as loaded, which switches the translator off its fallback path.</summary>

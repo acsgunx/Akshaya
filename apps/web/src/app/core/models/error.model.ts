@@ -1,3 +1,5 @@
+import { HttpErrorResponse } from '@angular/common/http';
+
 /**
  * Mirrors `Akshaya.SharedKernel.Error` as it rides an RFC 7807 ProblemDetails
  * response — see `Akshaya.Api.Infrastructure.ProblemDetailsMapper.ToProblem`.
@@ -57,4 +59,31 @@ const RETRYABLE: ReadonlySet<string> = new Set([
  */
 export function isRetryableCode(code: string | undefined): boolean {
   return !!code && RETRYABLE.has(code);
+}
+
+/**
+ * The sentence to put on screen for a failed request: the API's own `detail`
+ * — which names the actual reason ("mStock only accepts API calls from the IP
+ * addresses registered…") — followed by the broker's own words when they add
+ * something, or `fallback` when the server said nothing usable.
+ *
+ * `err instanceof Error ? err.message : fallback` is the WRONG test, and every
+ * store used to use it: Angular's `HttpErrorResponse` is not an `Error`, so the
+ * fallback was shown every time and the reason survived only in an
+ * eight-second toast. A chart that says "Could not load price history." next
+ * to a toast that says why is two messages where one would do.
+ */
+export function problemDetail(err: unknown, fallback: string): string {
+  if (err instanceof HttpErrorResponse) {
+    const problem = (err.error ?? undefined) as Partial<ApiProblem> | undefined;
+    const detail = typeof problem?.detail === 'string' ? problem.detail.trim() : '';
+    if (!detail) {
+      return err.status === 0 ? 'Could not reach the server.' : fallback;
+    }
+
+    const vendor = typeof problem?.vendorMessage === 'string' ? problem.vendorMessage.trim() : '';
+    return vendor && !detail.includes(vendor) ? `${detail} Broker said: "${vendor}"` : detail;
+  }
+
+  return err instanceof Error && err.message ? err.message : fallback;
 }

@@ -6,6 +6,7 @@ import { tapResponse } from '@ngrx/operators';
 
 import { ApiService } from '../../core/api.service';
 import type { Candle, TimeFrame } from '../../core/models';
+import { problemDetail } from '../../core/models';
 
 /** What one history load needs. `days` is clamped by the caller against the manifest. */
 export interface HistoryRequest {
@@ -68,7 +69,7 @@ export const ChartStore = signalStore(
                   candles: [],
                   loadedTimeFrame: undefined,
                   loading: false,
-                  error: err instanceof Error ? err.message : 'Could not load price history.',
+                  error: problemDetail(err, 'Could not load price history.'),
                 }),
             }),
           );

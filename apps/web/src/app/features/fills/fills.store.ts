@@ -7,6 +7,7 @@ import { tapResponse } from '@ngrx/operators';
 import { ApiService } from '../../core/api.service';
 import { staleOnBrokerLinkChange } from '../../core/broker-links.store';
 import type { TradeQuery, TradeRecord } from '../../core/models';
+import { problemDetail } from '../../core/models';
 
 interface State {
   readonly trades: readonly TradeRecord[];
@@ -72,7 +73,7 @@ export const FillsStore = signalStore(
               error: (err: unknown) =>
                 patchState(store, {
                   loading: false,
-                  error: err instanceof Error ? err.message : 'Could not load fills.',
+                  error: problemDetail(err, 'Could not load fills.'),
                 }),
             }),
           ),

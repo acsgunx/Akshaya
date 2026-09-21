@@ -49,6 +49,7 @@ public sealed class ZerodhaStream : IConnectorStream, IAsyncDisposable
     private readonly ZerodhaOptions _options;
     private readonly BrokerSession _session;
     private readonly IZerodhaInstrumentLookup _instruments;
+    private readonly Func<CancellationToken, Task<Result>>? _ensureInstruments;
     private readonly ISymbolTranslator _symbols;
     private readonly ZerodhaOrderTagIndex _tags;
     private readonly IClock _clock;
@@ -82,11 +83,13 @@ public sealed class ZerodhaStream : IConnectorStream, IAsyncDisposable
         ISymbolTranslator symbols,
         ZerodhaOrderTagIndex tags,
         IClock clock,
-        ILogger logger)
+        ILogger logger,
+        Func<CancellationToken, Task<Result>>? ensureInstruments = null)
     {
         _options = options;
         _session = session;
         _instruments = instruments;
+        _ensureInstruments = ensureInstruments;
         _symbols = symbols;
         _tags = tags;
         _clock = clock;
@@ -202,6 +205,18 @@ public sealed class ZerodhaStream : IConnectorStream, IAsyncDisposable
             return Result.Success();
         }
 
+        // A token miss on a cold process means the master is not loaded yet, not that the
+        // instrument does not exist. Load it (once, process-wide) before deciding.
+        if (_ensureInstruments is not null
+            && instruments.Any(instrument => !_instruments.TryGetToken(instrument, out _)))
+        {
+            var loaded = await _ensureInstruments(ct).ConfigureAwait(false);
+            if (loaded.IsFailure)
+            {
+                return loaded;
+            }
+        }
+
         var tokens = new List<uint>(instruments.Count);
         foreach (var instrument in instruments)
         {
@@ -211,8 +226,7 @@ public sealed class ZerodhaStream : IConnectorStream, IAsyncDisposable
                 // rather than a degradation.
                 return Result.Failure(new Error(
                     ConnectorErrorCodes.InstrumentNotFound,
-                    $"Kite subscribes by numeric instrument token and none is known for {instrument}. "
-                    + "Load the instrument master before subscribing.",
+                    $"Kite does not list {instrument.Symbol}, so there is no live price for it.",
                     VendorCode: null,
                     VendorMessage: null,
                     Context: new Dictionary<string, string>(StringComparer.Ordinal)

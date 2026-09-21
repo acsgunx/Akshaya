@@ -15,6 +15,7 @@ import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import { positionEffectLabel } from '../../core/labels';
 import type { BlendedPosition, ConnectorManifest, ConvertPositionRequest, BrokerPositionLeg } from '../../core/models';
+import { problemDetail } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './convert-position-dialog.component';
@@ -186,7 +187,7 @@ export class PositionsComponent implements OnInit {
       error: (err: unknown) => {
         this.clearConverting(request.brokerLinkId);
         this.conversionError.set(
-          err instanceof Error ? err.message : 'The broker refused the conversion. The position is unchanged.',
+          problemDetail(err, 'The broker refused the conversion. The position is unchanged.'),
         );
       },
     });

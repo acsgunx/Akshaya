@@ -72,6 +72,11 @@ public sealed class ZerodhaErrorMapper : IVendorErrorMapper
     /// <inheritdoc />
     public string? MapToCanonicalCode(VendorErrorContext context)
     {
+        if (IsUnregisteredIp(context.VendorMessage))
+        {
+            return ConnectorErrorCodes.NotSupported;
+        }
+
         // A recognised exception name is the strongest signal there is.
         if (!string.IsNullOrWhiteSpace(context.VendorCode))
         {
@@ -141,8 +146,11 @@ public sealed class ZerodhaErrorMapper : IVendorErrorMapper
             + "historical candles at three.",
         ConnectorErrorCodes.Timeout => "Kite did not respond in time.",
         ConnectorErrorCodes.BrokerUnavailable => "Kite is currently unavailable.",
-        ConnectorErrorCodes.NotSupported => WithBrokerWords(
-            "Kite does not permit this action on this account.", context),
+        ConnectorErrorCodes.NotSupported => IsUnregisteredIp(context.VendorMessage)
+            ? "Kite only accepts API orders from the static IP registered on your Kite Connect app, "
+              + "and this app is connecting from a different one. In the Kite Connect developer "
+              + "console, register the public IP of the machine or server running Akshaya, then try again."
+            : WithBrokerWords("Kite does not permit this action on this account.", context),
         ConnectorErrorCodes.InvalidRequest => WithBrokerWords("Kite rejected the request as invalid.", context),
 
         // NO OPINION: SAY WHAT THE BROKER SAID. Our own wording is better than a vendor's ONLY
@@ -327,6 +335,20 @@ public sealed class ZerodhaErrorMapper : IVendorErrorMapper
         return null;
     }
 
+    /// <summary>
+    /// Whether the broker refused the request because of the IP address it came from.
+    ///
+    /// SEBI's retail-algo rules require API orders to come from a static IP the user has registered
+    /// with the broker. The refusal arrives under whatever exception type the broker files it with,
+    /// and treating it as a session or permission problem sends the user round a login loop that
+    /// cannot help, so it is recognised from the text and checked before the type.
+    /// </summary>
+    private static bool IsUnregisteredIp(string? message) =>
+        !string.IsNullOrWhiteSpace(message)
+        && Contains(
+            message.ToUpperInvariant(),
+            "IP ADDRESS", "STATIC IP", "REGISTERED IP", "WHITELIST", "WHITE LIST", "WHITE-LIST");
+
     private static bool Contains(string haystack, params ReadOnlySpan<string> needles)
     {
         foreach (var needle in needles)
@@ -429,20 +451,4 @@ internal static class ZerodhaErrors
         });
 
     public static Error InvalidRequest(string message) => new(ConnectorErrorCodes.InvalidRequest, message);
-
-    /// <summary>
-    /// Raised whenever an operation needs the instrument master and it has not been ingested.
-    /// Kite identifies instruments by numeric token on the socket and the history route, so this
-    /// is not a soft degradation — those calls genuinely cannot proceed.
-    /// </summary>
-    public static Error MasterNotLoaded(string what) => new(
-        ConnectorErrorCodes.InstrumentNotFound,
-        $"{what} needs the Kite instrument master and it has not been ingested yet. "
-        + "Run IConnectorReference.GetInstrumentsAsync first.",
-        VendorCode: null,
-        VendorMessage: null,
-        Context: new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["needs"] = "instrument-master",
-        });
 }

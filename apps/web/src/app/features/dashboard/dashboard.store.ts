@@ -7,6 +7,7 @@ import { tapResponse } from '@ngrx/operators';
 import { ApiService } from '../../core/api.service';
 import { staleOnBrokerLinkChange } from '../../core/broker-links.store';
 import type { PortfolioSnapshot } from '../../core/models';
+import { problemDetail } from '../../core/models';
 
 interface State {
   readonly snapshot: PortfolioSnapshot | undefined;
@@ -51,7 +52,7 @@ export const DashboardStore = signalStore(
             tapResponse({
               next: (snapshot) => patchState(store, { snapshot, loading: false, lastFetchedAt: Date.now() }),
               error: (err: unknown) =>
-                patchState(store, { loading: false, error: err instanceof Error ? err.message : 'Could not load the portfolio.' }),
+                patchState(store, { loading: false, error: problemDetail(err, 'Could not load the portfolio.') }),
             }),
           ),
         ),

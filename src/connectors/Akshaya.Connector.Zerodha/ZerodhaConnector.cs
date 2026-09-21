@@ -15,10 +15,11 @@ namespace Akshaya.Connector.Zerodha;
 ///
 /// Four lifetime details worth knowing before you change anything:
 ///
-/// 1. The instrument cache is shared BY REFERENCE between the reference, market-data and stream
-///    facets. The stream cannot work without it at all — Kite's socket identifies instruments by
-///    numeric token and nothing else, as does the historical-candle route — and one cache per
-///    facet would both multiply the memory and let the facets disagree about what a token means.
+/// 1. The instrument cache is shared by every connector instance in the process, not owned by
+///    this one. The stream cannot work without it at all — Kite's socket identifies instruments by
+///    numeric token and nothing else, as does the historical-candle route. Connectors are built
+///    per request, so a cache owned by the instance was empty on every request; see
+///    <see cref="SharedInstrumentMaster{TCache}"/>. The instance never disposes it.
 ///
 /// 2. The order-tag index is shared between the ORDERS facet and the STREAM. Orders writes it on
 ///    placement; the stream reads it to attach a ClientOrderId to the fill Kite pushes back
@@ -61,7 +62,9 @@ public sealed class ZerodhaConnector : ConnectorBase
 
         Options = options;
         Errors = new ZerodhaErrorMapper();
-        Instruments = new ZerodhaInstrumentCache();
+        // Keyed by endpoint so a test double and production never share a list.
+        var master = SharedInstrumentMaster.For(options.BaseUrl.AbsoluteUri, static () => new ZerodhaInstrumentCache());
+        Instruments = master.Cache;
         Tags = new ZerodhaOrderTagIndex();
 
         // The translator prefers the instrument master when it is loaded and falls back to
@@ -75,12 +78,14 @@ public sealed class ZerodhaConnector : ConnectorBase
         AuthFacet = new ZerodhaAuth(options, Errors, Clock);
         OrdersFacet = new ZerodhaOrders(_api, options, Symbols, Clock, Tags, Logger);
         PortfolioFacet = new ZerodhaPortfolio(_api, options, Symbols, Logger);
-        MarketDataFacet = new ZerodhaMarketData(_api, options, Symbols, Instruments, Clock);
-        ReferenceFacet = new ZerodhaReference(_api, options, Instruments);
+        ReferenceFacet = new ZerodhaReference(_api, options, master, Clock);
+        MarketDataFacet = new ZerodhaMarketData(
+            _api, options, Symbols, Instruments, ReferenceFacet.EnsureLoadedAsync, Clock);
 
         _stream = session is null
             ? null
-            : new ZerodhaStream(options, session, Instruments, Symbols, Tags, Clock, Logger);
+            : new ZerodhaStream(
+                options, session, Instruments, Symbols, Tags, Clock, Logger, ReferenceFacet.EnsureLoadedAsync);
     }
 
     /// <summary>Endpoint and timeout configuration, exposed for diagnostics.</summary>
@@ -93,8 +98,8 @@ public sealed class ZerodhaConnector : ConnectorBase
     public ISymbolTranslator Symbols { get; }
 
     /// <summary>
-    /// The parsed instrument master. Exposed so the host's daily ingest job can populate it and so
-    /// health checks can report how many instruments are loaded and how many rows were skipped.
+    /// The parsed instrument master, shared process-wide. Exposed so health checks can report how
+    /// many instruments are loaded and how many rows were skipped.
     /// </summary>
     public ZerodhaInstrumentCache Instruments { get; }
 
@@ -166,9 +171,9 @@ public sealed class ZerodhaConnector : ConnectorBase
         {
             detail = Join(
                 detail,
-                "Instrument master not yet ingested. Cash symbols still translate structurally, but "
-                + "monthly derivatives cannot be resolved, and neither the live feed nor historical "
-                + "candles can run — both address instruments by numeric token.");
+                "Instrument master not loaded yet; it loads on the first chart, live price or search. "
+                + "Cash symbols translate structurally until then, but monthly derivatives cannot be "
+                + "resolved.");
         }
         else if (Instruments.SkippedRows > 0)
         {
@@ -184,7 +189,7 @@ public sealed class ZerodhaConnector : ConnectorBase
             detail = Join(
                 detail,
                 $"{stream.UnresolvedTicks} ticks arrived for instrument tokens the master does not "
-                + "contain; it is stale and should be re-ingested.");
+                + "contain; it is stale and reloads within twelve hours.");
         }
 
         return health with { Detail = detail };
@@ -203,15 +208,16 @@ public sealed class ZerodhaConnector : ConnectorBase
 
         _disposed = true;
 
-        // Socket first: it holds a reference to the instrument cache and would log against a
-        // disposed lookup if the cache went first.
+        // Socket first: it may still be resolving ticks, and a tick arriving mid-teardown should
+        // not race the HTTP client going away.
         if (_stream is not null)
         {
             await _stream.DisposeAsync().ConfigureAwait(false);
         }
 
+        // The instrument cache is NOT disposed: it is process-wide and other connector instances
+        // are reading it right now.
         await _api.DisposeAsync().ConfigureAwait(false);
-        Instruments.Dispose();
 
         // The base suppresses finalization; doing it here as well would be harmless but would hide
         // the fact that this type is expected to chain.
