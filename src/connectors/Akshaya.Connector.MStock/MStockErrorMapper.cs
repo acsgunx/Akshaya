@@ -58,8 +58,8 @@ public sealed class MStockErrorMapper : IVendorErrorMapper
     /// What to tell someone whose request came from an IP address their API key does not list.
     ///
     /// SEBI's retail-algo rules require API orders to come from a static IP registered with the
-    /// broker, and mStock enforces it on every route with "Primary and Secondary IP Address are
-    /// not matching with current IP address." — under the APIKeyException type. Reporting that as
+    /// broker, and mStock refuses an order from anywhere else with "Primary and Secondary IP
+    /// Address are not matching with current IP address." — under the APIKeyException type. Reporting that as
     /// an expired key (which this mapper used to) sends the user to regenerate a key that is fine,
     /// and the next request fails exactly the same way. The fix is in the mStock API portal, and
     /// it is about the machine Akshaya runs on, which is not necessarily the one the user is at.

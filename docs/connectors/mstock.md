@@ -49,6 +49,7 @@
 | Script master | `GET /openapi/typea/instruments/scriptmaster` (CSV) |
 | LTP | `GET /openapi/typea/instruments/quote/ltp` |
 | OHLC | `GET /openapi/typea/instruments/quote/ohlc` |
+| Candles (all intervals) | `GET /openapi/typea/instruments/historical/{exchange}/{token}/{interval}?from=&to=` |
 
 Headers on every call: `X-Mirae-Version: 1`, `Authorization: token {api_key}:{access_token}`,
 `X-PrivateKey: {api_key}`. JSON generally; login and session endpoints are
@@ -164,11 +165,24 @@ default is how a rejected order shows as open.
   empty on every request, so charts and live prices never worked. The first chart, live-price
   subscription or search after a restart downloads it; everything after that reads memory. It is
   reloaded after twelve hours, and a failed reload keeps serving the previous copy.
+- **Charts are one route for every interval, and it was wrong until September 2026.** The
+  connector called `instruments/historicalchart/{token}` and `instruments/intradaychart/…`, which
+  do not exist, so every chart failed with "mStock rejected the request as invalid". The documented
+  route is `instruments/historical/{exchange}/{token}/{interval}` with `from`/`to` as
+  `yyyy-MM-dd HH:mm:ss` IST. Intervals are spelled `minute` (not `1minute`), `3minute`, `5minute`,
+  `10minute`, `15minute`, `30minute`, `60minute` and `day`.
+- **At most 1000 candles per request.** Five days of one-minute candles is about 1900, so the
+  connector moves `from` forward to the most recent 1000, counting weekdays. It does not split the
+  window, because the data limit is one request a second and a second request would be refused.
+- **Candle timestamps carry a truncated offset**: `2024-01-01T09:15:00+05`. Read literally that
+  is +05:00 and every candle lands half an hour late; `MStockTime.Parse` treats a bare `+05` as
+  IST (+05:30).
 - **The script master is a large CSV.** It is streamed and parsed, not buffered. Skipped rows are
   counted and surfaced in health — a non-zero count is worth an alert.
-- **Every API call must come from an IP registered on the API key.** SEBI's retail-algo rules make
-  brokers restrict API access to a static IP, and mStock enforces it on every route — quotes and
-  the script master included, not only orders. A call from anywhere else fails with
+- **Orders must come from an IP registered on the API key.** SEBI's retail-algo rules make brokers
+  restrict API order placement to a static IP. Market data is not restricted: the script master,
+  quotes and charts have been seen working from App Service's unregistered shared addresses, while
+  an order from the same app was refused. An order from an unregistered address fails with
   `APIKeyException` / "Primary and Secondary IP Address are not matching with current IP
   address." Despite the exception type, **the key is fine**: regenerating it changes nothing. The
   fix is to register the public IP of the machine running Akshaya as the primary or secondary IP
@@ -176,10 +190,10 @@ default is how a rejected order shows as open.
   reporting an expired key.
   - Running locally: that is your connection's public IP, which most home ISPs change from time to
     time.
-  - On Azure App Service: outbound traffic leaves from one of several shared addresses
-    (`az webapp show -g <rg> -n <app> --query possibleOutboundIpAddresses`), more than the two
-    mStock accepts, and they are not reserved for you. A fixed egress IP needs VNet integration
-    with a NAT gateway on a static public IP; register that one address.
+  - On Azure App Service: outbound traffic leaves from one of several shared addresses, more than
+    the two mStock accepts, and they are not reserved for you. A fixed egress IP needs VNet
+    integration with a NAT gateway on a static public IP. The steps, costs and checks are in
+    [`deploy/azure-app-service/STATIC-IP.md`](../../deploy/azure-app-service/STATIC-IP.md).
 
 ## Smoke test — run this before trusting anything
 
@@ -211,8 +225,10 @@ the API.
 
 ## Open questions
 
-- Exact response shape of the historical/intraday chart endpoints — the DTOs are a best reading of
-  the docs.
+- Whether the candle route includes the current session's candles up to now. Kite's does, and
+  mStock's Type A mirrors Kite; if it turns out not to, today's bars would have to come from the
+  separate `/instruments/intraday/{exchangeCode}/{token}/{interval}` route (current day only,
+  exchange as a number: 1 NSE, 2 NFO, 4 BSE, 5 BFO), which means a second data request.
 - Whether `cancelall` is atomic or best-effort. The manifest currently claims non-atomic basket
   behaviour, which is the safe assumption.
 - Whether `/margins/orders` really wants JSON: the prose says form-encoded, the cURL sample sets
