@@ -105,11 +105,16 @@ public sealed record MStockOptions
 
     public string OhlcPath { get; init; } = "/openapi/typea/instruments/quote/ohlc";
 
-    /// <summary>Daily/holding-period chart route; <c>{0}</c> is the instrument token.</summary>
-    public string HistoricalChartPathFormat { get; init; } = "/openapi/typea/instruments/historicalchart/{0}";
-
-    /// <summary>Intraday chart route; <c>{0}</c> is the instrument token, <c>{1}</c> the interval.</summary>
-    public string IntradayChartPathFormat { get; init; } = "/openapi/typea/instruments/intradaychart/{0}/{1}";
+    /// <summary>
+    /// The candle route, for every interval from one minute to a day: <c>{0}</c> is the exchange
+    /// (NSE, BSE, NFO, BFO), <c>{1}</c> the script-master instrument token, <c>{2}</c> the interval.
+    /// The window goes in <c>from</c>/<c>to</c> query parameters. Documented at
+    /// tradingapi.mstock.com under Type A → Historical Data.
+    ///
+    /// There is also an <c>/instruments/intraday/…</c> route, but it returns the current day
+    /// only and takes the exchange as a number; this one covers today as well as history.
+    /// </summary>
+    public string HistoricalChartPathFormat { get; init; } = "/openapi/typea/instruments/historical/{0}/{1}/{2}";
 
     public string OptionChainPath { get; init; } = "/openapi/typea/instruments/optionchain";
 

@@ -115,6 +115,14 @@ internal static class MStockTime
 
         var trimmed = value.Trim();
 
+        // The chart routes stamp candles with a TRUNCATED offset — "2024-01-01T09:15:00+05" —
+        // which any parser reads as +05:00, putting every candle half an hour late. India has
+        // one offset and it is +05:30, so a bare "+05" means IST.
+        if (trimmed.EndsWith("+05", StringComparison.Ordinal))
+        {
+            trimmed = string.Concat(trimmed.AsSpan(0, trimmed.Length - 3), "+05:30");
+        }
+
         // Anything carrying its own offset ("2025-09-01T09:15:00+0530") is authoritative.
         if (HasExplicitOffset(trimmed)
             && DateTimeOffset.TryParse(

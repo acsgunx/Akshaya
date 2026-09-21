@@ -369,19 +369,21 @@ public static class MStockMaps
     // --- TimeFrame -> chart interval -----------------------------------------------------
 
     /// <summary>
-    /// Canonical time frame to mStock's chart interval token, plus whether the daily
-    /// (historical) or intraday chart route serves it. They are different endpoints with
-    /// different parameter shapes, so the caller needs both facts.
+    /// Canonical time frame to mStock's chart interval token, plus how many candles one session
+    /// holds at that interval — the caller needs it to stay under the 1000-candle request limit.
     /// </summary>
     public static Result<MStockChartInterval> ToNativeInterval(TimeFrame frame) => frame switch
     {
-        TimeFrame.OneMinute => new MStockChartInterval("1minute", Intraday: true),
-        TimeFrame.ThreeMinutes => new MStockChartInterval("3minute", Intraday: true),
-        TimeFrame.FiveMinutes => new MStockChartInterval("5minute", Intraday: true),
-        TimeFrame.FifteenMinutes => new MStockChartInterval("15minute", Intraday: true),
-        TimeFrame.ThirtyMinutes => new MStockChartInterval("30minute", Intraday: true),
-        TimeFrame.OneHour => new MStockChartInterval("60minute", Intraday: true),
-        TimeFrame.OneDay => new MStockChartInterval("day", Intraday: false),
+        // "minute", not "1minute": mStock documents exactly minute, 3minute, 5minute, 10minute,
+        // 15minute, 30minute, 60minute and day, and anything else is an InputException. Bars per
+        // session assume the 375-minute NSE/BSE session, 09:15 to 15:30.
+        TimeFrame.OneMinute => new MStockChartInterval("minute", BarsPerSession: 375),
+        TimeFrame.ThreeMinutes => new MStockChartInterval("3minute", BarsPerSession: 125),
+        TimeFrame.FiveMinutes => new MStockChartInterval("5minute", BarsPerSession: 75),
+        TimeFrame.FifteenMinutes => new MStockChartInterval("15minute", BarsPerSession: 25),
+        TimeFrame.ThirtyMinutes => new MStockChartInterval("30minute", BarsPerSession: 13),
+        TimeFrame.OneHour => new MStockChartInterval("60minute", BarsPerSession: 7),
+        TimeFrame.OneDay => new MStockChartInterval("day", BarsPerSession: 1),
         TimeFrame.OneWeek or TimeFrame.OneMonth => Result<MStockChartInterval>.Failure(Unsupported(
             "chart interval",
             frame.ToString(),
@@ -462,8 +464,8 @@ public static class MStockMaps
         });
 }
 
-/// <summary>
-/// A resolved mStock chart interval. <paramref name="Intraday"/> selects between the intraday
-/// and the daily chart route, which are separate endpoints.
-/// </summary>
-public readonly record struct MStockChartInterval(string Interval, bool Intraday);
+/// <summary>An mStock chart interval.</summary>
+/// <param name="Interval">The interval exactly as mStock's candle route spells it.</param>
+/// <param name="BarsPerSession">Candles in one full trading session, used to keep a request
+/// under mStock's 1000-candle limit.</param>
+public readonly record struct MStockChartInterval(string Interval, int BarsPerSession);

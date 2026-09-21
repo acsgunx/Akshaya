@@ -23,6 +23,9 @@ public sealed class MStockMarketData : IConnectorMarketData
 {
     private static readonly Currency Inr = Currency.Inr;
 
+    /// <summary>mStock's documented ceiling on candles returned by one chart request.</summary>
+    private const int MaxCandlesPerRequest = 1000;
+
     private readonly MStockApi _api;
     private readonly MStockOptions _options;
     private readonly ISymbolTranslator _symbols;
@@ -187,22 +190,24 @@ public sealed class MStockMarketData : IConnectorMarketData
             return Result<CandleSeries>.Failure(resolved.Error);
         }
 
-        var token = resolved.Value;
-        var path = interval.Value.Intraday
-            ? string.Format(
-                CultureInfo.InvariantCulture,
-                _options.IntradayChartPathFormat,
-                token.ToString(CultureInfo.InvariantCulture),
-                interval.Value.Interval)
-            : string.Format(
-                CultureInfo.InvariantCulture,
-                _options.HistoricalChartPathFormat,
-                token.ToString(CultureInfo.InvariantCulture));
+        var exchange = MStockMaps.ToNativeExchange(request.Instrument.Venue, request.Instrument.AssetClass);
+        if (exchange.IsFailure)
+        {
+            return Result<CandleSeries>.Failure(exchange.Error);
+        }
 
+        var path = string.Format(
+            CultureInfo.InvariantCulture,
+            _options.HistoricalChartPathFormat,
+            exchange.Value,
+            resolved.Value.ToString(CultureInfo.InvariantCulture),
+            interval.Value.Interval);
+
+        // The window is the only query: no "interval" parameter, which the route does not take.
+        var from = ClampToBarLimit(request.From, request.To, interval.Value.BarsPerSession);
         var query = new MStockQuery()
-            .Add("from", MStockTime.FormatDateTime(request.From, _venueZone))
-            .Add("to", MStockTime.FormatDateTime(request.To, _venueZone))
-            .Add("interval", interval.Value.Interval);
+            .Add("from", MStockTime.FormatDateTime(from, _venueZone))
+            .Add("to", MStockTime.FormatDateTime(request.To, _venueZone));
 
         var response = await _api.GetAsync<MStockCandlesData>(path, query, ct).ConfigureAwait(false);
         if (response.IsFailure)
@@ -224,6 +229,10 @@ public sealed class MStockMarketData : IConnectorMarketData
             candles.Add(candle.Value);
         }
 
+        // Oldest first, whatever order they arrived in. The documented samples disagree: the
+        // historical route lists candles oldest first, the intraday one newest first.
+        candles.Sort(static (left, right) => left.OpenTime.CompareTo(right.OpenTime));
+
         return new CandleSeries
         {
             Instrument = request.Instrument,
@@ -231,6 +240,37 @@ public sealed class MStockMarketData : IConnectorMarketData
             Currency = Inr,
             Candles = candles,
         };
+    }
+
+    /// <summary>
+    /// Moves <paramref name="from"/> forward, if it has to, so the window holds at most
+    /// <see cref="MaxCandlesPerRequest"/> candles.
+    ///
+    /// mStock returns no more than 1000 candles per request, and a chart asking for five days of
+    /// one-minute candles wants nearly 1900. Splitting the window into several requests is not an
+    /// option: the data limit is one request a second, enforced per operation, so the second
+    /// request would be refused. Keeping the MOST RECENT candles is the useful half of the
+    /// window. Counting only weekdays means a Monday-morning chart still reaches back into last
+    /// week; exchange holidays make the real count lower, never higher.
+    /// </summary>
+    private DateTimeOffset ClampToBarLimit(DateTimeOffset from, DateTimeOffset to, int barsPerSession)
+    {
+        var sessions = Math.Max(1, MaxCandlesPerRequest / Math.Max(1, barsPerSession));
+
+        var day = TimeZoneInfo.ConvertTime(to, _venueZone).Date;
+        var counted = 0;
+        while (true)
+        {
+            if (day.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && ++counted == sessions)
+            {
+                break;
+            }
+
+            day = day.AddDays(-1);
+        }
+
+        var earliest = new DateTimeOffset(day, _venueZone.GetUtcOffset(day));
+        return from > earliest ? from : earliest;
     }
 
     /// <summary>
