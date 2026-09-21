@@ -24,7 +24,22 @@
       why that distinction is the entire point of this component.
     -->
     @if (!store.step()) {
-      <form [formGroup]="credentialForm" class="flex flex-col gap-4.5 px-6 pt-5.5 pb-6" (ngSubmit)="submitCredentials()">
+      <!--
+        NOT A SIGN-IN FORM, and every field below says so. A text box followed by a password box
+        is exactly what browsers take for a login, so Chrome used to fill this with the user's
+        saved AKSHAYA email and password: the email landed in "API key", the password in "API
+        secret", and with "Remember this" ticked by default both would have been saved as broker
+        credentials. `autocomplete="off"` alone does not stop it — Chrome ignores "off" on
+        password boxes — so secrets use "new-password", which Chrome honours by never filling a
+        saved password, and the data-* attributes opt out of 1Password, LastPass, Bitwarden and
+        Dashlane.
+      -->
+      <form
+        [formGroup]="credentialForm"
+        class="flex flex-col gap-4.5 px-6 pt-5.5 pb-6"
+        autocomplete="off"
+        (ngSubmit)="submitCredentials()"
+      >
         @if (manifest()!.auth.expiresAtVenueMidnight) {
           <p class="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2.5 text-[12.5px]/[1.45] text-text-secondary">
             <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">schedule</mat-icon>
@@ -72,7 +87,17 @@
           <div class="flex flex-col gap-1.5">
             <mat-form-field appearance="outline" subscriptSizing="dynamic" class="w-full">
               <mat-label>Nickname</mat-label>
-              <input matInput [formControl]="nicknameControl" placeholder="e.g. My {{ manifest()!.displayName }} account" />
+              <input
+                matInput
+                [formControl]="nicknameControl"
+                placeholder="e.g. My {{ manifest()!.displayName }} account"
+                name="broker-link-nickname"
+                autocomplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-bwignore
+                data-form-type="other"
+              />
             </mat-form-field>
             <p class="px-0.5 text-xs/[1.4] text-text-tertiary">Optional. Helps you tell this link apart if you connect the same broker twice.</p>
           </div>
@@ -88,7 +113,12 @@
                   [type]="field.secret ? 'password' : 'text'"
                   [formControlName]="field.key"
                   [placeholder]="field.placeholder ?? ''"
-                  [autocomplete]="field.secret ? 'off' : 'on'"
+                  [attr.name]="'broker-credential-' + field.key"
+                  [attr.autocomplete]="field.secret ? 'new-password' : 'off'"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-bwignore
+                  data-form-type="other"
                   [attr.aria-describedby]="field.key + '-msg'"
                 />
                 @if (field.secret) {
