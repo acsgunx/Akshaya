@@ -11,6 +11,8 @@ import { QuantityPipe } from '../../core/quantity.pipe';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
+import { RefreshButtonComponent } from '../../shared/refresh-button/refresh-button.component';
+import { RefreshingDirective } from '../../shared/refreshing/refreshing.directive';
 import { VenueClockComponent } from '../../shared/venue-clock/venue-clock.component';
 import { DashboardStore } from './dashboard.store';
 
@@ -34,6 +36,8 @@ import { DashboardStore } from './dashboard.store';
     ConnectionStatusComponent,
     EmptyStateComponent,
     LoadingStateComponent,
+    RefreshButtonComponent,
+    RefreshingDirective,
     VenueClockComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

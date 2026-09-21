@@ -91,7 +91,12 @@
       canonical state as a badge, the broker's own words verbatim under it — because the class
       doc's reason for showing both does not get weaker on a smaller screen.
     -->
-    <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Orders">
+    <ul
+      class="overflow-hidden rounded-lg border border-border bg-surface-1"
+      role="list"
+      aria-label="Orders"
+      [akRefreshing]="store.loading()"
+    >
       @for (order of store.orders(); track order.id) {
         <li class="cv-auto-[104px] border-b border-border px-4 py-3 last:border-b-0">
           <div class="flex items-center justify-between gap-3">
@@ -174,7 +179,7 @@
       <span></span>
     </div>
 
-    <cdk-virtual-scroll-viewport itemSize="48" class="ak-viewport">
+    <cdk-virtual-scroll-viewport itemSize="48" class="ak-viewport" [akRefreshing]="store.loading()">
       <div *cdkVirtualFor="let order of store.orders(); trackBy: trackById" class="ak-trow" role="row">
         <span class="ak-truncate ak-strong">{{ order.instrument }}</span>
         <span [class.ak-buy-text]="order.side === 'buy'" [class.ak-sell-text]="order.side === 'sell'">{{ sideLabel(order.side) }}</span>

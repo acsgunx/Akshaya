@@ -21,6 +21,8 @@ import { problemDetail } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
+import { RefreshButtonComponent } from '../../shared/refresh-button/refresh-button.component';
+import { RefreshingDirective } from '../../shared/refreshing/refreshing.directive';
 import { PORTFOLIO_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './convert-position-dialog.component';
 
@@ -54,6 +56,8 @@ import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './con
     QuantityPipe,
     EmptyStateComponent,
     LoadingStateComponent,
+    RefreshButtonComponent,
+    RefreshingDirective,
     SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

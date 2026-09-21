@@ -16,6 +16,7 @@ import { QuantityPipe } from '../../core/quantity.pipe';
 import type { TradeRecord } from '../../core/models';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
+import { RefreshingDirective } from '../../shared/refreshing/refreshing.directive';
 import { ORDERS_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 import { FillsStore } from './fills.store';
 
@@ -51,6 +52,7 @@ import { FillsStore } from './fills.store';
     QuantityPipe,
     EmptyStateComponent,
     LoadingStateComponent,
+    RefreshingDirective,
     SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -126,7 +128,12 @@ import { FillsStore } from './fills.store';
 
         @if (layout.compact()) {
           <!-- COMPACT: one card per execution, value top-right; the same facts as the desktop row. -->
-          <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Fills">
+          <ul
+            class="overflow-hidden rounded-lg border border-border bg-surface-1"
+            role="list"
+            aria-label="Fills"
+            [akRefreshing]="store.loading()"
+          >
             @for (trade of store.trades(); track trade.tradeId) {
               <li class="cv-auto-[84px] border-b border-border px-4 py-3 last:border-b-0">
                 <div class="flex items-baseline justify-between gap-3">
@@ -167,7 +174,7 @@ import { FillsStore } from './fills.store';
           <span>Order</span>
         </div>
 
-        <cdk-virtual-scroll-viewport itemSize="48" class="ak-viewport">
+        <cdk-virtual-scroll-viewport itemSize="48" class="ak-viewport" [akRefreshing]="store.loading()">
           <div *cdkVirtualFor="let trade of store.trades(); trackBy: trackById" class="ak-trow" role="row">
             <span class="ak-muted tabular-nums">{{ trade.executedAt | date: 'dd MMM HH:mm:ss' }}</span>
             <span class="ak-truncate ak-strong">{{ trade.instrument }}</span>

@@ -231,18 +231,22 @@ Waits are shown at three scopes, each with one job:
   once that screen has painted (`core/boot-splash.ts`). After 8 seconds it
   says the wait is unusually long, and after 25 it offers a reload. If
   bootstrap throws, it turns into an error instead of spinning forever.
-- **App-wide — `<ak-activity-bar>`.** A 2px bar on the top edge whenever a
-  navigation or an HTTP request is in flight (`core/activity.service.ts`,
-  fed by `activityInterceptor`). It is the answer to "did my tap do
-  anything?". It waits 200ms before appearing, because most cached switches
-  finish sooner and would only flicker it. Once shown it stays at least 300ms,
-  which also merges "route resolved, screen fetches" into one bar. It is
-  indeterminate on purpose: nothing here knows how long a broker will take,
-  and a bar that creeps to 90% and stalls claims knowledge it does not have.
+- **App-wide — `<ak-activity-bar>`.** A 3px bar on the header's bottom edge,
+  right above the content, whenever a navigation or an HTTP request is in
+  flight (`core/activity.service.ts`, fed by `activityInterceptor`). That is
+  Material's placement for a page-level progress bar; a 2px line on the
+  viewport's top edge was too easy to miss. It is the answer to "did my tap
+  do anything?". It waits 200ms before appearing, because most cached
+  switches finish sooner and would only flicker it. Once shown it stays at
+  least 300ms, which also merges "route resolved, screen fetches" into one
+  bar. It is indeterminate on purpose: nothing here knows how long a broker
+  will take, and a bar that creeps to 90% and stalls claims knowledge it
+  does not have.
 - **Local — on the thing that is waiting.** A screen's data is shown in place:
-  - `<ak-loading-state>` for a screen or a card whose data has not arrived;
-  - a spinning refresh icon when data is already on screen and being
-    replaced;
+  - `<ak-loading-state>` for a screen or a card with nothing to show yet;
+  - `akRefreshing` on the figures and rows when data is already on screen
+    and being replaced — a refresh, a changed filter, a new date range;
+  - `<ak-refresh-button>` for the control that asked for it;
   - a spinner in a button, with a verb ending in "-ing" ("Verifying…",
     "Halting…", "Cancelling…"), when a control is busy.
 
@@ -251,23 +255,44 @@ The rules:
 1. **Never show an empty state for data nobody has answered for yet.** Gate it
    on the load having finished: the watchlist waits on
    `BrokerLinksStore.signature`, the account page on `savedCredentialsLoading`.
-2. **Keep what is on screen while refreshing.** Blanking a blotter to show a
-   spinner loses the user's place. Show the refresh icon spinning instead.
+2. **Every load shows, not just the first.** It is easy to handle only the
+   empty case (`loading && !data` → spinner) and leave every later load
+   invisible: the old rows sit there at full strength, and after a filter
+   change they don't even match the filter. Keep them on screen, because
+   blanking a blotter loses the user's place, but dim them with
+   `akRefreshing`. Dimming waits 150ms, so fast refreshes don't flicker.
 3. **Say what is loading.** "Loading holdings…", not a bare spinner.
    `<ak-loading-state>` is a `role="status"` region, so a screen reader hears
    the label too. After 8 seconds it adds a line saying the wait is unusually
    long, since a spinner looks the same at 2s and at 40s.
-4. **A disabled control says why.** A greyed button with its normal label
-   reads as "unavailable", which on the kill switch is the worst possible
-   thing for it to say. Change the label to what it is doing.
-5. **Type-ahead opts out of the global bar** (`SKIP_ACTIVITY_BAR`). The field
+4. **A busy control says so, at full strength.** A greyed button with its
+   normal label reads as "unavailable", which on the kill switch is the worst
+   possible thing for it to say. Change the label to what it is doing. An
+   icon-only control has no label to change, so it must not grey out:
+   `<ak-refresh-button>` uses `aria-disabled` rather than `disabled` and turns
+   brand-coloured while it spins.
+5. **Every click gets an answer, however fast the reply.** Start the feedback
+   on the click, not when the store reports `loading`. A 5ms response can
+   arrive before the next render, so `loading` is never seen as true. Then
+   hold it long enough to register: the refresh icon turns at least once, and
+   only ever stops on a full turn.
+6. **Type-ahead opts out of the global bar** (`SKIP_ACTIVITY_BAR`). The field
    shows its own spinner, and a bar pulsing on every pause in typing only
    pulls the eye away from it.
-6. **Every animation has a reduced-motion form that still reads as busy.** The
+7. **Every animation has a reduced-motion form that still reads as busy.** The
    global reduced-motion rule in `styles.scss` stops animations after one 1ms
    run, which would leave an indeterminate segment parked off-screen. Pair
    `animate-indeterminate` with `motion-reduce:animate-none
    motion-reduce:w-full` so the bar is still visible, just static.
+
+**Judging these locally.** Against a local API every call answers in a few
+milliseconds, so none of the above gets a frame on screen. On the dev server,
+make every API call as slow as a real broker, then reload:
+
+    localStorage.setItem('akshaya.devLatencyMs', '1500')
+
+Remove the key to go back to full speed (`core/interceptors/dev-latency.interceptor.ts`;
+not registered in a production build).
 
 ## The keyboard model
 

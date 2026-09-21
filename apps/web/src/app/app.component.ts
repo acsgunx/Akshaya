@@ -59,8 +59,8 @@ interface TabItem {
  *
  * WAITING, AT THREE SCOPES. Until the first screen has painted, the static
  * splash in `index.html` covers everything (see `core/boot-splash.ts`). After
- * that, `<ak-activity-bar>` along the top edge covers any navigation or
- * request in flight, and each screen shows its own data loading in place.
+ * that, `<ak-activity-bar>` on the header's bottom edge covers any navigation
+ * or request in flight, and each screen shows its own data loading in place.
  * DESIGN.md, "Loading and waiting", has the rules.
  */
 @Component({
@@ -77,8 +77,6 @@ interface TabItem {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ak-activity-bar />
-
     <div class="flex min-h-dvh flex-col">
       <!--
         The chrome is for signed-in users. On the sign-in and sign-up screens
@@ -125,7 +123,12 @@ interface TabItem {
               </a>
             </div>
           </div>
+          <!-- Over the header's bottom border: right above the content that is loading. -->
+          <ak-activity-bar class="absolute inset-x-0 -bottom-px" />
         </header>
+      } @else {
+        <!-- No header on the sign-in screens, so the bar pins to the top of the viewport. -->
+        <ak-activity-bar class="fixed inset-x-0 top-[env(safe-area-inset-top)] z-30" />
       }
 
       <main

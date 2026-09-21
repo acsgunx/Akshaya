@@ -14,6 +14,8 @@ import type { BlendedHolding, BrokerHoldingLeg, CurrencyCode, Money } from '../.
 import { DashboardStore } from '../dashboard/dashboard.store';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
+import { RefreshButtonComponent } from '../../shared/refresh-button/refresh-button.component';
+import { RefreshingDirective } from '../../shared/refreshing/refreshing.directive';
 import { PORTFOLIO_TABS, SectionTabsComponent } from '../../shared/section-tabs/section-tabs.component';
 
 /** Invested, current value and return for every holding in ONE currency. */
@@ -54,6 +56,8 @@ export interface HoldingsTotal {
     QuantityPipe,
     EmptyStateComponent,
     LoadingStateComponent,
+    RefreshButtonComponent,
+    RefreshingDirective,
     SectionTabsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

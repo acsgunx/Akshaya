@@ -7,16 +7,7 @@
       <h1 class="text-[22px] font-bold">Holdings</h1>
       <p class="ak-sub">Delivery stock settled in your demat account, blended across every linked broker.</p>
     </div>
-    <button
-      mat-icon-button
-      type="button"
-      class="ak-focus-halo shrink-0"
-      [attr.aria-label]="store.loading() ? 'Refreshing holdings' : 'Refresh holdings'"
-      [disabled]="store.loading()"
-      (click)="store.refresh(undefined)"
-    >
-      <mat-icon [class.animate-spin]="store.loading()">refresh</mat-icon>
-    </button>
+    <ak-refresh-button class="shrink-0" what="holdings" [busy]="store.loading()" (refresh)="store.refresh(undefined)" />
   </header>
 
   @if (store.loading() && !store.snapshot()) {
@@ -32,7 +23,7 @@
       ONE SUMMARY CARD PER CURRENCY. Blending them into a single total would need an FX rate
       nobody stated — see the `totals` computed for why that is refused rather than guessed.
     -->
-    <div class="ak-totals">
+    <div class="ak-totals" [akRefreshing]="store.loading()">
       @for (total of totals(); track total.currency) {
         <article class="ak-card ak-total-card">
           <header class="ak-row ak-between">
@@ -80,7 +71,12 @@
         `cv-auto` lets the browser skip off-screen rows instead, which is what keeps a long
         book cheap here.
       -->
-      <ul class="overflow-hidden rounded-lg border border-border bg-surface-1" role="list" aria-label="Holdings">
+      <ul
+        class="overflow-hidden rounded-lg border border-border bg-surface-1"
+        role="list"
+        aria-label="Holdings"
+        [akRefreshing]="store.loading()"
+      >
         @for (holding of holdings(); track holding.groupKey) {
           <li class="cv-auto-[92px] border-b border-border last:border-b-0">
             <button
@@ -208,7 +204,7 @@
       </div>
 
       <!-- Virtualised: only visible rows render, even with a few thousand holdings. -->
-      <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport">
+      <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport" [akRefreshing]="store.loading()">
         <div *cdkVirtualFor="let holding of holdings(); trackBy: trackByGroupKey">
           <div class="ak-trow" role="row">
             <!--

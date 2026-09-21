@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideZonelessChangeDetection } from '@angular/core';
+import { ApplicationConfig, isDevMode, provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
 import { MAT_DIALOG_DEFAULT_OPTIONS, MatDialogConfig } from '@angular/material/dialog';
 import { provideRouter, withComponentInputBinding, withViewTransitions } from '@angular/router';
@@ -6,6 +6,7 @@ import { provideRouter, withComponentInputBinding, withViewTransitions } from '@
 import { routes } from './app.routes';
 import { activityInterceptor } from './core/interceptors/activity.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { devLatencyInterceptor } from './core/interceptors/dev-latency.interceptor';
 import { errorInterceptor } from './core/interceptors/error.interceptor';
 
 export const appConfig: ApplicationConfig = {
@@ -22,8 +23,18 @@ export const appConfig: ApplicationConfig = {
     // fetch rather than XHR: no zone.js in this app, and fetch is the backend
     // the framework now optimises for. Interceptors are unaffected.
     // `activityInterceptor` first, so the bar spans everything after it,
-    // including the error toast's handling.
-    provideHttpClient(withFetch(), withInterceptors([activityInterceptor, authInterceptor, errorInterceptor])),
+    // including the error toast's handling. `devLatencyInterceptor` is the
+    // dev server's "make the local API as slow as a real broker" switch —
+    // see its doc comment; it is not registered in a production build.
+    provideHttpClient(
+      withFetch(),
+      withInterceptors([
+        activityInterceptor,
+        authInterceptor,
+        errorInterceptor,
+        ...(isDevMode() ? [devLatencyInterceptor] : []),
+      ]),
+    ),
     // Dialogs ask for a fixed width (440px for modify/convert, 420px for the
     // confirm) and Material caps that at 80vw — on a 390px phone, a 312px
     // dialog with a type-to-confirm field and two buttons in it. A 16px gutter

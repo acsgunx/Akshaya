@@ -1,15 +1,7 @@
 <section>
   <header class="mb-3.5 flex items-center gap-4">
     <h1 class="mr-auto text-[22px] font-bold">Dashboard</h1>
-    <!-- Spins while a refresh is in flight: the figures below stay up, so this is the only sign they are being replaced. -->
-    <button
-      mat-icon-button
-      (click)="refresh()"
-      [disabled]="store.loading()"
-      [attr.aria-label]="store.loading() ? 'Refreshing portfolio' : 'Refresh portfolio'"
-    >
-      <mat-icon [class.animate-spin]="store.loading()">refresh</mat-icon>
-    </button>
+    <ak-refresh-button what="portfolio" [busy]="store.loading()" (refresh)="refresh()" />
   </header>
 
   @if (venues().length) {
@@ -47,7 +39,7 @@
       </div>
     }
 
-    <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,380px),1fr))] gap-4">
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,380px),1fr))] gap-4" [akRefreshing]="store.loading()">
       <!-- Blended, multi-currency P&L -->
       <section class="rounded-lg border border-border bg-surface-1 p-4">
         <h2 class="text-sm font-bold">P&amp;L</h2>
