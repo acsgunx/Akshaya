@@ -8,7 +8,8 @@
 // Only three kinds of rule survive, and each is here because a utility class
 // genuinely cannot do the job:
 //
-//   1. THE RESET — element defaults, which have no class to hang off.
+//   1. THE RESET — element defaults, which have no class to hang off. Kept in
+//      `@layer base`, beneath the utilities: see the note on it below.
 //   2. SAFETY NETS — rules that must hold for markup nobody has written yet.
 //      A utility only protects the element someone remembered to put it on;
 //      these protect the ones they forgot. Both are accessibility or
@@ -26,70 +27,50 @@
 @use 'theme';
 
 // ---- Reset -----------------------------------------------------------------
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+// In `@layer base`, where Tailwind's own preflight lives. An unlayered rule
+// would beat every utility on the elements it names — outside any layer, a
+// normal declaration wins over ALL layered ones, whatever their specificity —
+// which is how an unlayered `p { margin: 0 }` once made every `mt-1` on a
+// paragraph do nothing. Nothing in this section may move out of the layer.
+//
+// Only what preflight does not already do. It zeroes every margin and padding,
+// strips list bullets, sets `border-box`, makes buttons inherit their font and
+// turns off WebKit's grey tap flash, so none of that is repeated here.
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
 
-html,
-body {
-  height: 100%;
-}
+  html {
+    // iOS inflates body text in landscape unless told not to, which breaks every
+    // fixed numeric column width in DESIGN.md's "price cells must never jitter".
+    // Preflight sets only the prefixed form.
+    text-size-adjust: 100%;
+  }
 
-html {
-  // iOS inflates body text in landscape unless told not to, which breaks every
-  // fixed numeric column width in DESIGN.md's "price cells must never jitter".
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
+  body {
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    font: 400 14px/1.45 var(--mat-sys-plain-font-family, sans-serif);
+    -webkit-font-smoothing: antialiased;
+  }
 
-body {
-  margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text-primary);
-  font: 400 14px/1.45 var(--mat-sys-plain-font-family, sans-serif);
-  -webkit-font-smoothing: antialiased;
-  // Every interactive element here has its own pressed/hover state; the grey
-  // flash WebKit paints on top of it just reads as lag.
-  -webkit-tap-highlight-color: transparent;
-}
+  // No double-tap-to-zoom delay on anything tappable. Pinch zoom is untouched —
+  // this only removes the wait for a possible second tap.
+  a,
+  button,
+  [role='button'],
+  input,
+  select,
+  textarea,
+  label {
+    touch-action: manipulation;
+  }
 
-// No double-tap-to-zoom delay on anything tappable. Pinch zoom is untouched —
-// this only removes the wait for a possible second tap.
-a,
-button,
-[role='button'],
-input,
-select,
-textarea,
-label {
-  touch-action: manipulation;
-}
-
-h1,
-h2,
-h3,
-h4,
-p,
-figure,
-dd {
-  margin: 0;
-}
-
-ul,
-ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-a {
-  color: var(--color-brand);
-}
-
-button {
-  font: inherit;
+  a {
+    color: var(--color-brand);
+  }
 }
 
 // ---- Safety net: numerics ---------------------------------------------------
@@ -174,6 +155,40 @@ th {
 
 .mat-mdc-text-field-wrapper {
   background: var(--color-surface-2);
+}
+
+// Utilities on a `<mat-icon>`. Its defaults — the colour from Material's
+// `mat-icon` rule, the 24px box and `inline-block` from `.mat-icon`, the 24px
+// glyph from the icon font's own `.material-icons` — are all unlayered, so on
+// their own they beat any utility on the icon: `text-warning`, `size-[18px]`,
+// `text-[18px]` and `max-lg:hidden` would all silently do nothing.
+//
+// `revert-layer` in an unlayered rule discards every unlayered declaration of
+// that property and falls through to the layers, where the same defaults are
+// restated in `base`, beneath the utilities. An icon with no utilities renders
+// exactly as Material draws it; one with a utility gets the utility.
+//
+// (0,1,1) is what makes it hold: it outranks Material's (0,1,0) defaults
+// whatever order they load in — Material injects its styles at runtime, after
+// this sheet — while every contextual rule Material has (an icon in a button, a
+// menu item, a form-field suffix, a chip) is (0,2,0) or more and still sizes
+// and colours those icons as before.
+mat-icon.mat-icon {
+  display: revert-layer;
+  width: revert-layer;
+  height: revert-layer;
+  font-size: revert-layer;
+  color: revert-layer;
+}
+
+@layer base {
+  .mat-icon {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    font-size: 24px;
+    color: var(--mat-icon-color, inherit);
+  }
 }
 
 // A destructive filled button (kill switch engaged, confirm-dialog danger
@@ -446,13 +461,20 @@ th {
 .ak-iconbtn:hover { color: var(--color-text-primary); }
 
 // ---- Icon sizing ------------------------------------------------------------
-.ak-i-sm,
-.ak-i-xs {
-  flex: none;
-}
+// Layered, unlike the rest of this block: these only ever sit on a `<mat-icon>`,
+// where the `revert-layer` rule under "Library overrides" discards unlayered
+// sizes — theirs included. In `components` they land above the restated icon
+// defaults in `base`, which is what finally lets them size the box as well as
+// the glyph.
+@layer components {
+  .ak-i-sm,
+  .ak-i-xs {
+    flex: none;
+  }
 
-.ak-i-xs { font-size: 14px; width: 14px; height: 14px; }
-.ak-i-sm { font-size: 18px; width: 18px; height: 18px; }
+  .ak-i-xs { font-size: 14px; width: 14px; height: 14px; }
+  .ak-i-sm { font-size: 18px; width: 18px; height: 18px; }
+}
 
 // ---- Flash-on-change --------------------------------------------------------
 // Background colour only — never a size, weight or layout change, so the flash
