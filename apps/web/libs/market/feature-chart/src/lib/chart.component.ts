@@ -8,7 +8,6 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatSliderModule } from '@angular/material/slider';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink } from '@angular/router';
 import { catchError, map, of, startWith, switchMap, timer } from 'rxjs';
@@ -20,40 +19,27 @@ import {
   MarketDataService,
   venueTimeZone,
 } from '@akshaya/shared/data-access';
-import { MoneyPipe, sideLabel, timeFrameLabel } from '@akshaya/shared/util';
-import type { Candle, InstrumentDefinition, InstrumentKey, Money, TimeFrame } from '@akshaya/shared/models';
-import {
-  formatInstrumentLabel,
-  isOrderStateTerminal,
-  isOrderUnresolved,
-  parseInstrumentKey,
-} from '@akshaya/shared/models';
+import { MoneyPipe, timeFrameLabel } from '@akshaya/shared/util';
+import type { Candle, InstrumentDefinition, InstrumentKey, TimeFrame } from '@akshaya/shared/models';
+import { formatInstrumentLabel, parseInstrumentKey } from '@akshaya/shared/models';
 import {
   ConnectionStatusComponent,
   EmptyStateComponent,
   LoadingStateComponent,
   StaleBannerComponent,
 } from '@akshaya/shared/ui';
-import type { ChartBar, ChartPriceLevel, ChartType, DrawingTool, StudyId } from '@akshaya/market/ui-price-chart';
-import { CHART_TYPES, DRAWING_TOOLS, PriceChartComponent, STUDIES } from '@akshaya/market/ui-price-chart';
+import type { ChartBar, ChartType, DrawingTool, StudyId } from '@akshaya/market/ui-price-chart';
+import { CHART_TYPES, PriceChartComponent, STUDIES } from '@akshaya/market/ui-price-chart';
 import { DashboardStore } from '@akshaya/portfolio/data-access';
 import { OrdersStore } from '@akshaya/orders/data-access';
 import { WatchlistStore } from '@akshaya/market/data-access';
+import { exposureLevels, exposureRows, type ExposureRow } from './chart-exposure';
+import { loadChartPreferences, saveChartPreferences } from './chart-preferences';
+import { ChartMenuComponent } from './chart-menu.component';
+import { ChartReplayBarComponent } from './chart-replay-bar.component';
+import { ChartSidebarComponent } from './chart-sidebar.component';
+import { ChartToolsComponent } from './chart-tools.component';
 import { ChartStore } from './chart.store';
-
-/** One thing the user holds or has resting in this instrument — a sidebar row and, when shown, a line on the chart. */
-interface ExposureRow {
-  readonly id: string;
-  readonly title: string;
-  readonly detail: string;
-  readonly price: Money;
-  readonly tone: ChartPriceLevel['tone'];
-  readonly kind: ChartPriceLevel['kind'];
-  /** The screen that owns it, and where its actions live. */
-  readonly route: string;
-}
-
-const quantity = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
 
 /**
  * The chart screen. Like the order ticket, it is told a LINK and an
@@ -81,7 +67,6 @@ const quantity = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
     MatFormFieldModule,
     MatInputModule,
     MatMenuModule,
-    MatSliderModule,
     MatTooltipModule,
     ReactiveFormsModule,
     DecimalPipe,
@@ -92,6 +77,10 @@ const quantity = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
     LoadingStateComponent,
     PriceChartComponent,
     StaleBannerComponent,
+    ChartMenuComponent,
+    ChartReplayBarComponent,
+    ChartSidebarComponent,
+    ChartToolsComponent,
   ],
   providers: [ChartStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -117,11 +106,10 @@ export class ChartComponent {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
   protected readonly chart = viewChild(PriceChartComponent);
-  private readonly menuPanel = viewChild<ElementRef<HTMLElement>>('chartMenuPanel');
+  private readonly menuHost = viewChild<ChartMenuComponent, ElementRef<HTMLElement>>(ChartMenuComponent, { read: ElementRef });
   private readonly chartCard = viewChild<ElementRef<HTMLElement>>('chartCard');
   protected readonly chartTypes = CHART_TYPES;
   protected readonly studyOptions = STUDIES;
-  protected readonly drawingTools = DRAWING_TOOLS;
   protected readonly chartType = signal<ChartType>('candles');
   protected readonly selectedStudies = signal<readonly StudyId[]>(['stochRsi']);
   protected readonly showVolume = signal(true);
@@ -209,48 +197,11 @@ export class ChartComponent {
   protected readonly ready = computed(() => !this.store.loading() && !this.store.error() && this.history().length > 0);
   protected readonly currentType = computed(() => CHART_TYPES.find((type) => type.id === this.chartType()) ?? CHART_TYPES[0]!);
   protected readonly activeStudies = computed(() => STUDIES.filter((study) => this.selectedStudies().includes(study.id)));
-  /**
-   * Everything the user has in THIS instrument: open positions and holdings at
-   * their average price, and working orders at their limit and trigger.
-   *
-   * Matched on the exact instrument key. An unresolved order is left out —
-   * the platform does not know whether the broker has it, and a line on the
-   * chart would say it does.
-   */
-  protected readonly exposure = computed<readonly ExposureRow[]>(() => {
-    const key = this.instrument();
-    const snapshot = this.portfolio.snapshot();
-    const rows: ExposureRow[] = [];
-    for (const position of snapshot?.positions ?? []) {
-      const net = Number(position.netQuantity);
-      if (position.instrument !== key || !Number.isFinite(net) || net === 0) { continue; }
-      rows.push({ id: `position:${position.groupKey}`, title: `${net > 0 ? 'Long' : 'Short'} ${quantity.format(Math.abs(net))}`,
-        detail: 'avg price', price: position.averagePrice, tone: net > 0 ? 'buy' : 'sell', kind: 'held', route: '/positions' });
-    }
-    for (const holding of snapshot?.holdings ?? []) {
-      const held = Number(holding.quantity);
-      if (holding.instrument !== key || !(held > 0)) { continue; }
-      rows.push({ id: `holding:${holding.groupKey}`, title: `Held ${quantity.format(held)}`,
-        detail: 'avg cost', price: holding.averagePrice, tone: 'brand', kind: 'held', route: '/holdings' });
-    }
-    for (const order of this.orders.orders()) {
-      if (order.instrument !== key || isOrderStateTerminal(order.state) || isOrderUnresolved(order)) { continue; }
-      // What is still resting, not what was first asked for — a half-filled order's line is for the other half.
-      const pending = Number(order.pendingQuantity);
-      const name = `${sideLabel(order.side)} ${quantity.format(pending > 0 ? pending : Number(order.quantity))}`;
-      const tone = order.side === 'buy' ? 'buy' : 'sell';
-      const detail = 'working order';
-      if (order.limitPrice) {
-        rows.push({ id: `limit:${order.id}`, title: `${name} limit`, detail, price: order.limitPrice, tone, kind: 'limit', route: '/orders' });
-      }
-      if (order.triggerPrice) {
-        rows.push({ id: `trigger:${order.id}`, title: `${name} trigger`, detail, price: order.triggerPrice, tone, kind: 'trigger', route: '/orders' });
-      }
-    }
-    return rows;
-  });
-  protected readonly priceLevels = computed<readonly ChartPriceLevel[]>(() => !this.showExposure() ? []
-    : this.exposure().map((row) => ({ price: Number(row.price.amount), title: row.title, tone: row.tone, kind: row.kind })));
+  /** What the user holds or has resting in this instrument — see `exposureRows`. */
+  protected readonly exposure = computed<readonly ExposureRow[]>(
+    () => exposureRows(this.instrument(), this.portfolio.snapshot(), this.orders.orders()),
+  );
+  protected readonly priceLevels = computed(() => this.showExposure() ? exposureLevels(this.exposure()) : []);
   protected readonly changePercent = computed(() => {
     const tick = this.quote();
     const previous = Number(tick?.previousClose?.amount);
@@ -297,10 +248,11 @@ export class ChartComponent {
     const clock = setInterval(() => this.clock.set(Date.now()), 1000);
     this.destroyRef.onDestroy(() => clearInterval(clock));
     effect(() => {
-      const preferences = { type: this.chartType(), studies: this.selectedStudies(), volume: this.showVolume(),
-        grid: this.showGrid(), sidebar: this.showSidebar(), scale: this.scaleMode(), exposure: this.showExposure() };
-      try { localStorage.setItem('akshaya.chart.preferences.v1', JSON.stringify(preferences)); }
-      catch { this.status.set('Chart preferences cannot be saved on this device.'); }
+      const saved = saveChartPreferences({
+        type: this.chartType(), studies: this.selectedStudies(), volume: this.showVolume(),
+        grid: this.showGrid(), sidebar: this.showSidebar(), scale: this.scaleMode(), exposure: this.showExposure(),
+      });
+      if (!saved) { this.status.set('Chart preferences cannot be saved on this device.'); }
     });
     effect((cleanup) => {
       if (!this.playing()) { return; }
@@ -391,14 +343,13 @@ export class ChartComponent {
   protected openContextMenu(event: { x: number; y: number; price: number | undefined; time: number | undefined }): void {
     this.contextMenu.set(event);
     this.status.set('Chart menu open. Arrow keys move between items, Escape closes.');
-    setTimeout(() => this.menuPanel()?.nativeElement.querySelector('button')?.focus());
   }
 
   protected closeContextMenu(restoreFocus = false): void {
     if (this.contextMenu() === undefined) { return; }
     // Focus inside the menu dies with it; hand it back to the chart card so
     // chart shortcuts keep working after the menu closes.
-    const focusInside = this.menuPanel()?.nativeElement.contains(document.activeElement) === true;
+    const focusInside = this.menuHost()?.nativeElement.contains(document.activeElement) === true;
     this.contextMenu.set(undefined);
     if (restoreFocus || focusInside) { setTimeout(() => this.chartCard()?.nativeElement.focus()); }
   }
@@ -420,33 +371,8 @@ export class ChartComponent {
     this.closeContextMenu();
   }
 
-  /** Arrow-key navigation inside the context menu — it is a plain list, not a MatMenu overlay. */
-  protected onMenuKeydown(event: KeyboardEvent): void {
-    const items = [...(this.menuPanel()?.nativeElement.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
-    const index = items.indexOf(document.activeElement as HTMLElement);
-    if (event.key === 'ArrowDown' && items.length) { event.preventDefault(); items.at((index + 1) % items.length)?.focus(); }
-    if (event.key === 'ArrowUp' && items.length) { event.preventDefault(); items.at((index - 1 + items.length) % items.length)?.focus(); }
-    if (event.key === 'Home') { event.preventDefault(); items.at(0)?.focus(); }
-    if (event.key === 'End') { event.preventDefault(); items.at(-1)?.focus(); }
-  }
-
   protected barAt(time: number | undefined): Candle | undefined {
     return time === undefined ? undefined : this.history().find((bar) => Date.parse(bar.openTime) === time * 1000);
-  }
-
-  protected barText(bar: Candle): string {
-    const format = (value: number) => value.toFixed(this.precision());
-    return `${bar.openTime} O ${format(bar.open)} H ${format(bar.high)} L ${format(bar.low)} C ${format(bar.close)}`;
-  }
-
-  protected copyText(text: string, label: string): void {
-    this.closeContextMenu();
-    const clipboard = navigator.clipboard;
-    if (!clipboard) { this.status.set('Clipboard is not available in this browser context.'); return; }
-    void clipboard.writeText(text).then(
-      () => this.status.set(`${label} copied to clipboard.`),
-      () => this.status.set('Clipboard is not available in this browser context.'),
-    );
   }
 
   protected addLineAt(price: number): void {
@@ -508,19 +434,15 @@ export class ChartComponent {
   }
 
   private restorePreferences(): void {
-    try {
-      const value = JSON.parse(localStorage.getItem('akshaya.chart.preferences.v1') ?? '{}') as Record<string, unknown>;
-      const type = CHART_TYPES.find((item) => item.id === value['type']);
-      if (type) { this.chartType.set(type.id); }
-      const studies = value['studies'];
-      if (Array.isArray(studies)) { this.selectedStudies.set(STUDIES.filter((item) => studies.includes(item.id)).map((item) => item.id)); }
-      if (typeof value['volume'] === 'boolean') { this.showVolume.set(value['volume']); }
-      if (typeof value['grid'] === 'boolean') { this.showGrid.set(value['grid']); }
-      if (typeof value['sidebar'] === 'boolean') { this.showSidebar.set(value['sidebar']); }
-      if (typeof value['exposure'] === 'boolean') { this.showExposure.set(value['exposure']); }
-      const scale = value['scale'];
-      if (scale === 'normal' || scale === 'log' || scale === 'percentage') { this.scaleMode.set(scale); }
-    } catch { untracked(() => this.status.set('Using default chart preferences.')); }
+    const { preferences, ok } = loadChartPreferences();
+    this.chartType.set(preferences.type);
+    this.selectedStudies.set(preferences.studies);
+    this.showVolume.set(preferences.volume);
+    this.showGrid.set(preferences.grid);
+    this.showSidebar.set(preferences.sidebar);
+    this.showExposure.set(preferences.exposure);
+    this.scaleMode.set(preferences.scale);
+    if (!ok) { untracked(() => this.status.set('Using default chart preferences.')); }
   }
 
   /**
