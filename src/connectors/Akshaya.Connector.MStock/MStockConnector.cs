@@ -83,7 +83,7 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
         // login handshake, and the contract says callers must handle a null Stream.
         _stream = session is null
             ? null
-            : new MStockStream(options, session, _instruments, Clock, ReferenceFacet.EnsureLoadedAsync);
+            : new MStockStream(options, session, _instruments, Clock, ReferenceFacet.EnsureLoadedAsync, logger);
     }
 
     /// <summary>Endpoint and timeout configuration, exposed for diagnostics.</summary>

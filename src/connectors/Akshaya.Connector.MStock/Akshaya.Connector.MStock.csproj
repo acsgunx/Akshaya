@@ -25,8 +25,10 @@
               implements IVendorErrorMapper and is injected as a collaborator (the connector, the
               API client and four test fixtures all hold an instance). Making them static would
               break that shape to save a `this` nobody passes.
+      CA1848: LoggerMessage source-gen delegates. The stream's log calls are on cold paths —
+              state changes, broker text frames, each packet length once — never per tick.
     -->
-    <NoWarn>$(NoWarn);CA2007;CA1711;CA5350;CA1822</NoWarn>
+    <NoWarn>$(NoWarn);CA2007;CA1711;CA5350;CA1822;CA1848</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

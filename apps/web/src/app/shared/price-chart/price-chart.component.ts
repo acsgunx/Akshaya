@@ -12,9 +12,11 @@ import {
 import {
   CandlestickSeries,
   HistogramSeries,
+  TickMarkType,
   createChart,
   type IChartApi,
   type ISeriesApi,
+  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
 
@@ -84,6 +86,16 @@ export class PriceChartComponent {
   readonly showVolume = input(true);
 
   /**
+   * IANA zone the time axis and crosshair are labelled in — pass the VENUE's,
+   * so an NSE session reads 09:15-15:30 wherever the trader is sitting (what
+   * TradingView calls exchange time). Undefined means the browser's own zone.
+   *
+   * Only the labels move. The bars stay in true UTC seconds, so live ticks
+   * bucket into them exactly as before.
+   */
+  readonly timeZone = input<string | undefined>(undefined);
+
+  /**
    * A canvas is invisible to a screen reader, so the host carries a text
    * label describing what is plotted. It is not a substitute for the data
    * being available elsewhere on the page — the order ticket's live price
@@ -115,7 +127,16 @@ export class PriceChartComponent {
     afterNextRender(() => {
       this.create();
       this.applyTheme();
+      this.applyTimeZone();
       this.drawHistory();
+    });
+
+    effect(() => {
+      this.timeZone();
+      this.timeFrame();
+      if (this.chart) {
+        this.applyTimeZone();
+      }
     });
 
     // Full redraw when the caller swaps the series (new instrument, new timeframe).
@@ -157,8 +178,10 @@ export class PriceChartComponent {
 
     this.chart = createChart(element, {
       autoSize: true,
-      // Local time, not UTC: a trader reads a chart against the clock on
-      // their own wall and the venue clock in the shell, not against GMT.
+      // Labels are formatted in `timeZone` by `applyTimeZone`. `locale` alone
+      // (what this used to set, commented "local time, not UTC") changes only
+      // how dates are WRITTEN — the library still draws every label in UTC, so
+      // an NSE session showed as 03:45-10:00.
       localization: { locale: navigator.language },
       timeScale: { timeVisible: true, secondsVisible: false },
       handleScale: { axisPressedMouseMove: { time: true, price: false } },
@@ -172,6 +195,59 @@ export class PriceChartComponent {
       this.chart = undefined;
       this.priceSeries = undefined;
       this.volumeSeries = undefined;
+    });
+  }
+
+  /**
+   * Labels the crosshair and the time axis in `timeZone`. Lightweight Charts
+   * has no time-zone option — it formats UTC unless handed formatters — so
+   * these are `Intl` formatters bound to the zone.
+   */
+  private applyTimeZone(): void {
+    const chart = this.chart;
+    if (!chart) {
+      return;
+    }
+
+    const locale = navigator.language;
+    const timeZone = this.timeZone();
+    const format = (options: Intl.DateTimeFormatOptions): ((time: Time) => string) => {
+      const formatter = new Intl.DateTimeFormat(locale, { ...options, timeZone });
+      return (time) => (typeof time === 'number' ? formatter.format(time * 1000) : String(time));
+    };
+
+    const clock: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+    // Intraday: "Mon, 21 Sep, 14:23" — the weekday says more than a year would. A daily or
+    // longer bar has no time of day worth showing (every NSE daily bar "opens" at 09:15), and
+    // a year of bars spans a year boundary, so there it is the date with its year.
+    const daily = ['oneDay', 'oneWeek', 'oneMonth'].includes(this.timeFrame());
+    const crosshair = daily
+      ? format({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+      : format({ weekday: 'short', day: 'numeric', month: 'short', ...clock });
+    const year = format({ year: 'numeric' });
+    const month = format({ month: 'short' });
+    const day = format({ day: 'numeric', month: 'short' });
+    const minute = format(clock);
+    const second = format({ ...clock, second: '2-digit' });
+
+    chart.applyOptions({
+      localization: { locale, timeFormatter: crosshair },
+      timeScale: {
+        tickMarkFormatter: (time: Time, type: TickMarkType) => {
+          switch (type) {
+            case TickMarkType.Year:
+              return year(time);
+            case TickMarkType.Month:
+              return month(time);
+            case TickMarkType.DayOfMonth:
+              return day(time);
+            case TickMarkType.TimeWithSeconds:
+              return second(time);
+            default:
+              return minute(time);
+          }
+        },
+      },
     });
   }
 
@@ -239,9 +315,12 @@ export class PriceChartComponent {
       return;
     }
 
-    const bars: ChartBar[] = [];
-    const volumes: { time: number; value: number }[] = [];
-
+    // Keyed by time, last one wins. The library requires STRICTLY ascending
+    // time and throws on the first repeat — leaving the chart blank, not
+    // missing one bar. Brokers do repeat bars: mStock sends some daily candles
+    // twice, verbatim. The connector collapses those too; this is the net
+    // under the next broker that finds a new way to do it.
+    const byTime = new Map<number, Candle>();
     for (const candle of this.candles()) {
       const time = Math.floor(Date.parse(candle.openTime) / 1000);
       if (!Number.isFinite(time)) {
@@ -249,14 +328,17 @@ export class PriceChartComponent {
         // rendered at epoch zero, which would compress the whole chart.
         continue;
       }
+      byTime.set(time, candle);
+    }
+
+    // Ascending, whatever order the connector returned them in: newest-first
+    // (or unsorted) must not silently render an empty chart either.
+    const bars: ChartBar[] = [];
+    const volumes: { time: number; value: number }[] = [];
+    for (const [time, candle] of [...byTime].sort(([a], [b]) => a - b)) {
       bars.push({ time, open: candle.open, high: candle.high, low: candle.low, close: candle.close });
       volumes.push({ time, value: candle.volume });
     }
-
-    // The library requires strictly ascending time; a connector that returns
-    // newest-first (or unsorted) must not silently render an empty chart.
-    bars.sort((a, b) => a.time - b.time);
-    volumes.sort((a, b) => a.time - b.time);
 
     price.setData(bars.map((bar) => ({ ...bar, time: bar.time as UTCTimestamp })));
     this.lastBar = bars.at(-1);
@@ -265,6 +347,11 @@ export class PriceChartComponent {
       this.volumeSeries ??= chart.addSeries(HistogramSeries, {
         priceScaleId: 'volume',
         priceFormat: { type: 'volume' },
+        // The volume scale is an overlay with no axis of its own, so its last-value badge lands
+        // on the PRICE axis — a "2.26M" (or a live bar's "0") sitting among the prices,
+        // covering one. Volume is read off the bars; the badge only gets in the way.
+        lastValueVisible: false,
+        priceLineVisible: false,
       });
       // Pinned to the bottom fifth so volume reads as a footer to the price
       // action rather than competing with it for vertical space.

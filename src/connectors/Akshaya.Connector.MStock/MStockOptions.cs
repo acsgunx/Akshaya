@@ -111,10 +111,19 @@ public sealed record MStockOptions
     /// The window goes in <c>from</c>/<c>to</c> query parameters. Documented at
     /// tradingapi.mstock.com under Type A → Historical Data.
     ///
-    /// There is also an <c>/instruments/intraday/…</c> route, but it returns the current day
-    /// only and takes the exchange as a number; this one covers today as well as history.
+    /// It does NOT cover the current session: against the live API, a window ending mid-session
+    /// comes back ending at the previous close. Today's candles are
+    /// <see cref="IntradayChartPathFormat"/>'s.
     /// </summary>
     public string HistoricalChartPathFormat { get; init; } = "/openapi/typea/instruments/historical/{0}/{1}/{2}";
+
+    /// <summary>
+    /// The current session's candles, and nothing earlier: <c>{0}</c> is the exchange as a
+    /// NUMBER (1 NSE, 2 NFO, 3 CDS, 4 BSE, 5 BFO — not the names the historical route takes),
+    /// <c>{1}</c> the instrument token, <c>{2}</c> the interval. No query parameters. Documented
+    /// at tradingapi.mstock.com under Type A → Intraday Chart Data.
+    /// </summary>
+    public string IntradayChartPathFormat { get; init; } = "/openapi/typea/instruments/intraday/{0}/{1}/{2}";
 
     public string OptionChainPath { get; init; } = "/openapi/typea/instruments/optionchain";
 
@@ -134,6 +143,12 @@ public sealed record MStockOptions
 
     /// <summary>How long the socket may be silent before we treat it as dead and reconnect.</summary>
     public TimeSpan StreamIdleTimeout { get; init; } = TimeSpan.FromSeconds(45);
+
+    /// <summary>
+    /// WebSocket ping interval; the socket is dropped and reconnected when no pong arrives
+    /// within twice this. mStock's own SDK pings every 2.5s and gives up after 5s.
+    /// </summary>
+    public TimeSpan StreamKeepAlive { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>Zero means reconnect forever, which is what a trading session wants.</summary>
     public int MaxReconnectAttempts { get; init; }

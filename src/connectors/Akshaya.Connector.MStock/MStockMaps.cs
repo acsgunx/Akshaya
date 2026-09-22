@@ -270,6 +270,21 @@ public static class MStockMaps
         };
     }
 
+    /// <summary>
+    /// The numeric exchange code the intraday chart route takes in place of the segment name
+    /// every other route uses (Intraday Chart Data docs: 1 NSE, 2 NFO, 3 CDS, 4 BSE, 5 BFO).
+    /// </summary>
+    public static Result<int> ToIntradayExchangeCode(string exchange) =>
+        Normalise(exchange) switch
+        {
+            ExchangeNse => 1,
+            ExchangeNfo => 2,
+            "CDS" => 3,
+            ExchangeBse => 4,
+            ExchangeBfo => 5,
+            _ => Result<int>.Failure(Unrecognised("exchange", exchange)),
+        };
+
     /// <summary>mStock's exchange segment to the canonical venue MIC.</summary>
     public static Result<Venue> ToCanonicalVenue(string exchange) =>
         Normalise(exchange) switch

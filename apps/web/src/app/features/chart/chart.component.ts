@@ -9,7 +9,8 @@ import { timeFrameLabel } from '../../core/labels';
 import { MarketDataService } from '../../core/market-data.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import type { InstrumentKey, TimeFrame } from '../../core/models';
-import { formatInstrumentLabel } from '../../core/models';
+import { formatInstrumentLabel, parseInstrumentKey } from '../../core/models';
+import { venueTimeZone } from '../../core/venue-state.service';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
@@ -87,6 +88,12 @@ export class ChartComponent {
   protected readonly lastUpdatedAt = computed(() => {
     const age = this.lastTickAgeMs();
     return age === undefined ? undefined : Date.now() - age;
+  });
+
+  /** The venue's own zone, so an NSE chart reads 09:15-15:30 wherever the trader is. */
+  protected readonly timeZone = computed(() => {
+    const venue = parseInstrumentKey(this.instrument())?.venue;
+    return venue ? venueTimeZone(venue) : undefined;
   });
 
   protected readonly label = timeFrameLabel;
