@@ -67,3 +67,18 @@ over Web Deploy). Two things there are load-bearing and must not be "tidied up":
 `target-delete: false` and `skip-directory-paths: App_Data`, without which a plain
 msdeploy sync deletes the SQLite database and every account in it. See
 `deploy/monsterasp/README.md`.
+
+## Chart workspace
+
+`apps/web/src/app/features/chart/` owns broker history, symbol search, replay and the
+watchlist sidebar. `shared/price-chart/` owns chart rendering, study calculations and
+drawing primitives. Keep this dependency behind the lazy chart route.
+
+Lightweight Charts does not parse CSS `color(srgb ...)` returned by `color-mix()`.
+Resolve theme tokens to sRGB `rgb()`/`rgba()` before passing them to the library;
+`PriceChartComponent.token()` handles this using a cached canvas conversion.
+
+Chart preferences and drawings are device-local, not server-persisted. Replay only
+uses loaded historical bars; volume is historical because live tick volume may be
+session-cumulative rather than per-bar. Range shortcuts zoom within loaded history
+and must not bypass the connector's declared history retention or timeframes.

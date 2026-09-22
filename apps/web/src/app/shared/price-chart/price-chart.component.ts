@@ -7,15 +7,23 @@ import {
   effect,
   inject,
   input,
+  output,
+  untracked,
   viewChild,
 } from '@angular/core';
 import {
+  AreaSeries,
+  BarSeries,
   CandlestickSeries,
+  CrosshairMode,
   HistogramSeries,
+  LineSeries,
+  PriceScaleMode,
   TickMarkType,
   createChart,
   type IChartApi,
   type ISeriesApi,
+  type MouseEventParams,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -23,6 +31,8 @@ import {
 import { AppearanceStore } from '../../core/appearance.store';
 import type { Candle, Tick, TimeFrame } from '../../core/models';
 import { type ChartBar, foldTickIntoBar } from './candle-bucket';
+import { ChartDrawings, validDrawing, type ChartDrawing, type DrawingAnchor, type DrawingTool } from './chart-drawings';
+import { calculateStudies, type ChartType, type StudyId } from './chart-studies';
 
 /**
  * TradingView Lightweight Charts, wrapped as a dumb presentational component:
@@ -104,10 +114,34 @@ export class PriceChartComponent {
    */
   readonly ariaLabel = input('Price chart');
 
+  readonly chartType = input<ChartType>('candles');
+  readonly studies = input<readonly StudyId[]>([]);
+  readonly scaleMode = input<'normal' | 'log' | 'percentage'>('normal');
+  readonly showGrid = input(true);
+  readonly drawingTool = input<DrawingTool>('cursor');
+  readonly drawingsVisible = input(true);
+  readonly drawingKey = input('');
+  readonly replay = input(false);
+  readonly precision = input(2);
+  readonly barChange = output<ChartBar | undefined>();
+  readonly drawingComplete = output<void>();
+  readonly drawingState = output<{ undo: boolean; redo: boolean; count: number }>();
+  readonly notice = output<string>();
+
   private chart: IChartApi | undefined;
-  private priceSeries: ISeriesApi<'Candlestick'> | undefined;
+  private priceSeries: ISeriesApi<'Candlestick' | 'Bar' | 'Line' | 'Area'> | undefined;
   private volumeSeries: ISeriesApi<'Histogram'> | undefined;
   private lastBar: ChartBar | undefined;
+  private bars: ChartBar[] = [];
+  private readonly studySeries: ISeriesApi<'Line' | 'Histogram'>[] = [];
+  private readonly drawings = new ChartDrawings();
+  private drawingItems: ChartDrawing[] = [];
+  private redoItems: ChartDrawing[] = [];
+  private startAnchor: DrawingAnchor | undefined;
+  private previewAnchor: DrawingAnchor | undefined;
+  private hoveredTime: number | undefined;
+  private keyboardAnchor: DrawingAnchor | undefined;
+  private updateFrame = 0;
 
   /**
    * Hidden element used to RESOLVE a custom property to a real colour.
@@ -120,6 +154,8 @@ export class PriceChartComponent {
    * means `color-mix()` and any future token syntax resolve for free.
    */
   private readonly probe = document.createElement('span');
+  private readonly colorContext = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  private readonly colorCache = new Map<string, string>();
 
   constructor() {
     // The library measures its container, so it cannot be constructed until
@@ -129,6 +165,32 @@ export class PriceChartComponent {
       this.applyTheme();
       this.applyTimeZone();
       this.drawHistory();
+      this.loadDrawings();
+      this.applySettings();
+    });
+
+    effect(() => {
+      this.chartType();
+      if (this.chart) { untracked(() => this.replacePriceSeries()); }
+    });
+    effect(() => {
+      this.studies();
+      if (this.chart) { untracked(() => this.drawStudies()); }
+    });
+    effect(() => {
+      this.scaleMode();
+      this.showGrid();
+      this.showVolume();
+      this.precision();
+      this.drawingTool();
+      this.drawingsVisible();
+      this.startAnchor = undefined;
+      this.previewAnchor = undefined;
+      if (this.chart) { untracked(() => this.applySettings()); }
+    });
+    effect(() => {
+      this.drawingKey();
+      if (this.chart) { untracked(() => this.loadDrawings()); }
     });
 
     effect(() => {
@@ -143,9 +205,8 @@ export class PriceChartComponent {
     effect(() => {
       this.candles();
       this.timeFrame();
-      this.showVolume();
       if (this.chart) {
-        this.drawHistory();
+        untracked(() => this.drawHistory());
       }
     });
 
@@ -153,10 +214,10 @@ export class PriceChartComponent {
     // away the user's pan/zoom on each price change.
     effect(() => {
       const tick = this.tick();
-      if (!tick || !this.priceSeries) {
+      if (!tick || !this.priceSeries || this.replay()) {
         return;
       }
-      this.applyTick(tick);
+      untracked(() => this.applyTick(tick));
     });
 
     // Re-read the tokens rather than keeping a second palette in here.
@@ -164,7 +225,7 @@ export class PriceChartComponent {
       this.appearance.theme();
       this.appearance.cvdSafe();
       if (this.chart) {
-        this.applyTheme();
+        untracked(() => { this.applyTheme(); this.drawStudies(); this.applySettings(); });
       }
     });
   }
@@ -184,11 +245,15 @@ export class PriceChartComponent {
       // an NSE session showed as 03:45-10:00.
       localization: { locale: navigator.language },
       timeScale: { timeVisible: true, secondsVisible: false },
-      handleScale: { axisPressedMouseMove: { time: true, price: false } },
+      handleScale: { axisPressedMouseMove: { time: true, price: true } },
+      crosshair: { mode: CrosshairMode.Normal },
     });
 
-    this.priceSeries = this.chart.addSeries(CandlestickSeries, {});
+    this.replacePriceSeries();
+    this.chart.subscribeCrosshairMove((event) => this.onCrosshair(event));
+    this.chart.subscribeClick((event) => this.onChartClick(event));
     this.destroyRef.onDestroy(() => {
+      cancelAnimationFrame(this.updateFrame);
       // Disposes the canvases and the library's own resize listener; without
       // it, navigating between instruments leaks one chart per visit.
       this.chart?.remove();
@@ -271,9 +336,9 @@ export class PriceChartComponent {
       layout: {
         // `transparent` lets the surrounding card supply the background,
         // so the chart cannot end up a slightly different dark than its card.
-        background: { color: 'transparent' },
+        background: { color: this.token('--ak-surface-1', 'transparent') },
         textColor: text,
-        attributionLogo: false,
+        attributionLogo: true,
       },
       grid: { vertLines: { color: border }, horzLines: { color: border } },
       rightPriceScale: { borderColor: border },
@@ -282,12 +347,16 @@ export class PriceChartComponent {
     });
 
     price.applyOptions({
-      upColor: up,
+      upColor: this.chartType() === 'hollow' ? 'transparent' : up,
       downColor: down,
       borderUpColor: up,
       borderDownColor: down,
       wickUpColor: up,
       wickDownColor: down,
+      color: up,
+      lineColor: up,
+      topColor: this.token('--ak-buy-surface', 'transparent'),
+      bottomColor: 'transparent',
     });
 
     this.volumeSeries?.applyOptions({ color: border });
@@ -305,7 +374,19 @@ export class PriceChartComponent {
     this.probe.style.color = sentinel;
     this.probe.style.color = `var(${name})`;
     const resolved = getComputedStyle(this.probe).color;
-    return !resolved || resolved === sentinel ? fallback : resolved;
+    if (!resolved || resolved === sentinel) { return fallback; }
+    if (/^rgba?\(/.test(resolved)) { return resolved; }
+    const cached = this.colorCache.get(resolved);
+    if (cached) { return cached; }
+    const context = this.colorContext;
+    if (!context) { return fallback; }
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = resolved;
+    context.fillRect(0, 0, 1, 1);
+    const [red = 0, green = 0, blue = 0, alpha = 255] = context.getImageData(0, 0, 1, 1).data;
+    const color = `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+    this.colorCache.set(resolved, color);
+    return color;
   }
 
   private drawHistory(): void {
@@ -328,7 +409,11 @@ export class PriceChartComponent {
         // rendered at epoch zero, which would compress the whole chart.
         continue;
       }
-      byTime.set(time, candle);
+      if ([candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)
+        && candle.high >= Math.max(candle.open, candle.close, candle.low)
+        && candle.low <= Math.min(candle.open, candle.close)) {
+        byTime.set(time, candle);
+      }
     }
 
     // Ascending, whatever order the connector returned them in: newest-first
@@ -337,13 +422,17 @@ export class PriceChartComponent {
     const volumes: { time: number; value: number }[] = [];
     for (const [time, candle] of [...byTime].sort(([a], [b]) => a - b)) {
       bars.push({ time, open: candle.open, high: candle.high, low: candle.low, close: candle.close });
-      volumes.push({ time, value: candle.volume });
+      volumes.push({ time, value: Number.isFinite(candle.volume) ? Math.max(0, candle.volume) : 0 });
     }
 
-    price.setData(bars.map((bar) => ({ ...bar, time: bar.time as UTCTimestamp })));
+    const previousRange = this.replay() ? chart.timeScale().getVisibleLogicalRange() : null;
+    this.bars = bars;
+    price.setData(bars.map((bar) => this.pricePoint(bar)));
     this.lastBar = bars.at(-1);
+    this.hoveredTime = undefined;
+    this.keyboardAnchor = undefined;
 
-    if (this.showVolume() && volumes.some((v) => v.value > 0)) {
+    if (volumes.some((v) => v.value > 0)) {
       this.volumeSeries ??= chart.addSeries(HistogramSeries, {
         priceScaleId: 'volume',
         priceFormat: { type: 'volume' },
@@ -356,14 +445,27 @@ export class PriceChartComponent {
       // Pinned to the bottom fifth so volume reads as a footer to the price
       // action rather than competing with it for vertical space.
       chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-      this.volumeSeries.setData(volumes.map((v) => ({ time: v.time as UTCTimestamp, value: v.value })));
+      const up = this.token('--ak-buy-surface', 'transparent');
+      const down = this.token('--ak-sell-surface', 'transparent');
+      this.volumeSeries.setData(volumes.map((v, i) => ({ time: v.time as UTCTimestamp, value: v.value,
+        color: (bars[i]?.close ?? 0) >= (bars[i]?.open ?? 0) ? up : down })));
       this.applyTheme();
     } else if (this.volumeSeries) {
       chart.removeSeries(this.volumeSeries);
       this.volumeSeries = undefined;
     }
 
-    chart.timeScale().fitContent();
+    this.drawStudies();
+    this.applySettings();
+    if (previousRange) {
+      const width = previousRange.to - previousRange.from;
+      chart.timeScale().setVisibleLogicalRange({ from: bars.length - width, to: bars.length });
+    } else {
+      chart.timeScale().fitContent();
+    }
+    const tick = this.tick();
+    if (tick && !this.replay()) { this.applyTick(tick); }
+    this.barChange.emit(this.lastBar);
   }
 
   private applyTick(tick: Tick): void {
@@ -378,7 +480,248 @@ export class PriceChartComponent {
       return;
     }
 
+    if (this.lastBar?.time === bar.time) { this.bars[this.bars.length - 1] = bar; }
+    else {
+      this.bars.push(bar);
+      this.volumeSeries?.update({ time: bar.time as UTCTimestamp, value: 0 });
+    }
     this.lastBar = bar;
-    this.priceSeries?.update({ ...bar, time: bar.time as UTCTimestamp });
+    this.priceSeries?.update(this.pricePoint(bar));
+    if (this.hoveredTime === undefined || this.hoveredTime === bar.time) { this.barChange.emit(bar); }
+    cancelAnimationFrame(this.updateFrame);
+    this.updateFrame = requestAnimationFrame(() => this.drawStudies(false));
+  }
+
+  moveCursor(horizontal: number, vertical: number): void {
+    const chart = this.chart;
+    const series = this.priceSeries;
+    if (!chart || !series || !this.lastBar) { return; }
+    const current = this.keyboardAnchor ?? { time: this.lastBar.time, price: this.lastBar.close };
+    const index = this.bars.findIndex((bar) => bar.time === current.time);
+    const bar = this.bars[Math.max(0, Math.min(this.bars.length - 1, index + horizontal))];
+    if (!bar) { return; }
+    const step = Math.max(10 ** -this.precision(), Math.abs(current.price) * 0.001);
+    this.keyboardAnchor = { time: bar.time, price: current.price + vertical * step };
+    this.previewAnchor = this.keyboardAnchor;
+    this.hoveredTime = bar.time;
+    chart.setCrosshairPosition(this.keyboardAnchor.price, bar.time as UTCTimestamp, series);
+    this.barChange.emit(bar);
+    this.renderDrawings();
+    this.notice.emit(`Cursor price ${this.keyboardAnchor.price.toFixed(this.precision())}. Arrow keys move; Enter places a drawing point.`);
+  }
+
+  placeDrawingAtCursor(): void {
+    if (!this.keyboardAnchor) { this.moveCursor(0, 0); }
+    const anchor = this.keyboardAnchor;
+    if (!anchor) { return; }
+    const x = this.chart?.timeScale().timeToCoordinate(anchor.time as UTCTimestamp);
+    const y = this.priceSeries?.priceToCoordinate(anchor.price);
+    if (x !== null && x !== undefined && y !== null && y !== undefined) {
+      this.onChartClick({ point: { x, y }, time: anchor.time as UTCTimestamp, paneIndex: 0, seriesData: new Map() });
+    }
+  }
+
+  fitContent(): void { this.chart?.timeScale().fitContent(); }
+  goToLatest(): void { this.chart?.timeScale().scrollToRealTime(); }
+  zoom(factor: number): void {
+    const scale = this.chart?.timeScale();
+    const range = scale?.getVisibleLogicalRange();
+    if (!scale || !range) { return; }
+    const middle = (range.from + range.to) / 2;
+    const width = Math.max(5, (range.to - range.from) * factor) / 2;
+    scale.setVisibleLogicalRange({ from: middle - width, to: middle + width });
+  }
+  selectRange(days: number): void {
+    const last = this.bars.at(-1);
+    if (!last || !this.chart) { return; }
+    const start = this.bars.findIndex((bar) => bar.time >= last.time - days * 86400);
+    this.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, start), to: this.bars.length });
+  }
+  screenshot(name: string): void {
+    const canvas = this.chart?.takeScreenshot();
+    canvas?.toBlob((blob) => { if (blob) { this.download(blob, `${name}.png`); } });
+  }
+  exportCsv(name: string): void {
+    const rows = this.bars.map((bar) => [new Date(bar.time * 1000).toISOString(), bar.open, bar.high, bar.low, bar.close].join(','));
+    this.download(new Blob([['Time (UTC),Open,High,Low,Close', ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' }), `${name}.csv`);
+  }
+  undoDrawing(): void {
+    const drawing = this.drawingItems.pop();
+    if (drawing) { this.redoItems.push(drawing); this.saveDrawings(); }
+  }
+  redoDrawing(): void {
+    const drawing = this.redoItems.pop();
+    if (drawing) { this.drawingItems.push(drawing); this.saveDrawings(); }
+  }
+  clearDrawings(): void {
+    this.drawingItems = [];
+    this.redoItems = [];
+    this.saveDrawings();
+  }
+  cancelDrawing(): void {
+    this.startAnchor = undefined;
+    this.previewAnchor = undefined;
+    this.renderDrawings();
+  }
+
+  private download(blob: Blob, name: string): void {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  private pricePoint(bar: ChartBar) {
+    return { ...bar, time: bar.time as UTCTimestamp, value: bar.close };
+  }
+
+  private replacePriceSeries(): void {
+    const chart = this.chart;
+    if (!chart) { return; }
+    const old = this.priceSeries;
+    const options = { priceLineVisible: true, lastValueVisible: true };
+    switch (this.chartType()) {
+      case 'line': this.priceSeries = chart.addSeries(LineSeries, options); break;
+      case 'area': this.priceSeries = chart.addSeries(AreaSeries, options); break;
+      case 'bars': this.priceSeries = chart.addSeries(BarSeries, options); break;
+      default: this.priceSeries = chart.addSeries(CandlestickSeries, options);
+    }
+    this.priceSeries.setData(this.bars.map((bar) => this.pricePoint(bar)));
+    if (old) { old.detachPrimitive(this.drawings); chart.removeSeries(old); }
+    this.priceSeries.setSeriesOrder(0);
+    this.priceSeries.attachPrimitive(this.drawings);
+    this.applyTheme();
+    this.applySettings();
+  }
+
+  private applySettings(): void {
+    const drawing = this.drawingTool() !== 'cursor';
+    this.chart?.applyOptions({
+      grid: { vertLines: { visible: this.showGrid() }, horzLines: { visible: this.showGrid() } },
+      handleScroll: !drawing,
+      handleScale: !drawing,
+    });
+    this.priceSeries?.priceScale().applyOptions({ mode: this.scaleMode() === 'log' ? PriceScaleMode.Logarithmic
+      : this.scaleMode() === 'percentage' ? PriceScaleMode.Percentage : PriceScaleMode.Normal });
+    this.volumeSeries?.applyOptions({ visible: this.showVolume() });
+    this.priceSeries?.applyOptions({ priceFormat: { type: 'price', precision: this.precision(), minMove: 10 ** -this.precision() } });
+    this.host().nativeElement.style.cursor = drawing ? 'crosshair' : '';
+    this.renderDrawings();
+  }
+
+  private drawStudies(rebuild = true): void {
+    const chart = this.chart;
+    if (!chart) { return; }
+    if (rebuild) {
+      for (const series of this.studySeries.splice(0).reverse()) { chart.removeSeries(series); }
+    }
+    let pane = 0;
+    let index = 0;
+    const colors = { brand: this.token('--ak-brand', 'currentColor'), buy: this.token('--ak-buy', 'currentColor'),
+      sell: this.token('--ak-sell', 'currentColor') };
+    for (const study of calculateStudies(this.bars, this.studies())) {
+      const paneIndex = study.pane ? ++pane : 0;
+      for (const [plotIndex, plot] of study.plots.entries()) {
+        const color = colors[plot.color];
+        let series = this.studySeries[index++];
+        if (!series) {
+          const options = { title: plot.title, color, lineWidth: 1 as const, priceLineVisible: false,
+            lastValueVisible: study.pane, crosshairMarkerVisible: false };
+          series = plot.histogram ? chart.addSeries(HistogramSeries, options, paneIndex) : chart.addSeries(LineSeries, options, paneIndex);
+          this.studySeries.push(series);
+          if (study.pane && study.id !== 'macd') {
+            series.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
+          }
+          if (plotIndex === 0) {
+            for (const level of study.levels ?? []) {
+              series.createPriceLine({ price: level, color: this.token('--ak-text-tertiary', color), lineWidth: 1,
+                lineStyle: 2, axisLabelVisible: false, title: String(level) });
+            }
+          }
+        }
+        const data = plot.points.map((point) => ({ ...point, time: point.time as UTCTimestamp,
+          ...(plot.histogram ? { color: point.value >= 0 ? colors.buy : colors.sell } : {}) }));
+        if (rebuild) { series.setData(data); }
+        else {
+          const lastTime = series.data().at(-1)?.time;
+          for (const point of data) {
+            if (typeof lastTime !== 'number' || point.time >= lastTime) { series.update(point); }
+          }
+        }
+      }
+    }
+    if (rebuild) {
+      chart.panes().forEach((item, i) => {
+        item.setStretchFactor(i === 0 ? 4 : 1.2);
+        if (i > 0) { item.priceScale('right').applyOptions({ mode: PriceScaleMode.Normal }); }
+      });
+    }
+  }
+
+  private onCrosshair(event: MouseEventParams): void {
+    this.hoveredTime = typeof event.time === 'number' ? event.time : undefined;
+    this.barChange.emit(this.bars.find((bar) => bar.time === this.hoveredTime) ?? this.lastBar);
+    if (this.startAnchor) {
+      this.previewAnchor = this.anchorFrom(event);
+      this.renderDrawings();
+    }
+  }
+
+  private anchorFrom(event: MouseEventParams): DrawingAnchor | undefined {
+    if (!event.point || (event.paneIndex ?? 0) !== 0 || typeof event.time !== 'number') { return undefined; }
+    const price = this.priceSeries?.coordinateToPrice(event.point.y);
+    return price === null || price === undefined ? undefined : { time: event.time, price };
+  }
+
+  private onChartClick(event: MouseEventParams): void {
+    const tool = this.drawingTool();
+    const anchor = this.anchorFrom(event);
+    if (tool === 'cursor' || !anchor) { return; }
+    if (this.drawingItems.length >= 200) {
+      this.notice.emit('This chart has reached its 200-drawing limit. Remove a drawing before adding another.');
+      return;
+    }
+    if (tool !== 'horizontal' && !this.startAnchor) {
+      this.startAnchor = anchor;
+      this.notice.emit('Choose the second point on the price chart. Escape cancels.');
+      return;
+    }
+    this.drawingItems.push({ tool, start: this.startAnchor ?? anchor, end: anchor });
+    this.redoItems = [];
+    this.cancelDrawing();
+    this.saveDrawings();
+    this.drawingComplete.emit();
+  }
+
+  private renderDrawings(): void {
+    const tool = this.drawingTool();
+    const preview = this.startAnchor && this.previewAnchor && tool !== 'cursor'
+      ? [{ tool, start: this.startAnchor, end: this.previewAnchor }] : [];
+    this.drawings.update(this.drawingsVisible() ? [...this.drawingItems, ...preview] : [], this.token('--ak-brand', 'currentColor'));
+  }
+
+  private loadDrawings(): void {
+    this.drawingItems = [];
+    this.redoItems = [];
+    this.startAnchor = undefined;
+    try {
+      const parsed: unknown = JSON.parse(localStorage.getItem(`akshaya.chart.drawings.${this.drawingKey()}`) ?? '[]');
+      if (Array.isArray(parsed)) { this.drawingItems = parsed.filter(validDrawing).slice(-200); }
+    } catch { this.notice.emit('Saved drawings could not be restored on this device.'); }
+    this.publishDrawings();
+  }
+
+  private saveDrawings(): void {
+    this.drawingItems = this.drawingItems.slice(-200);
+    try { localStorage.setItem(`akshaya.chart.drawings.${this.drawingKey()}`, JSON.stringify(this.drawingItems)); }
+    catch { this.notice.emit('Drawings are available for this session only; device storage is unavailable.'); }
+    this.publishDrawings();
+  }
+
+  private publishDrawings(): void {
+    this.renderDrawings();
+    this.drawingState.emit({ undo: this.drawingItems.length > 0, redo: this.redoItems.length > 0, count: this.drawingItems.length });
   }
 }
