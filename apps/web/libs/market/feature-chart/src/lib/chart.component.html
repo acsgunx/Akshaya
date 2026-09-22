@@ -70,27 +70,28 @@
     <ak-stale-banner label="prices" [lastUpdatedAt]="lastUpdatedAt()" [thresholdMs]="15000" />
 
     @if (isReplay()) {
-      <div class="flex flex-wrap items-center gap-2 border-b border-warning/30 bg-warning/10 px-3 text-xs" role="region" aria-label="Historical bar replay">
-        <span class="font-semibold text-warning">HISTORICAL REPLAY</span>
-        <button mat-icon-button [attr.aria-label]="playing() ? 'Pause replay' : 'Play replay'" [disabled]="replayIndex() === history().length" (click)="playing.set(!playing())"><mat-icon>{{ playing() ? 'pause' : 'play_arrow' }}</mat-icon></button>
-        <button mat-icon-button aria-label="Advance one bar" [disabled]="replayIndex() === history().length" (click)="stepReplay()"><mat-icon>skip_next</mat-icon></button>
-        <mat-slider class="min-w-30 flex-1" [min]="1" [max]="history().length" [step]="1"><input matSliderThumb aria-label="Replay position" [value]="replayIndex() ?? 1" (valueChange)="seekReplay($event)" /></mat-slider>
-        <span class="tabular-nums">{{ replayIndex() }} / {{ history().length }} bars</span>
-        <span class="text-text-secondary">Live ticks paused on chart</span>
-      </div>
+      <ak-chart-replay-bar
+        [index]="replayIndex() ?? 1"
+        [total]="history().length"
+        [playing]="playing()"
+        (playToggle)="playing.set(!playing())"
+        (step)="stepReplay()"
+        (seek)="seekReplay($event)"
+      />
     }
 
     <div class="flex min-w-0 max-lg:flex-wrap">
-      <nav class="flex w-12 shrink-0 flex-col items-center gap-0.5 border-r border-border bg-surface-2 py-2" aria-label="Drawing tools">
-        @for (tool of drawingTools; track tool.id) {
-          <button mat-icon-button class="ak-tool" [class.ak-tool--active]="drawingTool() === tool.id" [attr.aria-label]="tool.label" [matTooltip]="tool.label" matTooltipPosition="right" [attr.aria-pressed]="drawingTool() === tool.id" [disabled]="!ready()" (click)="selectTool(tool.id)"><mat-icon>{{ tool.icon }}</mat-icon></button>
-        }
-        <span class="my-2 w-6 border-t border-border" aria-hidden="true"></span>
-        <button mat-icon-button aria-label="Undo last drawing" matTooltip="Undo drawing" [disabled]="!drawingState().undo || !ready()" (click)="chart()?.undoDrawing()"><mat-icon>undo</mat-icon></button>
-        <button mat-icon-button aria-label="Redo drawing" matTooltip="Redo drawing" [disabled]="!drawingState().redo || !ready()" (click)="chart()?.redoDrawing()"><mat-icon>redo</mat-icon></button>
-        <button mat-icon-button aria-label="Toggle drawing visibility" matTooltip="Show / hide drawings" [attr.aria-pressed]="drawingsVisible()" (click)="drawingsVisible.set(!drawingsVisible())"><mat-icon>{{ drawingsVisible() ? 'visibility' : 'visibility_off' }}</mat-icon></button>
-        <button mat-icon-button aria-label="Remove all drawings" matTooltip="Remove drawings" [disabled]="!drawingState().count || !ready()" (click)="removeDrawings()"><mat-icon>delete_outline</mat-icon></button>
-      </nav>
+      <ak-chart-tools
+        [tool]="drawingTool()"
+        [state]="drawingState()"
+        [visible]="drawingsVisible()"
+        [ready]="ready()"
+        (toolSelect)="selectTool($event)"
+        (undo)="chart()?.undoDrawing()"
+        (redo)="chart()?.redoDrawing()"
+        (visibilityToggle)="drawingsVisible.set(!drawingsVisible())"
+        (remove)="removeDrawings()"
+      />
 
       <div class="min-w-0 flex-1">
         <div class="flex min-h-12 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs">
@@ -135,27 +136,24 @@
               (chartMenu)="openContextMenu($event)" />
           }
           @if (contextMenu(); as menu) {
-            <div class="fixed inset-0 z-20 cursor-default" aria-hidden="true"></div>
-            <div #chartMenuPanel role="menu" aria-label="Chart actions" tabindex="-1" (keydown)="onMenuKeydown($event)"
-                 class="ak-menu absolute z-30 w-60 rounded-md border border-border bg-surface-2 py-1 text-xs"
-                 [style.left]="'min(' + menu.x + 'px, calc(100% - 15.5rem))'" [style.top]="'min(' + menu.y + 'px, calc(100% - 19rem))'">
-              <button type="button" role="menuitem" class="ak-menu-item" (click)="chart()?.fitContent(); closeContextMenu()"><mat-icon aria-hidden="true">fit_screen</mat-icon>Reset chart view</button>
-              @if (menu.price !== undefined) {
-                <button type="button" role="menuitem" class="ak-menu-item" (click)="copyText(menu.price!.toFixed(precision()), 'Price')"><mat-icon aria-hidden="true">content_copy</mat-icon>Copy price {{ menu.price | number:numberFormat() }}</button>
-                <button type="button" role="menuitem" class="ak-menu-item" (click)="addLineAt(menu.price!)"><mat-icon aria-hidden="true">horizontal_rule</mat-icon>Line at {{ menu.price | number:numberFormat() }}</button>
-                <button type="button" role="menuitem" class="ak-menu-item" (click)="measureFrom(menu)"><mat-icon aria-hidden="true">straighten</mat-icon>Measure from here</button>
-              }
-              @if (barAt(menu.time); as bar) {
-                <button type="button" role="menuitem" class="ak-menu-item" (click)="copyText(barText(bar), 'Bar values')"><mat-icon aria-hidden="true">content_copy</mat-icon>Copy bar OHLC</button>
-              }
-              <div class="my-1 border-t border-border" role="separator"></div>
-              <button type="button" role="menuitem" class="ak-menu-item" (click)="drawingsVisible.set(!drawingsVisible()); closeContextMenu()"><mat-icon aria-hidden="true">{{ drawingsVisible() ? 'visibility_off' : 'visibility' }}</mat-icon>{{ drawingsVisible() ? 'Hide' : 'Show' }} drawings</button>
-              @if (drawingState().count > 0) {
-                <button type="button" role="menuitem" class="ak-menu-item text-danger" (click)="closeContextMenu(); removeDrawings()"><mat-icon aria-hidden="true">delete_outline</mat-icon>Remove {{ drawingState().count }} drawings</button>
-              }
-              <div class="my-1 border-t border-border" role="separator"></div>
-              <button type="button" role="menuitem" class="ak-menu-item" [routerLink]="['/trade', brokerLinkId(), instrument()]" (click)="closeContextMenu()"><mat-icon aria-hidden="true">north_east</mat-icon>Trade {{ instrumentLabel() }}</button>
-            </div>
+            <ak-chart-menu
+              [anchor]="menu"
+              [bar]="barAt(menu.time)"
+              [precision]="precision()"
+              [numberFormat]="numberFormat()"
+              [drawingsVisible]="drawingsVisible()"
+              [drawingCount]="drawingState().count"
+              [instrument]="instrument()"
+              [instrumentLabel]="instrumentLabel()"
+              [brokerLinkId]="brokerLinkId()"
+              (resetView)="chart()?.fitContent(); closeContextMenu()"
+              (addLine)="addLineAt($event)"
+              (measure)="measureFrom(menu)"
+              (drawingsToggle)="drawingsVisible.set(!drawingsVisible()); closeContextMenu()"
+              (removeDrawings)="closeContextMenu(); removeDrawings()"
+              (dismiss)="closeContextMenu()"
+              (notice)="status.set($event)"
+            />
           }
         </div>
         <footer class="flex flex-wrap items-center justify-between gap-1 border-t border-border px-2 py-1 text-xs">
@@ -173,63 +171,23 @@
       </div>
 
       @if (showSidebar()) {
-        <aside class="ak-chart-sidebar w-64 shrink-0 border-l border-border max-lg:w-full max-lg:border-t max-lg:border-l-0" aria-label="Watchlist and symbol details">
-          <div class="flex items-center justify-between border-b border-border px-3 py-2"><h2 class="text-sm font-semibold">Watchlist</h2><button mat-icon-button aria-label="Add current symbol to watchlist" matTooltip="Add current symbol" [disabled]="!definition()" (click)="pinInstrument()"><mat-icon>add</mat-icon></button></div>
-          <div class="grid grid-cols-[1fr_6rem_4rem] gap-1 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary"><span>Symbol</span><span class="text-right">Last</span><span class="text-right">Chg %</span></div>
-          <div class="max-h-72 overflow-y-auto">
-            @for (row of watchRows(); track row.instrument.key) {
-              <a class="ak-watch-row grid grid-cols-[1fr_6rem_4rem] items-center gap-1 px-3 py-2.5 text-xs" [class.ak-watch-row--active]="row.instrument.key === instrument()" [routerLink]="['/chart', brokerLinkId(), row.instrument.key]" [attr.aria-current]="row.instrument.key === instrument() ? 'page' : null">
-                <span class="min-w-0 truncate font-semibold" [title]="row.instrument.name">{{ formatLabel(row.instrument.key) }} @if (row.stale) { <span class="text-[9px] font-normal text-warning">stale</span> }</span>
-                <span class="text-right tabular-nums">{{ row.tick ? (row.tick.lastPrice | akMoney) : '—' }}</span>
-                <span class="text-right tabular-nums" [class.text-buy]="(row.change ?? 0) >= 0" [class.text-sell]="(row.change ?? 0) < 0">{{ row.change === undefined ? '—' : ((row.change >= 0 ? '+' : '') + (row.change | number:'1.2-2') + '%') }}</span>
-              </a>
-            } @empty {
-              <p class="px-4 py-6 text-xs leading-relaxed text-text-secondary">Your watchlist is empty. Search a symbol, then use + to pin it here.</p>
-            }
-          </div>
-          <!--
-            The text reading of the lines on the canvas, which a screen reader cannot see — and the
-            way back: each row opens the screen where that position or order can be acted on.
-          -->
-          @if (exposure().length) {
-            <section class="border-t border-border" aria-labelledby="ak-exposure-heading">
-              <div class="flex items-center justify-between px-3 py-2">
-                <h2 id="ak-exposure-heading" class="text-sm font-semibold">Positions &amp; orders</h2>
-                <button mat-icon-button type="button" aria-label="Show positions and orders on the chart" [matTooltip]="showExposure() ? 'Hide from chart' : 'Show on chart'" [attr.aria-pressed]="showExposure()" (click)="showExposure.set(!showExposure())"><mat-icon>{{ showExposure() ? 'visibility' : 'visibility_off' }}</mat-icon></button>
-              </div>
-              <ul role="list" class="pb-2 text-xs">
-                @for (row of exposure(); track row.id) {
-                  <li>
-                    <a class="ak-watch-row flex items-baseline justify-between gap-2 px-3 py-2" [routerLink]="row.route">
-                      <span class="min-w-0 truncate">
-                        <span class="font-semibold" [class.text-buy]="row.tone === 'buy'" [class.text-sell]="row.tone === 'sell'" [class.text-brand]="row.tone === 'brand'">{{ row.title }}</span>
-                        <span class="text-text-secondary"> · {{ row.detail }}</span>
-                      </span>
-                      <span class="shrink-0 tabular-nums">{{ row.price | akMoney }}</span>
-                    </a>
-                  </li>
-                }
-              </ul>
-            </section>
-          }
-          <div class="border-t border-border p-4">
-            <div class="flex items-center gap-2"><span class="flex size-8 items-center justify-center rounded bg-brand/15 font-semibold text-brand">{{ instrumentLabel().slice(0, 1) }}</span><h2 class="text-sm font-semibold">{{ instrumentLabel() }}</h2></div>
-            <p class="mt-2 text-xs text-text-secondary">{{ definition()?.name }} · {{ venue() }}</p>
-            @if (quote(); as tick) {
-              <p class="mt-4 text-2xl font-semibold tabular-nums">{{ tick.lastPrice | akMoney }} <span class="text-xs font-normal text-text-tertiary">{{ tick.lastPrice.currency }}</span></p>
-              @if (changePercent() !== undefined) { <p class="mt-1 text-sm tabular-nums" [class.text-buy]="changePercent()! >= 0" [class.text-sell]="changePercent()! < 0">{{ changePercent()! >= 0 ? '+' : '' }}{{ changePercent() | number:'1.2-2' }}% <span class="text-xs text-text-secondary">vs previous close</span></p> }
-              <p class="mt-2 text-[11px] text-text-secondary">{{ isReplay() ? 'Live quote · independent of replay' : 'Last tick' }} · {{ formatTime(tick.timestamp) }}</p>
-              <dl class="mt-5 grid grid-cols-2 gap-y-3 text-xs">
-                <dt class="text-text-secondary">Open</dt><dd class="text-right tabular-nums">{{ tick.open ? (tick.open | akMoney) : '—' }}</dd>
-                <dt class="text-text-secondary">Day high</dt><dd class="text-right tabular-nums">{{ tick.high ? (tick.high | akMoney) : '—' }}</dd>
-                <dt class="text-text-secondary">Day low</dt><dd class="text-right tabular-nums">{{ tick.low ? (tick.low | akMoney) : '—' }}</dd>
-                <dt class="text-text-secondary">Previous close</dt><dd class="text-right tabular-nums">{{ tick.previousClose ? (tick.previousClose | akMoney) : '—' }}</dd>
-                <dt class="text-text-secondary">Volume</dt><dd class="text-right tabular-nums">{{ tick.volume === undefined ? '—' : (tick.volume | number:'1.0-0') }}</dd>
-              </dl>
-            } @else { <p class="my-4 text-xs text-text-secondary">Waiting for the first quote from this broker.</p> }
-            <p class="mt-5 text-[11px] leading-relaxed text-text-tertiary">{{ manifest()?.displayName || link()?.nickname }} · broker market data. Available history and intervals depend on your linked account.</p>
-          </div>
-        </aside>
+        <ak-chart-sidebar
+          [rows]="watchRows()"
+          [exposure]="exposure()"
+          [showExposure]="showExposure()"
+          [brokerLinkId]="brokerLinkId()"
+          [instrument]="instrument()"
+          [instrumentLabel]="instrumentLabel()"
+          [venue]="venue()"
+          [definition]="definition()"
+          [quote]="quote()"
+          [changePercent]="changePercent()"
+          [isReplay]="isReplay()"
+          [source]="manifest()?.displayName || link()?.nickname || ''"
+          [timeZone]="timeZone()"
+          (pin)="pinInstrument()"
+          (exposureToggle)="showExposure.set(!showExposure())"
+        />
       }
     </div>
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-2 px-3 py-2 text-[10px] text-text-secondary">

@@ -20,13 +20,6 @@
   --mat-form-field-container-vertical-padding: 6px;
 }
 
-.ak-tool--active, .ak-watch-row--active {
-  color: var(--color-brand);
-  background: color-mix(in srgb, var(--color-brand) 12%, var(--color-surface-1));
-}
-
-.ak-watch-row:hover { background-color: var(--color-surface-3); }
-
 .ak-study {
   @apply cursor-pointer rounded border border-border bg-surface-2 px-2 py-0.5 text-text-secondary hover:text-text-primary;
 }
@@ -54,18 +47,6 @@
 
   // `color-mix` against a token, which Tailwind has no utility for.
   background-color: color-mix(in srgb, var(--color-brand) 12%, var(--color-surface-2));
-}
-
-// Right-click menu. Not MatMenu: its anchor is a pointer position on a canvas,
-// not an element, so a CDK overlay would open at the wrong place. A real
-// role=menu button list keeps the same keyboard contract without positioning.
-.ak-menu { box-shadow: var(--shadow-ak-2); }
-
-.ak-menu-item {
-  @apply flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left;
-
-  &:hover, &:focus-visible { background-color: var(--color-surface-3); }
-  mat-icon { font-size: 16px; width: 16px; height: 16px; }
 }
 
 // The canvas needs a definite height to measure against; `PriceChartComponent`
