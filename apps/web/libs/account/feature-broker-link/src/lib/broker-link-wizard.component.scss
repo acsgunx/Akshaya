@@ -1,0 +1,20 @@
+// Two rules; everything else on this screen is utilities in the template.
+@reference '../../../../../src/styles/tailwind.css';
+
+:host {
+  display: block;
+  padding: 24px 16px 48px;
+}
+
+// The saved-login picker's selected state is a BOUND class, so it has to be a
+// selector rather than an inline utility string.
+.ak-saved-option--active {
+  @apply border-brand text-text-primary;
+
+  // `color-mix` against a token, which Tailwind has no utility for.
+  background-color: color-mix(in srgb, var(--color-brand) 10%, var(--color-surface-2));
+
+  mat-icon {
+    @apply text-brand;
+  }
+}

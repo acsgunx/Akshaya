@@ -1,0 +1,455 @@
+import { DestroyRef, ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
+import { Router, RouterLink } from '@angular/router';
+
+import { BrokerLinksStore, ConnectorStore, MarketDataService, VenueStateService } from '@akshaya/shared/data-access';
+import {
+  MoneyPipe,
+  orderTypeLabel,
+  orderTypeNeedsLimitPrice,
+  orderTypeNeedsTriggerPrice,
+  orderVarietyLabel,
+  positionEffectLabel,
+  sideLabel,
+  timeInForceLabel,
+} from '@akshaya/shared/util';
+import type {
+  InstrumentKey,
+  Money,
+  OrderType,
+  OrderVariety,
+  PlaceOrderRequest,
+  PositionEffect,
+  Side,
+  TimeInForce,
+} from '@akshaya/shared/models';
+import { canModifyField, formatInstrumentLabel, parseInstrumentKey } from '@akshaya/shared/models';
+import { ConnectionStatusComponent, LoadingStateComponent } from '@akshaya/shared/ui';
+import { OrderTicketStore } from './order-ticket.store';
+
+interface OrderTicketFormControls {
+  side: FormControl<Side>;
+  orderType: FormControl<OrderType>;
+  timeInForce: FormControl<TimeInForce>;
+  positionEffect: FormControl<PositionEffect>;
+  variety: FormControl<OrderVariety>;
+  quantity: FormControl<string>;
+  disclosedQuantity: FormControl<string>;
+  limitPrice: FormControl<string>;
+  triggerPrice: FormControl<string>;
+  goodTillDate: FormControl<string>;
+}
+
+/**
+ * THE component that proves the architecture: it takes an instrument and a
+ * connector id, reads THAT connector's manifest, and renders only what the
+ * manifest says the broker can do. There is exactly one branch on
+ * `connectorId` allowed anywhere in this file — the lookup into
+ * `ConnectorStore` — and it exists precisely once, to fetch the manifest.
+ * Every other decision (which order types appear, which time-in-force
+ * options, which position effects, whether quantity accepts a fraction,
+ * whether a price field is visible) reads the manifest, never the id.
+ *
+ * If you are about to add `if (connectorId === '...')` anywhere below: stop.
+ * The fix is a new field on `ConnectorManifest` (backend) and a read of that
+ * field here, not a conditional on which broker this is.
+ */
+@Component({
+  selector: 'ak-order-ticket',
+  standalone: true,
+  imports: [
+    ReactiveFormsModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    MatSelectModule,
+    RouterLink,
+    MoneyPipe,
+    ConnectionStatusComponent,
+    LoadingStateComponent,
+  ],
+  providers: [OrderTicketStore],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './order-ticket.component.html',
+  styleUrl: './order-ticket.component.scss',
+  host: {
+    // Scopes the B/S/Esc shortcuts to "this panel has focus" rather than
+    // making them page-wide hotkeys — see DESIGN.md "the keyboard model".
+    // A page-wide 'B'/'S' would fire while the user is typing a nickname
+    // into an unrelated field elsewhere in the app.
+    tabindex: '-1',
+    '(keydown)': 'onKeydown($event)',
+  },
+})
+export class OrderTicketComponent {
+  private readonly connectorStore = inject(ConnectorStore);
+  private readonly brokerLinksStore = inject(BrokerLinksStore);
+  private readonly marketData = inject(MarketDataService);
+  private readonly venueState = inject(VenueStateService);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+  protected readonly store = inject(OrderTicketStore);
+
+  // Bound from the route (`/trade/:brokerLinkId/:instrument`) via
+  // `withComponentInputBinding()` in app.config.ts. `brokerLinkId` names a
+  // specific linked account; the connector — and therefore the manifest —
+  // is resolved FROM it below, never assumed to equal it.
+  readonly brokerLinkId = input.required<string>();
+  readonly instrument = input.required<InstrumentKey>();
+
+  // Query-param prefill, bound by `withComponentInputBinding()`. These let
+  // another screen open a ticket already pointed the right way — the
+  // positions table's square-off is the main caller — WITHOUT that screen
+  // needing to know anything about how a ticket is built.
+  //
+  // They prefill, they never submit. A square-off is a real trade at a real
+  // price, so the review-then-confirm flow still applies; see the "no
+  // optimistic UI" note in order-ticket.store.ts.
+  readonly side = input<string | undefined>(undefined);
+  readonly quantity = input<string | undefined>(undefined);
+  readonly product = input<string | undefined>(undefined);
+
+  protected readonly link = computed(() => this.brokerLinksStore.linkFor(this.brokerLinkId()));
+  protected readonly manifest = computed(() => {
+    const connectorId = this.link()?.connectorId;
+    return connectorId ? this.connectorStore.manifestFor(connectorId) : undefined;
+  });
+  protected readonly instrumentLabel = computed(() => formatInstrumentLabel(this.instrument()));
+
+  protected readonly form = new FormGroup<OrderTicketFormControls>({
+    side: new FormControl<Side>('buy', { nonNullable: true }),
+    orderType: new FormControl<OrderType>('market', { nonNullable: true }),
+    timeInForce: new FormControl<TimeInForce>('day', { nonNullable: true }),
+    positionEffect: new FormControl<PositionEffect>('intraday', { nonNullable: true }),
+    variety: new FormControl<OrderVariety>('regular', { nonNullable: true }),
+    quantity: new FormControl<string>('', { nonNullable: true, validators: [Validators.required] }),
+    disclosedQuantity: new FormControl<string>('', { nonNullable: true }),
+    limitPrice: new FormControl<string>('', { nonNullable: true }),
+    triggerPrice: new FormControl<string>('', { nonNullable: true }),
+    goodTillDate: new FormControl<string>('', { nonNullable: true }),
+  });
+
+  // Form-value bridges as signals, so the template's visibility rules
+  // (price fields, quantity step) are plain computed signals rather than
+  // re-reading `.value` inside the template on every check.
+  private readonly orderType = toSignal(this.form.controls.orderType.valueChanges, {
+    initialValue: this.form.controls.orderType.value,
+  });
+  private readonly sideValue = toSignal(this.form.controls.side.valueChanges, {
+    initialValue: this.form.controls.side.value,
+  });
+  private readonly varietyValue = toSignal(this.form.controls.variety.valueChanges, {
+    initialValue: this.form.controls.variety.value,
+  });
+  private readonly quantityValue = toSignal(this.form.controls.quantity.valueChanges, {
+    initialValue: this.form.controls.quantity.value,
+  });
+  private readonly limitPriceValue = toSignal(this.form.controls.limitPrice.valueChanges, {
+    initialValue: this.form.controls.limitPrice.value,
+  });
+  private readonly disclosedQuantityValue = toSignal(this.form.controls.disclosedQuantity.valueChanges, {
+    initialValue: this.form.controls.disclosedQuantity.value,
+  });
+
+  protected readonly showLimitPrice = computed(() => orderTypeNeedsLimitPrice(this.orderType()));
+  protected readonly showTriggerPrice = computed(() => orderTypeNeedsTriggerPrice(this.orderType()));
+  protected readonly isBuy = computed(() => this.sideValue() === 'buy');
+
+  protected readonly quote = computed(() => this.marketData.tickFor(this.instrument())());
+  protected readonly tickAgeMs = computed(() => this.marketData.ageMsFor(this.instrument())());
+  protected readonly isFeedStale = computed(() => (this.tickAgeMs() ?? Number.POSITIVE_INFINITY) > 10_000);
+  protected readonly connectionState = this.marketData.connectionState;
+
+  protected readonly orderTypeLabel = orderTypeLabel;
+  protected readonly timeInForceLabel = timeInForceLabel;
+  protected readonly positionEffectLabel = positionEffectLabel;
+  protected readonly orderVarietyLabel = orderVarietyLabel;
+  protected readonly sideLabel = sideLabel;
+
+  // --- exchange rules -------------------------------------------------------
+  //
+  // These are checked HERE as well as at the broker, and that is not
+  // duplication for its own sake. A rejection that arrives from the exchange
+  // costs a round trip, arrives as vendor text nobody can act on ("RMS rule:
+  // quantity"), and — on a fast-moving instrument — arrives after the price
+  // the trader wanted has gone. Catching them in the form turns a rejected
+  // order into a corrected one.
+
+  /** Session state at the instrument's OWN venue, not the user's wall clock. */
+  private readonly venueSession = computed(() => {
+    const parsed = parseInstrumentKey(this.instrument());
+    return parsed ? this.venueState.stateFor(parsed.venue)() : undefined;
+  });
+
+  protected readonly isVenueClosed = computed(() => {
+    const status = this.venueSession()?.status;
+    return status === 'closed' || status === 'afterHours';
+  });
+
+  /** Whether this broker offers an after-market variety to fall back on. */
+  protected readonly supportsAfterMarket = computed(
+    () => this.manifest()?.orders.varieties.includes('afterMarket') ?? false,
+  );
+
+  /**
+   * The venue is shut and the ticket is still set to a regular order.
+   *
+   * Worth a prompt rather than a silent rejection: an AMO placed at 16:00
+   * queues for the next open, which is almost always what someone filling in
+   * a ticket after the bell actually wants.
+   */
+  protected readonly shouldSuggestAfterMarket = computed(
+    () => this.isVenueClosed() && this.supportsAfterMarket() && this.varietyValue() === 'regular',
+  );
+
+  /**
+   * Quantity must be a whole multiple of the lot size.
+   *
+   * Binding on derivatives, where the lot is the contract size — an NFO
+   * order for 30 when the lot is 25 is rejected outright, not rounded down.
+   */
+  protected readonly lotSizeError = computed<string | undefined>(() => {
+    const lotSize = this.store.instrument()?.lotSize ?? 1;
+    const quantity = Number(this.quantityValue());
+    if (lotSize <= 1 || !quantity || !Number.isFinite(quantity)) {
+      return undefined;
+    }
+    if (quantity % lotSize !== 0) {
+      const nearest = Math.max(lotSize, Math.round(quantity / lotSize) * lotSize);
+      return `This instrument trades in lots of ${lotSize}. Try ${nearest}.`;
+    }
+    return undefined;
+  });
+
+  /**
+   * Prices must sit on the venue's tick.
+   *
+   * Checked with integer arithmetic rather than a modulo on floats: at a
+   * tick of 0.05, `1250.15 % 0.05` is not zero in IEEE-754, and a validator
+   * that rejects a perfectly good price is worse than no validator at all.
+   */
+  protected readonly tickSizeError = computed<string | undefined>(() => {
+    const tickSize = this.store.instrument()?.tickSize ?? 0;
+    const price = Number(this.limitPriceValue());
+    if (!this.showLimitPrice() || tickSize <= 0 || !price || !Number.isFinite(price)) {
+      return undefined;
+    }
+
+    const scale = 100_000;
+    const priceTicks = Math.round(price * scale);
+    const tickTicks = Math.round(tickSize * scale);
+    if (tickTicks > 0 && priceTicks % tickTicks !== 0) {
+      const nearest = (Math.round(priceTicks / tickTicks) * tickTicks) / scale;
+      return `This venue quotes in ticks of ${tickSize}. Try ${nearest}.`;
+    }
+    return undefined;
+  });
+
+  /**
+   * Indian exchanges require a disclosed quantity to be at least 30% of the
+   * order — mStock's own modify documentation says so in as many words.
+   *
+   * A warning rather than a hard block: the rule is venue policy and can
+   * change, and the broker is the authority. Blocking on our copy of someone
+   * else's rule is how a UI ends up refusing an order the exchange would
+   * have accepted.
+   */
+  protected readonly disclosedQuantityWarning = computed<string | undefined>(() => {
+    const disclosed = Number(this.disclosedQuantityValue());
+    const quantity = Number(this.quantityValue());
+    if (!disclosed || !quantity || !Number.isFinite(disclosed) || !Number.isFinite(quantity)) {
+      return undefined;
+    }
+    if (disclosed > quantity) {
+      return 'The disclosed quantity cannot exceed the order quantity.';
+    }
+    if (disclosed < quantity * 0.3) {
+      return `Most Indian venues require at least 30% of the order to be disclosed (${Math.ceil(quantity * 0.3)}).`;
+    }
+    return undefined;
+  });
+
+  /** Hard blocks only. Warnings above do not gate the button. */
+  protected readonly blockingError = computed(() => this.lotSizeError() ?? this.tickSizeError());
+
+  /** Estimated notional (qty × best-known price), in the instrument's own currency — shown pre-confirm. */
+  protected readonly estimatedValue = computed<Money | undefined>(() => {
+    const qty = Number(this.form.controls.quantity.value);
+    if (!qty || !Number.isFinite(qty)) {
+      return undefined;
+    }
+    const limitPrice = Number(this.form.controls.limitPrice.value);
+    const lastPrice = this.quote()?.lastPrice;
+    const price = this.showLimitPrice() && limitPrice > 0 ? limitPrice : lastPrice ? Number(lastPrice.amount) : undefined;
+    if (price === undefined) {
+      return undefined;
+    }
+    return { amount: String(qty * price), currency: lastPrice?.currency ?? this.store.instrument()?.currency ?? '' };
+  });
+
+  constructor() {
+    // Reset per-connector/instrument defaults from the manifest the moment
+    // either changes — this is the ONE place defaults are derived from the
+    // manifest, so the form never silently keeps a value the new broker
+    // doesn't support (e.g. a leftover `bracket` variety on a broker that
+    // doesn't offer one).
+    effect(() => {
+      const manifest = this.manifest();
+      if (!manifest) {
+        return;
+      }
+      this.form.patchValue({
+        orderType: manifest.orders.types[0] ?? 'market',
+        timeInForce: manifest.orders.timeInForce[0] ?? 'day',
+        positionEffect: manifest.orders.positionEffects[0] ?? 'intraday',
+        variety: manifest.orders.varieties[0] ?? 'regular',
+      });
+    });
+
+    effect(() => {
+      const key = this.instrument();
+      this.store.loadInstrument({ brokerLinkId: this.brokerLinkId(), instrument: key });
+      const unsubscribe = this.marketData.subscribe(this.brokerLinkId(), key);
+      this.destroyRef.onDestroy(unsubscribe);
+    });
+
+    // Query-param prefill, applied AFTER the manifest defaults above so an
+    // explicit request from the calling screen wins over the broker default.
+    // Each value is validated against the manifest before it is applied —
+    // a stale bookmark carrying a product this broker does not offer must
+    // leave the ticket on a supported one rather than in an unplaceable state.
+    effect(() => {
+      const manifest = this.manifest();
+      if (!manifest) {
+        return;
+      }
+
+      const side = this.side();
+      if (side === 'buy' || side === 'sell') {
+        this.form.controls.side.setValue(side);
+      }
+
+      const quantity = this.quantity();
+      if (quantity && Number(quantity) > 0) {
+        this.form.controls.quantity.setValue(quantity);
+      }
+
+      const product = this.product() as PositionEffect | undefined;
+      if (product && manifest.orders.positionEffects.includes(product)) {
+        this.form.controls.positionEffect.setValue(product);
+      }
+    });
+  }
+
+  /** Switches the ticket to an after-market order — see `shouldSuggestAfterMarket`. */
+  protected useAfterMarket(): void {
+    this.form.controls.variety.setValue('afterMarket');
+  }
+
+  /**
+   * Whether the broker accepts this field on an order.
+   *
+   * Goes through `canModifyField` rather than `.includes()`: the manifest
+   * ships these values PascalCased, so the direct comparison this replaced
+   * never matched and the disclosed-quantity field never rendered at all.
+   */
+  protected canModify(field: string): boolean {
+    const manifest = this.manifest();
+    return manifest ? canModifyField(manifest, field) : false;
+  }
+
+  protected stageSide(side: Side): void {
+    if (this.store.phase() === 'form') {
+      this.form.controls.side.setValue(side);
+    }
+  }
+
+  protected reviewOrder(): void {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+    this.store.requestEstimate(this.buildRequest());
+  }
+
+  protected backToForm(): void {
+    this.store.backToForm();
+  }
+
+  protected confirmSubmit(): void {
+    this.store.submit(this.buildRequest());
+  }
+
+  protected placeAnother(): void {
+    this.store.resetTicket();
+    this.form.reset({
+      side: 'buy',
+      orderType: this.manifest()?.orders.types[0] ?? 'market',
+      timeInForce: this.manifest()?.orders.timeInForce[0] ?? 'day',
+      positionEffect: this.manifest()?.orders.positionEffects[0] ?? 'intraday',
+      variety: this.manifest()?.orders.varieties[0] ?? 'regular',
+      quantity: '',
+      disclosedQuantity: '',
+      limitPrice: '',
+      triggerPrice: '',
+      goodTillDate: '',
+    });
+  }
+
+  protected onKeydown(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement | null;
+    const isEditable =
+      !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (this.store.phase() === 'reviewing') {
+        this.store.backToForm();
+      } else if (this.store.phase() === 'form') {
+        this.router.navigate(['/watchlist']);
+      }
+      return;
+    }
+
+    if (isEditable || this.store.phase() !== 'form') {
+      return;
+    }
+
+    if (event.key === 'b' || event.key === 'B') {
+      event.preventDefault();
+      this.stageSide('buy');
+    } else if (event.key === 's' || event.key === 'S') {
+      event.preventDefault();
+      this.stageSide('sell');
+    }
+  }
+
+  private buildRequest(): PlaceOrderRequest {
+    const v = this.form.getRawValue();
+    return {
+      brokerLinkId: this.brokerLinkId(),
+      clientOrderId: crypto.randomUUID(),
+      instrument: this.instrument(),
+      side: v.side,
+      quantity: v.quantity,
+      orderType: v.orderType,
+      positionEffect: v.positionEffect,
+      timeInForce: v.timeInForce,
+      variety: v.variety,
+      limitPrice: this.showLimitPrice() && v.limitPrice ? { amount: v.limitPrice, currency: this.store.instrument()?.currency ?? '' } : undefined,
+      triggerPrice:
+        this.showTriggerPrice() && v.triggerPrice ? { amount: v.triggerPrice, currency: this.store.instrument()?.currency ?? '' } : undefined,
+      disclosedQuantity: v.disclosedQuantity || undefined,
+      goodTillDate: v.timeInForce === 'gtd' && v.goodTillDate ? v.goodTillDate : undefined,
+    };
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "name": "akshaya-web",
+  "$schema": "node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "src",
+  "prefix": "ak",
+  "tags": [
+    "type:app"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@angular/build:application",
+      "options": {
+        "outputPath": "dist/akshaya-web",
+        "index": "src/index.html",
+        "browser": "src/main.ts",
+        "polyfills": [],
+        "tsConfig": "tsconfig.app.json",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "public"
+          }
+        ],
+        "styles": [
+          "src/styles/tailwind.css",
+          "src/styles/styles.scss"
+        ]
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "620kB",
+              "maximumError": "700kB"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "3kB",
+              "maximumError": "5kB"
+            },
+            {
+              "type": "bundle",
+              "name": "styles",
+              "maximumWarning": "42kB",
+              "maximumError": "60kB"
+            }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "namedChunks": true
+        }
+      },
+      "defaultConfiguration": "production",
+      "outputs": [
+        "{options.outputPath}"
+      ]
+    },
+    "serve": {
+      "executor": "@angular/build:dev-server",
+      "options": {
+        "proxyConfig": "proxy.conf.json"
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "akshaya-web:build:production"
+        },
+        "development": {
+          "buildTarget": "akshaya-web:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "options": {
+        "buildTarget": "akshaya-web:build:development",
+        "tsConfig": "tsconfig.spec.json",
+        "runner": "vitest",
+        "coverageReporters": [
+          "text-summary",
+          "lcov"
+        ]
+      }
+    },
+    "lint": {
+      "executor": "@angular-eslint/builder:lint",
+      "options": {
+        "lintFilePatterns": [
+          "src/**/*.ts",
+          "src/**/*.html",
+          "libs/**/*.ts",
+          "libs/**/*.html"
+        ]
+      }
+    }
+  }
+}

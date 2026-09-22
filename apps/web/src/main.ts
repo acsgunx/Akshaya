@@ -1,7 +1,7 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
 import { AppComponent } from './app/app.component';
-import { failBootSplash } from './app/core/boot-splash';
+import { failBootSplash } from './app/shell/boot-splash';
 
 bootstrapApplication(AppComponent, appConfig).catch((err: unknown) => {
   // A bootstrap failure means the trader has no UI at all — including no kill switch and

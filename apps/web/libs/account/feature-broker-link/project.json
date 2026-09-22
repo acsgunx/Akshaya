@@ -1,0 +1,11 @@
+{
+  "name": "account-feature-broker-link",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/account/feature-broker-link/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:account",
+    "type:feature"
+  ]
+}

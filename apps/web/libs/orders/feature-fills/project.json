@@ -1,0 +1,11 @@
+{
+  "name": "orders-feature-fills",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/orders/feature-fills/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:orders",
+    "type:feature"
+  ]
+}

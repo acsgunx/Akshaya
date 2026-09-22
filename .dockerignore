@@ -5,6 +5,7 @@
 **/obj/
 **/node_modules/
 **/.angular/
+**/.nx/
 **/dist/
 **/.data/
 .git/

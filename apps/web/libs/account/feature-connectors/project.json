@@ -1,0 +1,11 @@
+{
+  "name": "account-feature-connectors",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/account/feature-connectors/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:account",
+    "type:feature"
+  ]
+}

@@ -228,12 +228,12 @@ Waits are shown at three scopes, each with one job:
 - **Boot — the splash in `index.html`.** Static HTML and inline CSS, so it
   paints before any JavaScript arrives. It stays up through the bundle
   download, the session check (`/me`) and the first route's chunk, and leaves
-  once that screen has painted (`core/boot-splash.ts`). After 8 seconds it
+  once that screen has painted (`src/app/shell/boot-splash.ts`). After 8 seconds it
   says the wait is unusually long, and after 25 it offers a reload. If
   bootstrap throws, it turns into an error instead of spinning forever.
 - **App-wide — `<ak-activity-bar>`.** A 3px bar on the header's bottom edge,
   right above the content, whenever a navigation or an HTTP request is in
-  flight (`core/activity.service.ts`, fed by `activityInterceptor`). That is
+  flight (`libs/shared/data-access/src/lib/activity.service.ts`, fed by `activityInterceptor`). That is
   Material's placement for a page-level progress bar; a 2px line on the
   viewport's top edge was too easy to miss. It is the answer to "did my tap
   do anything?". It waits 200ms before appearing, because most cached
@@ -291,7 +291,7 @@ make every API call as slow as a real broker, then reload:
 
     localStorage.setItem('akshaya.devLatencyMs', '1500')
 
-Remove the key to go back to full speed (`core/interceptors/dev-latency.interceptor.ts`;
+Remove the key to go back to full speed (`libs/shared/data-access/src/lib/interceptors/dev-latency.interceptor.ts`;
 not registered in a production build).
 
 ## The keyboard model
@@ -330,7 +330,7 @@ layout than by a squeezed desktop.
 **One breakpoint, two ways to read it.** Anything that is only styling uses
 `lg:` / `max-lg:` utilities. Anything that is different *markup* — a grid row
 versus a card, a virtual-scroll viewport versus a plain list — branches on
-`LayoutService.compact()` (`core/layout.service.ts`), whose `COMPACT_QUERY` is
+`LayoutService.compact()` (`libs/shared/util/src/lib/layout.service.ts`), whose `COMPACT_QUERY` is
 the exact complement of `lg:`. They cannot disagree about a given width. Don't
 render both layouts and hide one with CSS: it doubles the DOM, and on the
 watchlist it doubles every row's live subscription.

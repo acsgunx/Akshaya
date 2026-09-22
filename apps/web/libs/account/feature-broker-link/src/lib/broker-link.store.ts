@@ -1,0 +1,107 @@
+import { inject } from '@angular/core';
+import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { pipe, switchMap, tap } from 'rxjs';
+import { tapResponse } from '@ngrx/operators';
+import type { HttpErrorResponse } from '@angular/common/http';
+
+import { ApiService, BrokerLinksStore } from '@akshaya/shared/data-access';
+import type { ApiProblem, AuthCredentials, AuthStepView, AuthStepWire } from '@akshaya/shared/models';
+import { toAuthStepView } from '@akshaya/shared/models';
+
+interface State {
+  readonly step: AuthStepView | undefined;
+  readonly loading: boolean;
+  readonly error: ApiProblem | undefined;
+  /** Opaque state echoed back on `continue` calls — the connector owns its meaning; the wizard never inspects it. */
+  readonly flowState: Readonly<Record<string, string>>;
+}
+
+const initialState: State = {
+  step: undefined,
+  loading: false,
+  error: undefined,
+  flowState: {},
+};
+
+/**
+ * Drives the `AuthStep` state machine for ONE link-in-progress. Provided at
+ * the component level, mirroring `order-ticket.store.ts` — a second wizard
+ * instance (opening a link flow for a different broker) must not share this.
+ *
+ * A finished login is the one thing here the REST of the app cares about:
+ * `applyStep` re-loads `BrokerLinksStore` on `completed`, which is what makes
+ * the new account visible on every other tab without a page refresh. That is
+ * a single small GET — the screens holding broker data mark themselves stale
+ * off it and refetch when they are next opened, not now.
+ *
+ * THIS STORE NEVER BRANCHES ON A BROKER. It has four transitions —
+ * completed / redirect / challenge / gateway — because `AuthStepDto` has
+ * four cases, full stop. A fifth broker with a login flow that still fits
+ * one of these four adds nothing here at all.
+ */
+export const BrokerLinkStore = signalStore(
+  withState(initialState),
+  withMethods((store, api = inject(ApiService), links = inject(BrokerLinksStore)) => {
+    const applyStep = (wire: AuthStepWire): void => {
+      const step = toAuthStepView(wire);
+      patchState(store, { step, loading: false });
+
+      if (step.type === 'completed') {
+        links.load();
+      }
+    };
+
+    return {
+      begin: rxMethod<{
+        connectorId: string;
+        credentials: AuthCredentials;
+        nickname?: string;
+        redirectUri?: string;
+        /** A saved login to fill the gaps from. The server resolves it; the browser only names it. */
+        savedCredentialId?: string;
+        /** Field keys to remember, applied only if the broker accepts this login. */
+        rememberFields?: readonly string[];
+      }>(
+        pipe(
+          tap(() => patchState(store, { loading: true, error: undefined })),
+          switchMap((request) =>
+            api.beginLink(request).pipe(
+              tapResponse({
+                next: applyStep,
+                error: (err: unknown) => patchState(store, { loading: false, error: toProblem(err) }),
+              }),
+            ),
+          ),
+        ),
+      ),
+
+      continue: rxMethod<{ linkId: string; response: string }>(
+        pipe(
+          tap(() => patchState(store, { loading: true, error: undefined })),
+          switchMap(({ linkId, response }) =>
+            api.continueLink(linkId, response, store.flowState()).pipe(
+              tapResponse({
+                next: applyStep,
+                error: (err: unknown) => patchState(store, { loading: false, error: toProblem(err) }),
+              }),
+            ),
+          ),
+        ),
+      ),
+
+      rememberFlowState(partial: Readonly<Record<string, string>>): void {
+        patchState(store, { flowState: { ...store.flowState(), ...partial } });
+      },
+
+      reset(): void {
+        patchState(store, initialState);
+      },
+    };
+  }),
+);
+
+function toProblem(err: unknown): ApiProblem {
+  const httpErr = err as HttpErrorResponse;
+  return (httpErr?.error as ApiProblem) ?? { status: httpErr?.status ?? 0, detail: 'Could not reach the server.' };
+}

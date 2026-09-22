@@ -1,5 +1,5 @@
-/* Solution-style root config. TypeScript 6 no longer needs `baseUrl`, and the
-   `@app/*` style path aliases this project never actually imported are gone. */
+/* Solution-style root config. TypeScript 6 no longer needs `baseUrl`; `paths` below
+   resolve relative to this file. */
 {
   "compileOnSave": false,
   "compilerOptions": {
@@ -16,7 +16,31 @@
     "moduleResolution": "bundler",
     "importHelpers": true,
     "target": "ES2022",
-    "module": "ES2022"
+    "module": "ES2022",
+    // One alias per Nx library. Import a library only through its alias, never a deep path
+    // into its `src/lib` — `@nx/enforce-module-boundaries` rejects both deep and relative
+    // imports across libraries.
+    "paths": {
+      "@akshaya/account/feature-account": ["./libs/account/feature-account/src/index.ts"],
+      "@akshaya/account/feature-broker-link": ["./libs/account/feature-broker-link/src/index.ts"],
+      "@akshaya/account/feature-connectors": ["./libs/account/feature-connectors/src/index.ts"],
+      "@akshaya/market/data-access": ["./libs/market/data-access/src/index.ts"],
+      "@akshaya/market/feature-chart": ["./libs/market/feature-chart/src/index.ts"],
+      "@akshaya/market/feature-watchlist": ["./libs/market/feature-watchlist/src/index.ts"],
+      "@akshaya/market/ui-price-chart": ["./libs/market/ui-price-chart/src/index.ts"],
+      "@akshaya/orders/data-access": ["./libs/orders/data-access/src/index.ts"],
+      "@akshaya/orders/feature-fills": ["./libs/orders/feature-fills/src/index.ts"],
+      "@akshaya/orders/feature-order-ticket": ["./libs/orders/feature-order-ticket/src/index.ts"],
+      "@akshaya/orders/feature-orders": ["./libs/orders/feature-orders/src/index.ts"],
+      "@akshaya/portfolio/data-access": ["./libs/portfolio/data-access/src/index.ts"],
+      "@akshaya/portfolio/feature-dashboard": ["./libs/portfolio/feature-dashboard/src/index.ts"],
+      "@akshaya/portfolio/feature-holdings": ["./libs/portfolio/feature-holdings/src/index.ts"],
+      "@akshaya/portfolio/feature-positions": ["./libs/portfolio/feature-positions/src/index.ts"],
+      "@akshaya/shared/data-access": ["./libs/shared/data-access/src/index.ts"],
+      "@akshaya/shared/models": ["./libs/shared/models/src/index.ts"],
+      "@akshaya/shared/ui": ["./libs/shared/ui/src/index.ts"],
+      "@akshaya/shared/util": ["./libs/shared/util/src/index.ts"]
+    }
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

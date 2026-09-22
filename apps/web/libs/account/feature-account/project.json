@@ -1,0 +1,11 @@
+{
+  "name": "account-feature-account",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/account/feature-account/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:account",
+    "type:feature"
+  ]
+}

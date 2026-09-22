@@ -1,0 +1,134 @@
+import { computed, inject } from '@angular/core';
+import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { debounceTime, distinctUntilChanged, pipe, switchMap, tap } from 'rxjs';
+import { tapResponse } from '@ngrx/operators';
+
+import { ApiService } from '@akshaya/shared/data-access';
+import type { InstrumentDefinition } from '@akshaya/shared/models';
+
+interface State {
+  readonly watched: readonly InstrumentDefinition[];
+  /**
+   * Which linked broker account this watchlist reads through. Required, not
+   * cosmetic: instrument search and the tick stream are both answered by one
+   * connector's own facets, so with no link there is nothing to search and
+   * nothing to price.
+   */
+  readonly brokerLinkId: string | undefined;
+  readonly searchQuery: string;
+  readonly searchResults: readonly InstrumentDefinition[];
+  /**
+   * The query `searchResults` answers, or `undefined` when they answer
+   * nothing yet. Without it, "no results" is ambiguous: typed but still
+   * inside the debounce, still in flight, and "the broker has nothing by
+   * that name" all look like an empty list.
+   */
+  readonly searchedQuery: string | undefined;
+  readonly searching: boolean;
+}
+
+const initialState: State = {
+  watched: [],
+  brokerLinkId: undefined,
+  searchQuery: '',
+  searchResults: [],
+  searchedQuery: undefined,
+  searching: false,
+};
+
+// v2: v1 persisted the watched list alone, from before the list knew which
+// broker link it reads through. An old v1 blob is simply ignored.
+const STORAGE_KEY = 'akshaya.watchlist.v2';
+
+interface PersistedWatchlist {
+  readonly brokerLinkId?: string;
+  readonly watched: readonly InstrumentDefinition[];
+}
+
+/** Which instruments a trader has pinned to their watchlist, plus instrument search for adding more. */
+export const WatchlistStore = signalStore(
+  { providedIn: 'root' },
+  withState(() => ({ ...initialState, ...loadPersisted() })),
+  withComputed((store) => ({
+    /** A search for exactly what is in the box has come back empty. */
+    noMatches: computed(
+      () =>
+        !store.searching() &&
+        store.searchResults().length === 0 &&
+        store.searchQuery().trim().length > 0 &&
+        store.searchedQuery() === store.searchQuery(),
+    ),
+  })),
+  withMethods((store, api = inject(ApiService)) => ({
+    /** Points the whole list at a linked account. Clears stale results from the previous one. */
+    selectBrokerLink(brokerLinkId: string): void {
+      if (store.brokerLinkId() === brokerLinkId) {
+        return;
+      }
+      patchState(store, { brokerLinkId, searchResults: [], searchedQuery: undefined, searching: false });
+      persist(brokerLinkId, store.watched());
+    },
+
+    search: rxMethod<string>(
+      pipe(
+        tap((query) => patchState(store, { searchQuery: query })),
+        debounceTime(250),
+        distinctUntilChanged(),
+        switchMap((query) => {
+          const brokerLinkId = store.brokerLinkId();
+          if (!brokerLinkId || query.trim().length < 1) {
+            patchState(store, { searchResults: [], searchedQuery: undefined, searching: false });
+            return [];
+          }
+          patchState(store, { searching: true });
+          return api.searchInstruments(brokerLinkId, query).pipe(
+            tapResponse({
+              next: (results) => patchState(store, { searchResults: results, searchedQuery: query, searching: false }),
+              // A failure is not "no matches" — the error toast says what went wrong.
+              error: () => patchState(store, { searchResults: [], searchedQuery: undefined, searching: false }),
+            }),
+          );
+        }),
+      ),
+    ),
+
+    add(instrument: InstrumentDefinition): void {
+      if (store.watched().some((i) => i.key === instrument.key)) {
+        return;
+      }
+      const watched = [...store.watched(), instrument];
+      patchState(store, { watched, searchQuery: '', searchResults: [], searchedQuery: undefined });
+      persist(store.brokerLinkId(), watched);
+    },
+
+    remove(key: string): void {
+      const watched = store.watched().filter((i) => i.key !== key);
+      patchState(store, { watched });
+      persist(store.brokerLinkId(), watched);
+    },
+  })),
+);
+
+function loadPersisted(): Partial<State> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as PersistedWatchlist;
+    return { brokerLinkId: parsed.brokerLinkId, watched: parsed.watched ?? [] };
+  } catch {
+    // Private browsing / storage disabled — a watchlist that starts empty
+    // beats one that throws on load.
+    return {};
+  }
+}
+
+function persist(brokerLinkId: string | undefined, watched: readonly InstrumentDefinition[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ brokerLinkId, watched } satisfies PersistedWatchlist));
+  } catch {
+    // Best-effort only; this is a per-device convenience, not durable state.
+  }
+}

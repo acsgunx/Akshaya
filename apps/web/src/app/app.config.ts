@@ -4,10 +4,12 @@ import { MAT_DIALOG_DEFAULT_OPTIONS, MatDialogConfig } from '@angular/material/d
 import { provideRouter, withComponentInputBinding, withViewTransitions } from '@angular/router';
 
 import { routes } from './app.routes';
-import { activityInterceptor } from './core/interceptors/activity.interceptor';
-import { authInterceptor } from './core/interceptors/auth.interceptor';
-import { devLatencyInterceptor } from './core/interceptors/dev-latency.interceptor';
-import { errorInterceptor } from './core/interceptors/error.interceptor';
+import {
+  activityInterceptor,
+  authInterceptor,
+  devLatencyInterceptor,
+  errorInterceptor,
+} from '@akshaya/shared/data-access';
 
 export const appConfig: ApplicationConfig = {
   providers: [

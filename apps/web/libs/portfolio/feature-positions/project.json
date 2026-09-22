@@ -1,0 +1,11 @@
+{
+  "name": "portfolio-feature-positions",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/portfolio/feature-positions/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:portfolio",
+    "type:feature"
+  ]
+}

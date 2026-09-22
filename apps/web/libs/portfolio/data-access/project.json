@@ -1,0 +1,11 @@
+{
+  "name": "portfolio-data-access",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/portfolio/data-access/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:portfolio",
+    "type:data-access"
+  ]
+}
