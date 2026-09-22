@@ -16,22 +16,38 @@ import { catchError, map, of, startWith, switchMap, timer } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { BrokerLinksStore } from '../../core/broker-links.store';
 import { ConnectorStore } from '../../core/connector.store';
-import { timeFrameLabel } from '../../core/labels';
+import { sideLabel, timeFrameLabel } from '../../core/labels';
 import { MarketDataService } from '../../core/market-data.service';
 import { MoneyPipe } from '../../core/money.pipe';
-import type { Candle, InstrumentDefinition, InstrumentKey, TimeFrame } from '../../core/models';
-import { formatInstrumentLabel, parseInstrumentKey } from '../../core/models';
+import type { Candle, InstrumentDefinition, InstrumentKey, Money, TimeFrame } from '../../core/models';
+import { formatInstrumentLabel, isOrderStateTerminal, isOrderUnresolved, parseInstrumentKey } from '../../core/models';
 import { venueTimeZone } from '../../core/venue-state.service';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
-import { PriceChartComponent } from '../../shared/price-chart/price-chart.component';
+import { PriceChartComponent, type ChartPriceLevel } from '../../shared/price-chart/price-chart.component';
 import { StaleBannerComponent } from '../../shared/stale-banner/stale-banner.component';
 import { type ChartBar } from '../../shared/price-chart/candle-bucket';
 import { DRAWING_TOOLS, type DrawingTool } from '../../shared/price-chart/chart-drawings';
 import { CHART_TYPES, STUDIES, type ChartType, type StudyId } from '../../shared/price-chart/chart-studies';
+import { DashboardStore } from '../dashboard/dashboard.store';
+import { OrdersStore } from '../orders/orders.store';
 import { WatchlistStore } from '../watchlist/watchlist.store';
 import { ChartStore } from './chart.store';
+
+/** One thing the user holds or has resting in this instrument — a sidebar row and, when shown, a line on the chart. */
+interface ExposureRow {
+  readonly id: string;
+  readonly title: string;
+  readonly detail: string;
+  readonly price: Money;
+  readonly tone: ChartPriceLevel['tone'];
+  readonly kind: ChartPriceLevel['kind'];
+  /** The screen that owns it, and where its actions live. */
+  readonly route: string;
+}
+
+const quantity = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
 
 /**
  * The chart screen. Like the order ticket, it is told a LINK and an
@@ -88,6 +104,10 @@ export class ChartComponent {
   private readonly destroyRef = inject(DestroyRef);
   protected readonly store = inject(ChartStore);
   protected readonly watchlist = inject(WatchlistStore);
+  // Both root stores the blotters already fill, so arriving from Positions or
+  // Orders costs no request; a deep link fetches each once.
+  private readonly portfolio = inject(DashboardStore);
+  private readonly orders = inject(OrdersStore);
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
   protected readonly chart = viewChild(PriceChartComponent);
@@ -101,6 +121,8 @@ export class ChartComponent {
   protected readonly showVolume = signal(true);
   protected readonly showGrid = signal(true);
   protected readonly showSidebar = signal(true);
+  /** Average prices and working orders drawn on the chart. The sidebar lists them either way. */
+  protected readonly showExposure = signal(true);
   protected readonly focusMode = signal(false);
   protected readonly scaleMode = signal<'normal' | 'log' | 'percentage'>('normal');
   protected readonly drawingTool = signal<DrawingTool>('cursor');
@@ -181,6 +203,48 @@ export class ChartComponent {
   protected readonly ready = computed(() => !this.store.loading() && !this.store.error() && this.history().length > 0);
   protected readonly currentType = computed(() => CHART_TYPES.find((type) => type.id === this.chartType()) ?? CHART_TYPES[0]!);
   protected readonly activeStudies = computed(() => STUDIES.filter((study) => this.selectedStudies().includes(study.id)));
+  /**
+   * Everything the user has in THIS instrument: open positions and holdings at
+   * their average price, and working orders at their limit and trigger.
+   *
+   * Matched on the exact instrument key. An unresolved order is left out —
+   * the platform does not know whether the broker has it, and a line on the
+   * chart would say it does.
+   */
+  protected readonly exposure = computed<readonly ExposureRow[]>(() => {
+    const key = this.instrument();
+    const snapshot = this.portfolio.snapshot();
+    const rows: ExposureRow[] = [];
+    for (const position of snapshot?.positions ?? []) {
+      const net = Number(position.netQuantity);
+      if (position.instrument !== key || !Number.isFinite(net) || net === 0) { continue; }
+      rows.push({ id: `position:${position.groupKey}`, title: `${net > 0 ? 'Long' : 'Short'} ${quantity.format(Math.abs(net))}`,
+        detail: 'avg price', price: position.averagePrice, tone: net > 0 ? 'buy' : 'sell', kind: 'held', route: '/positions' });
+    }
+    for (const holding of snapshot?.holdings ?? []) {
+      const held = Number(holding.quantity);
+      if (holding.instrument !== key || !(held > 0)) { continue; }
+      rows.push({ id: `holding:${holding.groupKey}`, title: `Held ${quantity.format(held)}`,
+        detail: 'avg cost', price: holding.averagePrice, tone: 'brand', kind: 'held', route: '/holdings' });
+    }
+    for (const order of this.orders.orders()) {
+      if (order.instrument !== key || isOrderStateTerminal(order.state) || isOrderUnresolved(order)) { continue; }
+      // What is still resting, not what was first asked for — a half-filled order's line is for the other half.
+      const pending = Number(order.pendingQuantity);
+      const name = `${sideLabel(order.side)} ${quantity.format(pending > 0 ? pending : Number(order.quantity))}`;
+      const tone = order.side === 'buy' ? 'buy' : 'sell';
+      const detail = 'working order';
+      if (order.limitPrice) {
+        rows.push({ id: `limit:${order.id}`, title: `${name} limit`, detail, price: order.limitPrice, tone, kind: 'limit', route: '/orders' });
+      }
+      if (order.triggerPrice) {
+        rows.push({ id: `trigger:${order.id}`, title: `${name} trigger`, detail, price: order.triggerPrice, tone, kind: 'trigger', route: '/orders' });
+      }
+    }
+    return rows;
+  });
+  protected readonly priceLevels = computed<readonly ChartPriceLevel[]>(() => !this.showExposure() ? []
+    : this.exposure().map((row) => ({ price: Number(row.price.amount), title: row.title, tone: row.tone, kind: row.kind })));
   protected readonly changePercent = computed(() => {
     const tick = this.quote();
     const previous = Number(tick?.previousClose?.amount);
@@ -221,11 +285,14 @@ export class ChartComponent {
 
   constructor() {
     this.restorePreferences();
+    // No-ops when the blotters already hold a current answer — see each store's own note.
+    this.portfolio.ensureFresh();
+    this.orders.ensureFresh();
     const clock = setInterval(() => this.clock.set(Date.now()), 1000);
     this.destroyRef.onDestroy(() => clearInterval(clock));
     effect(() => {
       const preferences = { type: this.chartType(), studies: this.selectedStudies(), volume: this.showVolume(),
-        grid: this.showGrid(), sidebar: this.showSidebar(), scale: this.scaleMode() };
+        grid: this.showGrid(), sidebar: this.showSidebar(), scale: this.scaleMode(), exposure: this.showExposure() };
       try { localStorage.setItem('akshaya.chart.preferences.v1', JSON.stringify(preferences)); }
       catch { this.status.set('Chart preferences cannot be saved on this device.'); }
     });
@@ -444,6 +511,7 @@ export class ChartComponent {
       if (typeof value['volume'] === 'boolean') { this.showVolume.set(value['volume']); }
       if (typeof value['grid'] === 'boolean') { this.showGrid.set(value['grid']); }
       if (typeof value['sidebar'] === 'boolean') { this.showSidebar.set(value['sidebar']); }
+      if (typeof value['exposure'] === 'boolean') { this.showExposure.set(value['exposure']); }
       const scale = value['scale'];
       if (scale === 'normal' || scale === 'log' || scale === 'percentage') { this.scaleMode.set(scale); }
     } catch { untracked(() => this.status.set('Using default chart preferences.')); }

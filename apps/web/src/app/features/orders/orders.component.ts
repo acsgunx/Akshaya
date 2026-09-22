@@ -18,6 +18,7 @@ import { QuantityPipe } from '../../core/quantity.pipe';
 import { orderTypeLabel, sideLabel } from '../../core/labels';
 import { canModifyField, isOrderStateTerminal, isOrderStateWorking, isOrderUnresolved } from '../../core/models';
 import type { ConnectorManifest, ModifyOrderRequest, OrderRecord } from '../../core/models';
+import { ChartLinkComponent } from '../../shared/chart-link/chart-link.component';
 import { ConfirmDialogService } from '../../shared/confirm-dialog/confirm-dialog.service';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
@@ -61,6 +62,7 @@ const ModifiableFields = ['quantity', 'limitPrice', 'triggerPrice', 'orderType',
     InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
+    ChartLinkComponent,
     EmptyStateComponent,
     LoadingStateComponent,
     RefreshingDirective,

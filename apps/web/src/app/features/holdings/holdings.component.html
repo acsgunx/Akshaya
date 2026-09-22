@@ -187,6 +187,10 @@
                   </li>
                 }
               </ul>
+              <!-- The whole holding's chart, not one account's — so it sits under the legs, not inside one. -->
+              <div class="flex border-t border-border bg-surface-2 px-1 py-1">
+                <ak-chart-link variant="button" [instrument]="holding.instrument" [accounts]="holding.legs" />
+              </div>
             }
           </li>
         }
@@ -201,6 +205,7 @@
         <span class="ak-col-pnl">Value</span>
         <span class="ak-col-pnl">Unrealised</span>
         <span class="ak-col-return">Return</span>
+        <span></span>
       </div>
 
       <!-- Virtualised: only visible rows render, even with a few thousand holdings. -->
@@ -270,6 +275,8 @@
                 —
               }
             </span>
+            <!-- A row action, unlike Sell on the legs: a chart needs history, not the account holding the stock. -->
+            <span class="flex justify-end"><ak-chart-link [instrument]="holding.instrument" [accounts]="holding.legs" /></span>
           </div>
 
           @if (isExpanded(holding.groupKey)) {

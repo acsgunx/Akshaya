@@ -139,8 +139,9 @@
             <div class="mt-1 line-clamp-2 text-xs text-text-tertiary">{{ order.statusMessage }}</div>
           }
 
-          @if (!isOrderStateTerminal(order.state) && !isOrderUnresolved(order)) {
-            <div class="mt-2.5 flex flex-wrap gap-2">
+          <!-- Chart on every card, pushed right so Modify and Cancel stay where they always were. -->
+          <div class="mt-2.5 flex flex-wrap items-center gap-2">
+            @if (!isOrderStateTerminal(order.state) && !isOrderUnresolved(order)) {
               @if (canModify(order)) {
                 <button mat-stroked-button type="button" (click)="openModify(order)">
                   <mat-icon aria-hidden="true">edit</mat-icon>
@@ -161,8 +162,9 @@
                 }
                 {{ store.cancellingIds().has(order.id) ? 'Cancelling…' : 'Cancel' }}
               </button>
-            </div>
-          }
+            }
+            <ak-chart-link class="ml-auto" variant="button" [instrument]="order.instrument" [accounts]="[order]" />
+          </div>
         </li>
       }
     </ul>
@@ -240,6 +242,12 @@
               }
             </button>
           }
+          <!--
+            Last, and on every order — working, filled or unresolved. Charting acts on nothing,
+            so the "never act on an unresolved order" rule above does not reach it, and being
+            the one control every row has keeps it in the same place down the whole column.
+          -->
+          <ak-chart-link [instrument]="order.instrument" [accounts]="[order]" />
         </span>
       </div>
     </cdk-virtual-scroll-viewport>

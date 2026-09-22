@@ -128,7 +128,7 @@
             <ul role="list">
               @for (pos of snapshot.positions; track pos.groupKey) {
                 <li class="flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-b-0">
-                  <div class="min-w-0">
+                  <div class="min-w-0 flex-1">
                     <p class="truncate text-[13px] font-semibold">{{ pos.instrument | akInstrument }}</p>
                     <p class="text-xs text-text-secondary tabular-nums">
                       {{ pos.netQuantity | akQuantity }} × {{ pos.averagePrice | akMoney }}
@@ -144,6 +144,8 @@
                     </p>
                     <p class="text-xs text-text-tertiary tabular-nums">LTP {{ pos.lastPrice | akMoney }}</p>
                   </div>
+                  <!-- Icon-only like the watchlist's compact Chart: the glyph is the label traders already read. -->
+                  <ak-chart-link class="-mr-2 shrink-0" [instrument]="pos.instrument" [accounts]="pos.legs" />
                 </li>
               }
             </ul>
@@ -159,6 +161,7 @@
                 <th class="border-b border-border px-2 py-1.5 text-right text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Last</th>
                 <th class="border-b border-border px-2 py-1.5 text-right text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Unrealised</th>
                 <th class="border-b border-border px-2 py-1.5 text-left text-[11px] tracking-[0.03em] uppercase text-text-tertiary" scope="col">Brokers</th>
+                <th class="w-8 border-b border-border px-2 py-1.5" scope="col"><span class="sr-only">Chart</span></th>
               </tr>
             </thead>
             <tbody>
@@ -177,6 +180,10 @@
                   </td>
                   <td class="border-b border-border px-2 py-1.5">
                     {{ pos.legs.length > 1 ? pos.legs.length + ' brokers' : pos.legs[0]?.displayName }}
+                  </td>
+                  <!-- py-0: the 32px button would otherwise make every summary row taller than its text. -->
+                  <td class="border-b border-border px-2 py-0 text-right">
+                    <ak-chart-link [instrument]="pos.instrument" [accounts]="pos.legs" />
                   </td>
                 </tr>
               }

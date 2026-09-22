@@ -8,6 +8,7 @@ import { InstrumentPipe } from '../../core/instrument.pipe';
 import { LayoutService } from '../../core/layout.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
+import { ChartLinkComponent } from '../../shared/chart-link/chart-link.component';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
@@ -33,6 +34,7 @@ import { DashboardStore } from './dashboard.store';
     InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
+    ChartLinkComponent,
     ConnectionStatusComponent,
     EmptyStateComponent,
     LoadingStateComponent,

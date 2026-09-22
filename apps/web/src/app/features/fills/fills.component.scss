@@ -1,0 +1,14 @@
+// Column layout only — everything else comes from the primitives in styles.scss.
+//
+// Its own template, not the orders blotter's. Borrowing that one lined fills' eight cells up
+// against orders' nine tracks, which put the instrument in orders' 60px Side column and cut
+// every symbol to "XNSE:…". The trailing 32px is the chart link.
+:host {
+  --ak-cols: 120px 1.4fr 60px var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-price-width)
+    var(--ak-col-price-width) 1fr 32px;
+  --ak-viewport-height: calc(100vh - 260px);
+}
+
+.ak-trow {
+  height: 48px;
+}

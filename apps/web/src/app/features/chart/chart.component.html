@@ -108,6 +108,9 @@
         </div>
         <div class="flex min-h-7 flex-wrap items-center gap-1 px-3 text-[11px]">
           @if (showVolume()) { <span class="rounded bg-surface-2 px-2 py-1 text-text-secondary">Volume · historical</span> }
+          @if (priceLevels().length) {
+            <button type="button" class="ak-study" aria-label="Hide positions and orders from the chart" matTooltip="Your average prices and working orders · click to hide" (click)="showExposure.set(false)">Positions &amp; orders <span aria-hidden="true">×</span></button>
+          }
           @for (study of activeStudies(); track study.id) {
             <button type="button" class="ak-study" [attr.aria-label]="'Remove ' + study.label" [matTooltip]="study.detail + ' · click to remove'" (click)="toggleStudy(study.id)">{{ study.label }} <span aria-hidden="true">×</span></button>
           }
@@ -127,7 +130,7 @@
         -->
             <ak-price-chart [candles]="displayedCandles()" [timeFrame]="loadedFrame" [tick]="quote()" [timeZone]="timeZone()" [ariaLabel]="instrumentLabel() + ' ' + label(loadedFrame) + ' price chart'"
               [chartType]="chartType()" [studies]="selectedStudies()" [showVolume]="showVolume()" [showGrid]="showGrid()" [scaleMode]="scaleMode()" [precision]="precision()"
-              [drawingTool]="drawingTool()" [drawingsVisible]="drawingsVisible()" [drawingKey]="brokerLinkId() + ':' + instrument() + ':' + loadedFrame" [replay]="isReplay()"
+              [drawingTool]="drawingTool()" [drawingsVisible]="drawingsVisible()" [drawingKey]="brokerLinkId() + ':' + instrument() + ':' + loadedFrame" [replay]="isReplay()" [priceLevels]="priceLevels()"
               (barChange)="hoveredBar.set($event)" (drawingComplete)="selectTool('cursor')" (drawingState)="drawingState.set($event)" (notice)="status.set($event)"
               (chartMenu)="openContextMenu($event)" />
           }
@@ -184,6 +187,31 @@
               <p class="px-4 py-6 text-xs leading-relaxed text-text-secondary">Your watchlist is empty. Search a symbol, then use + to pin it here.</p>
             }
           </div>
+          <!--
+            The text reading of the lines on the canvas, which a screen reader cannot see — and the
+            way back: each row opens the screen where that position or order can be acted on.
+          -->
+          @if (exposure().length) {
+            <section class="border-t border-border" aria-labelledby="ak-exposure-heading">
+              <div class="flex items-center justify-between px-3 py-2">
+                <h2 id="ak-exposure-heading" class="text-sm font-semibold">Positions &amp; orders</h2>
+                <button mat-icon-button type="button" aria-label="Show positions and orders on the chart" [matTooltip]="showExposure() ? 'Hide from chart' : 'Show on chart'" [attr.aria-pressed]="showExposure()" (click)="showExposure.set(!showExposure())"><mat-icon>{{ showExposure() ? 'visibility' : 'visibility_off' }}</mat-icon></button>
+              </div>
+              <ul role="list" class="pb-2 text-xs">
+                @for (row of exposure(); track row.id) {
+                  <li>
+                    <a class="ak-watch-row flex items-baseline justify-between gap-2 px-3 py-2" [routerLink]="row.route">
+                      <span class="min-w-0 truncate">
+                        <span class="font-semibold" [class.text-buy]="row.tone === 'buy'" [class.text-sell]="row.tone === 'sell'" [class.text-brand]="row.tone === 'brand'">{{ row.title }}</span>
+                        <span class="text-text-secondary"> · {{ row.detail }}</span>
+                      </span>
+                      <span class="shrink-0 tabular-nums">{{ row.price | akMoney }}</span>
+                    </a>
+                  </li>
+                }
+              </ul>
+            </section>
+          }
           <div class="border-t border-border p-4">
             <div class="flex items-center gap-2"><span class="flex size-8 items-center justify-center rounded bg-brand/15 font-semibold text-brand">{{ instrumentLabel().slice(0, 1) }}</span><h2 class="text-sm font-semibold">{{ instrumentLabel() }}</h2></div>
             <p class="mt-2 text-xs text-text-secondary">{{ definition()?.name }} · {{ venue() }}</p>
@@ -223,6 +251,7 @@
 <mat-menu #settingsMenu="matMenu">
   <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showVolume()" (click)="showVolume.set(!showVolume())"><mat-icon>{{ showVolume() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Historical volume</button>
   <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showGrid()" (click)="showGrid.set(!showGrid())"><mat-icon>{{ showGrid() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Grid lines</button>
+  <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showExposure()" (click)="showExposure.set(!showExposure())"><mat-icon>{{ showExposure() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Positions &amp; orders</button>
   <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'normal'" (click)="scaleMode.set('normal')"><mat-icon>{{ scaleMode() === 'normal' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Regular scale</button>
   <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'log'" (click)="scaleMode.set('log')"><mat-icon>{{ scaleMode() === 'log' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Logarithmic scale</button>
   <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'percentage'" (click)="scaleMode.set('percentage')"><mat-icon>{{ scaleMode() === 'percentage' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Percentage scale</button>

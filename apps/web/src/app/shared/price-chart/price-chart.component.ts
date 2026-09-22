@@ -18,11 +18,13 @@ import {
   CrosshairMode,
   HistogramSeries,
   LineSeries,
+  LineStyle,
   PriceScaleMode,
   TickMarkType,
   createChart,
   type Coordinate,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type MouseEventParams,
   type Time,
@@ -34,6 +36,24 @@ import type { Candle, Tick, TimeFrame } from '../../core/models';
 import { type ChartBar, foldTickIntoBar } from './candle-bucket';
 import { ChartDrawings, validDrawing, type ChartDrawing, type DrawingAnchor, type DrawingTool, type MeasureOverlay } from './chart-drawings';
 import { calculateStudies, type ChartType, type StudyId } from './chart-studies';
+
+/**
+ * A horizontal price the caller wants marked — an average cost, a resting
+ * order's limit or trigger. The chart only draws it; what it means, and
+ * whether it should be shown at all, is the caller's business.
+ */
+export interface ChartPriceLevel {
+  readonly price: number;
+  /** Short, because it is drawn on the line beside the axis: "Long 50", "Buy 10 limit". */
+  readonly title: string;
+  readonly tone: 'buy' | 'sell' | 'brand';
+  /**
+   * Solid for what is already held, dashed for a resting limit, dotted for a
+   * trigger that has not fired — the line says how real the price is before
+   * anyone reads its label.
+   */
+  readonly kind: 'held' | 'limit' | 'trigger';
+}
 
 /**
  * TradingView Lightweight Charts, wrapped as a dumb presentational component:
@@ -124,6 +144,8 @@ export class PriceChartComponent {
   readonly drawingKey = input('');
   readonly replay = input(false);
   readonly precision = input(2);
+  /** Reference lines on the price series. Replacing the list redraws them; pan and zoom survive. */
+  readonly priceLevels = input<readonly ChartPriceLevel[]>([]);
   readonly barChange = output<ChartBar | undefined>();
   readonly drawingComplete = output<void>();
   readonly drawingState = output<{ undo: boolean; redo: boolean; count: number }>();
@@ -137,6 +159,7 @@ export class PriceChartComponent {
   private lastBar: ChartBar | undefined;
   private bars: ChartBar[] = [];
   private readonly studySeries: ISeriesApi<'Line' | 'Histogram'>[] = [];
+  private levelLines: IPriceLine[] = [];
   private readonly drawings = new ChartDrawings();
   private drawingItems: ChartDrawing[] = [];
   private redoItems: ChartDrawing[] = [];
@@ -198,6 +221,10 @@ export class PriceChartComponent {
       this.drawingKey();
       if (this.chart) { untracked(() => this.loadDrawings()); }
     });
+    effect(() => {
+      this.priceLevels();
+      if (this.chart) { untracked(() => this.drawLevels()); }
+    });
 
     effect(() => {
       this.timeZone();
@@ -231,7 +258,7 @@ export class PriceChartComponent {
       this.appearance.theme();
       this.appearance.cvdSafe();
       if (this.chart) {
-        untracked(() => { this.applyTheme(); this.drawStudies(); this.applySettings(); });
+        untracked(() => { this.applyTheme(); this.drawStudies(); this.applySettings(); this.drawLevels(); });
       }
     });
   }
@@ -636,11 +663,34 @@ export class PriceChartComponent {
       default: this.priceSeries = chart.addSeries(CandlestickSeries, options);
     }
     this.priceSeries.setData(this.bars.map((bar) => this.pricePoint(bar)));
+    // A price line belongs to its series and is removed with it, so the old
+    // handles are dropped rather than removed a second time.
+    this.levelLines = [];
     if (old) { old.detachPrimitive(this.drawings); chart.removeSeries(old); }
     this.priceSeries.setSeriesOrder(0);
     this.priceSeries.attachPrimitive(this.drawings);
     this.applyTheme();
     this.applySettings();
+    this.drawLevels();
+  }
+
+  /** Rebuilds the caller's reference lines; cheap enough that there is no diffing. */
+  private drawLevels(): void {
+    const series = this.priceSeries;
+    for (const line of this.levelLines.splice(0)) { series?.removePriceLine(line); }
+    if (!series) { return; }
+    const style = { held: LineStyle.Solid, limit: LineStyle.Dashed, trigger: LineStyle.Dotted } as const;
+    for (const level of this.priceLevels()) {
+      if (!Number.isFinite(level.price) || level.price <= 0) { continue; }
+      this.levelLines.push(series.createPriceLine({
+        price: level.price,
+        title: level.title,
+        color: this.token(`--ak-${level.tone}`, 'currentColor'),
+        lineWidth: level.kind === 'held' ? 2 : 1,
+        lineStyle: style[level.kind],
+        axisLabelVisible: true,
+      }));
+    }
   }
 
   private applySettings(): void {
