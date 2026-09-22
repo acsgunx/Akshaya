@@ -3,6 +3,38 @@
 
 :host {
   display: block;
+  min-width: 0;
+}
+
+.ak-workspace--focused {
+  @apply fixed inset-x-2 top-17 bottom-2 z-10 overflow-auto;
+  box-shadow: var(--shadow-ak-2);
+
+  .ak-chart-card { --ak-chart-height: calc(100dvh - 335px); }
+
+  @media (width < 64rem) { bottom: 76px; }
+}
+
+.ak-symbol-search {
+  --mat-form-field-container-height: 36px;
+  --mat-form-field-container-vertical-padding: 6px;
+}
+
+.ak-tool--active, .ak-watch-row--active {
+  color: var(--color-brand);
+  background: color-mix(in srgb, var(--color-brand) 12%, var(--color-surface-1));
+}
+
+.ak-watch-row:hover { background-color: var(--color-surface-3); }
+
+.ak-study {
+  @apply cursor-pointer rounded border border-border bg-surface-2 px-2 py-0.5 text-text-secondary hover:text-text-primary;
+}
+
+.ak-tf:disabled { @apply cursor-default opacity-40; }
+
+@media (pointer: coarse) {
+  .ak-tf, .ak-study { min-height: 44px; }
 }
 
 // The timeframe strip. Not Material's button-toggle: this is a dense row of
@@ -28,13 +60,14 @@
 // reads this variable, and the viewport-relative value is what keeps the chart
 // filling the screen without pushing the toolbar off the top.
 .ak-chart-card {
-  --ak-chart-height: clamp(320px, calc(100vh - 260px), 780px);
+  --ak-chart-height: clamp(360px, calc(100dvh - 335px), 900px);
+  min-height: var(--ak-chart-height);
 }
 
 // Compact: `dvh` so the chart tracks the visible viewport as a phone's toolbars collapse, less
 // the bottom tab bar, and a lower floor so a landscape phone still shows the whole card.
 @media (width < 64rem) {
   .ak-chart-card {
-    --ak-chart-height: clamp(240px, calc(100dvh - 340px), 780px);
+    --ak-chart-height: clamp(300px, calc(100dvh - 360px), 780px);
   }
 }

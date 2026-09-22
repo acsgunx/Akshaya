@@ -3,49 +3,62 @@
   It is not a hardcoded 1m/5m/1D list and must not become one — a broker that
   serves only daily bars is supposed to render exactly one button here.
 -->
-<section>
-  <header class="mb-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-    <div class="min-w-0">
-      <h1 class="text-[22px] font-bold">{{ instrumentLabel() }}</h1>
-      <p class="mt-1 text-[13px] text-text-secondary">
-        {{ manifest()?.displayName || link()?.nickname || 'Loading broker…' }}
-        @if (quote(); as tick) {
-          · <span class="font-medium tabular-nums">{{ tick.lastPrice | akMoney }}</span>
-        }
-      </p>
+<section class="ak-workspace overflow-hidden rounded-lg border border-border bg-surface-1" [class.ak-workspace--focused]="focusMode()" aria-label="Chart workspace">
+  <header class="flex min-h-13 flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
+    <div class="mr-2 flex items-center gap-2">
+      <mat-icon class="text-brand" aria-hidden="true">candlestick_chart</mat-icon>
+      <h1 class="text-base font-semibold">{{ instrumentLabel() }}</h1>
+      <span class="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold text-text-secondary">{{ venue() }}</span>
     </div>
-
-    <div class="ml-auto flex items-center gap-2">
+    <mat-form-field class="ak-symbol-search w-52" subscriptSizing="dynamic">
+      <mat-icon matPrefix aria-hidden="true">search</mat-icon>
+      <input matInput aria-label="Search broker symbols" placeholder="Search symbols" [formControl]="searchControl" [matAutocomplete]="symbols" [readonly]="!manifest()" />
+      <mat-autocomplete #symbols="matAutocomplete" (optionSelected)="openSymbol($event.option.value)">
+        @if (searchState().loading) {
+          <mat-option disabled>Searching this broker…</mat-option>
+        } @else if (searchState().error) {
+          <mat-option disabled>{{ searchState().error }}</mat-option>
+        } @else {
+          @for (result of searchState().results; track result.key) {
+            <mat-option [value]="result">
+              <span class="font-semibold">{{ formatLabel(result.key) }}</span>
+              <span class="ml-2 text-xs text-text-secondary">{{ result.name }} · {{ result.key }}</span>
+            </mat-option>
+          } @empty {
+            @if (searchControl.value.trim()) { <mat-option disabled>No matching symbols</mat-option> }
+          }
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+    <div class="ml-auto flex items-center gap-1">
       <ak-connection-status label="Feed" [streamState]="connectionState()" [isDataStale]="isFeedStale()" />
-      <a mat-stroked-button [routerLink]="['/trade', brokerLinkId(), instrument()]">
-        <mat-icon class="size-[18px] shrink-0 text-[18px]" aria-hidden="true">receipt_long</mat-icon>
-        Trade
-      </a>
+      <button mat-icon-button type="button" aria-label="Toggle watchlist" matTooltip="Watchlist and symbol details" [attr.aria-pressed]="showSidebar()" (click)="showSidebar.set(!showSidebar())"><mat-icon>view_sidebar</mat-icon></button>
+      <button mat-icon-button type="button" aria-label="Toggle chart focus mode" matTooltip="Focus mode · Escape to exit" [attr.aria-pressed]="focusMode()" (click)="focusMode.set(!focusMode())"><mat-icon>{{ focusMode() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon></button>
+      <a mat-flat-button [routerLink]="['/trade', brokerLinkId(), instrument()]">Trade <mat-icon aria-hidden="true">north_east</mat-icon></a>
     </div>
   </header>
 
   @if (!manifest()) {
     <ak-loading-state label="Loading broker capabilities…" />
   } @else if (!supportsHistory()) {
-    <ak-empty-state
-      icon="show_chart"
-      title="This broker does not serve price history"
-      description="Live prices still stream on the watchlist and the order ticket. Historical bars need a broker whose connector declares them."
-    />
+    <ak-empty-state icon="show_chart" title="This broker does not serve price history" description="Live prices still stream on the watchlist and the order ticket. Historical bars need a broker whose connector declares them." />
   } @else {
-    <!-- Scrolls sideways rather than wrapping when a broker declares more timeframes than fit. -->
-    <div class="mb-3 flex items-center gap-1 overflow-x-auto" role="group" aria-label="Chart timeframe">
-      @for (frame of timeFrames(); track frame) {
-        <button
-          type="button"
-          class="ak-tf"
-          [class.ak-tf--active]="frame === timeFrame()"
-          [attr.aria-pressed]="frame === timeFrame()"
-          (click)="selectTimeFrame(frame)"
-        >
-          {{ label(frame) }}
-        </button>
-      }
+    <div class="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1">
+      <!-- Scrolls sideways rather than wrapping when a broker declares more timeframes than fit. -->
+      <div class="flex max-w-full items-center gap-1 overflow-x-auto py-1" role="group" aria-label="Chart timeframe">
+        @for (frame of timeFrames(); track frame) {
+          <button type="button" class="ak-tf" [class.ak-tf--active]="frame === timeFrame()" [attr.aria-pressed]="frame === timeFrame()" (click)="selectTimeFrame(frame)">{{ label(frame) }}</button>
+        }
+      </div>
+      <span class="mx-1 h-6 border-l border-border" aria-hidden="true"></span>
+      <button mat-button [matMenuTriggerFor]="typeMenu"><mat-icon aria-hidden="true">{{ currentType().icon }}</mat-icon>{{ currentType().label }}</button>
+      <button mat-button [matMenuTriggerFor]="indicatorMenu"><mat-icon aria-hidden="true">query_stats</mat-icon>Indicators <span class="ml-1 text-text-secondary">{{ selectedStudies().length }}</span></button>
+      <button mat-button [disabled]="!ready() || history().length < 2" [attr.aria-pressed]="isReplay()" (click)="toggleReplay()"><mat-icon aria-hidden="true">replay</mat-icon>{{ isReplay() ? 'Exit replay' : 'Replay' }}</button>
+      <div class="ml-auto flex items-center">
+        <button mat-icon-button aria-label="Refresh chart history" matTooltip="Refresh history" [disabled]="store.loading()" (click)="refresh()"><mat-icon>refresh</mat-icon></button>
+        <button mat-icon-button aria-label="Chart settings" matTooltip="Chart settings" [matMenuTriggerFor]="settingsMenu"><mat-icon>tune</mat-icon></button>
+        <button mat-icon-button aria-label="Export chart" matTooltip="Download chart or OHLC data" [disabled]="!ready()" [matMenuTriggerFor]="exportMenu"><mat-icon>file_download</mat-icon></button>
+      </div>
     </div>
 
     <!--
@@ -56,43 +69,141 @@
     -->
     <ak-stale-banner label="prices" [lastUpdatedAt]="lastUpdatedAt()" [thresholdMs]="15000" />
 
-    <div class="ak-chart-card rounded-lg border border-border bg-surface-1 p-3">
-      @if (store.loading()) {
-        @if (timeFrame(); as frame) {
-          <ak-loading-state label="Loading {{ label(frame) }} bars…" />
-        } @else {
-          <ak-loading-state label="Loading bars…" />
+    @if (isReplay()) {
+      <div class="flex flex-wrap items-center gap-2 border-b border-warning/30 bg-warning/10 px-3 text-xs" role="region" aria-label="Historical bar replay">
+        <span class="font-semibold text-warning">HISTORICAL REPLAY</span>
+        <button mat-icon-button [attr.aria-label]="playing() ? 'Pause replay' : 'Play replay'" [disabled]="replayIndex() === history().length" (click)="playing.set(!playing())"><mat-icon>{{ playing() ? 'pause' : 'play_arrow' }}</mat-icon></button>
+        <button mat-icon-button aria-label="Advance one bar" [disabled]="replayIndex() === history().length" (click)="stepReplay()"><mat-icon>skip_next</mat-icon></button>
+        <mat-slider class="min-w-30 flex-1" [min]="1" [max]="history().length" [step]="1"><input matSliderThumb aria-label="Replay position" [value]="replayIndex() ?? 1" (valueChange)="seekReplay($event)" /></mat-slider>
+        <span class="tabular-nums">{{ replayIndex() }} / {{ history().length }} bars</span>
+        <span class="text-text-secondary">Live ticks paused on chart</span>
+      </div>
+    }
+
+    <div class="flex min-w-0 max-lg:flex-wrap">
+      <nav class="flex w-12 shrink-0 flex-col items-center gap-0.5 border-r border-border bg-surface-2 py-2" aria-label="Drawing tools">
+        @for (tool of drawingTools; track tool.id) {
+          <button mat-icon-button class="ak-tool" [class.ak-tool--active]="drawingTool() === tool.id" [attr.aria-label]="tool.label" [matTooltip]="tool.label" matTooltipPosition="right" [attr.aria-pressed]="drawingTool() === tool.id" [disabled]="!ready()" (click)="selectTool(tool.id)"><mat-icon>{{ tool.icon }}</mat-icon></button>
         }
-      } @else if (store.error(); as error) {
-        <div
-          class="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/12 px-3 py-2.5
-                 text-[12.5px]/[1.45] text-text-primary"
-          role="alert"
-        >
-          <mat-icon class="mt-px size-[18px] shrink-0 text-[18px] text-danger" aria-hidden="true">error_outline</mat-icon>
-          <span>{{ error }}</span>
+        <span class="my-2 w-6 border-t border-border" aria-hidden="true"></span>
+        <button mat-icon-button aria-label="Undo last drawing" matTooltip="Undo drawing" [disabled]="!drawingState().undo || !ready()" (click)="chart()?.undoDrawing()"><mat-icon>undo</mat-icon></button>
+        <button mat-icon-button aria-label="Redo drawing" matTooltip="Redo drawing" [disabled]="!drawingState().redo || !ready()" (click)="chart()?.redoDrawing()"><mat-icon>redo</mat-icon></button>
+        <button mat-icon-button aria-label="Toggle drawing visibility" matTooltip="Show / hide drawings" [attr.aria-pressed]="drawingsVisible()" (click)="drawingsVisible.set(!drawingsVisible())"><mat-icon>{{ drawingsVisible() ? 'visibility' : 'visibility_off' }}</mat-icon></button>
+        <button mat-icon-button aria-label="Remove all drawings" matTooltip="Remove drawings" [disabled]="!drawingState().count || !ready()" (click)="removeDrawings()"><mat-icon>delete_outline</mat-icon></button>
+      </nav>
+
+      <div class="min-w-0 flex-1">
+        <div class="flex min-h-12 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs">
+          <span class="font-semibold">{{ definition()?.name || instrumentLabel() }} <span class="font-normal text-text-secondary">· {{ timeFrame() ? label(timeFrame()!) : '' }} · {{ venue() }}</span></span>
+          @if (hoveredBar(); as bar) {
+            <div class="flex flex-wrap gap-2 tabular-nums" [class.text-buy]="bar.close >= bar.open" [class.text-sell]="bar.close < bar.open">
+              <span><span class="text-text-secondary">O </span>{{ bar.open | number:numberFormat() }}</span>
+              <span><span class="text-text-secondary">H </span>{{ bar.high | number:numberFormat() }}</span>
+              <span><span class="text-text-secondary">L </span>{{ bar.low | number:numberFormat() }}</span>
+              <span><span class="text-text-secondary">C </span>{{ bar.close | number:numberFormat() }}</span>
+              <span>{{ bar.close >= bar.open ? '+' : '' }}{{ bar.close - bar.open | number:numberFormat() }}</span>
+              <span class="text-text-tertiary">{{ formatTime(bar.time * 1000, true) }}</span>
+            </div>
+          }
         </div>
-      } @else if (store.candles().length === 0) {
-        <ak-empty-state
-          icon="show_chart"
-          title="No bars for this window"
-          description="The broker returned no history for this instrument at this timeframe."
-          [compact]="true"
-        />
-      } @else if (store.loadedTimeFrame(); as loadedFrame) {
-        <!--
+        <div class="flex min-h-7 flex-wrap items-center gap-1 px-3 text-[11px]">
+          @if (showVolume()) { <span class="rounded bg-surface-2 px-2 py-1 text-text-secondary">Volume · historical</span> }
+          @for (study of activeStudies(); track study.id) {
+            <button type="button" class="ak-study" [attr.aria-label]="'Remove ' + study.label" [matTooltip]="study.detail + ' · click to remove'" (click)="toggleStudy(study.id)">{{ study.label }} <span aria-hidden="true">×</span></button>
+          }
+        </div>
+        <div class="ak-chart-card" tabindex="0" role="group" aria-label="Interactive price chart. Plus and minus zoom. Arrow keys move the cursor. Enter places a drawing point. Escape cancels drawing. Control or Command Z undoes a drawing.">
+          @if (store.loading()) {
+            <ak-loading-state label="Loading {{ timeFrame() ? label(timeFrame()!) : '' }} bars…" />
+          } @else if (store.error(); as error) {
+            <div class="m-4 rounded border border-danger/40 bg-danger/10 p-4 text-sm" role="alert"><p>{{ error }}</p><button mat-button (click)="refresh()">Retry history</button></div>
+          } @else if (history().length === 0) {
+            <ak-empty-state icon="show_chart" title="No bars for this window" description="The broker returned no usable history for this instrument at this timeframe." [compact]="true" />
+          } @else if (store.loadedTimeFrame(); as loadedFrame) {
+            <!--
           `loadedTimeFrame` — not the selected one — is what the chart folds
           live ticks against, so a tick arriving between "user picked 15m" and
           "15m bars came back" cannot be folded into a 1m bar at a 15m label.
         -->
-        <ak-price-chart
-          [candles]="store.candles()"
-          [timeFrame]="loadedFrame"
-          [tick]="quote()"
-          [timeZone]="timeZone()"
-          [ariaLabel]="instrumentLabel() + ' ' + label(loadedFrame) + ' price chart'"
-        />
+            <ak-price-chart [candles]="displayedCandles()" [timeFrame]="loadedFrame" [tick]="quote()" [timeZone]="timeZone()" [ariaLabel]="instrumentLabel() + ' ' + label(loadedFrame) + ' price chart'"
+              [chartType]="chartType()" [studies]="selectedStudies()" [showVolume]="showVolume()" [showGrid]="showGrid()" [scaleMode]="scaleMode()" [precision]="precision()"
+              [drawingTool]="drawingTool()" [drawingsVisible]="drawingsVisible()" [drawingKey]="brokerLinkId() + ':' + instrument() + ':' + loadedFrame" [replay]="isReplay()"
+              (barChange)="hoveredBar.set($event)" (drawingComplete)="selectTool('cursor')" (drawingState)="drawingState.set($event)" (notice)="status.set($event)" />
+          }
+        </div>
+        <footer class="flex flex-wrap items-center justify-between gap-1 border-t border-border px-2 py-1 text-xs">
+          <div class="flex flex-wrap items-center gap-1" role="group" aria-label="Visible range within loaded history">
+            @for (range of rangeOptions; track range.label) { <button class="ak-tf" [disabled]="!ready()" [matTooltip]="'Show ' + range.label + ' within loaded history'" (click)="chart()?.selectRange(range.days)">{{ range.label }}</button> }
+            <button class="ak-tf" [disabled]="!ready()" (click)="chart()?.fitContent()">All</button>
+          </div>
+          <div class="flex items-center gap-1">
+            <button mat-icon-button aria-label="Zoom in" [disabled]="!ready()" (click)="chart()?.zoom(0.8)"><mat-icon>add</mat-icon></button>
+            <button mat-icon-button aria-label="Zoom out" [disabled]="!ready()" (click)="chart()?.zoom(1.25)"><mat-icon>remove</mat-icon></button>
+            <button mat-icon-button aria-label="Go to latest bar" matTooltip="Latest bar" [disabled]="!ready()" (click)="chart()?.goToLatest()"><mat-icon>last_page</mat-icon></button>
+            <span class="text-text-secondary">{{ timeZone() || 'Local time' }}</span>
+          </div>
+        </footer>
+      </div>
+
+      @if (showSidebar()) {
+        <aside class="ak-chart-sidebar w-64 shrink-0 border-l border-border max-lg:w-full max-lg:border-t max-lg:border-l-0" aria-label="Watchlist and symbol details">
+          <div class="flex items-center justify-between border-b border-border px-3 py-2"><h2 class="text-sm font-semibold">Watchlist</h2><button mat-icon-button aria-label="Add current symbol to watchlist" matTooltip="Add current symbol" [disabled]="!definition()" (click)="pinInstrument()"><mat-icon>add</mat-icon></button></div>
+          <div class="grid grid-cols-[1fr_6rem_4rem] gap-1 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary"><span>Symbol</span><span class="text-right">Last</span><span class="text-right">Chg %</span></div>
+          <div class="max-h-72 overflow-y-auto">
+            @for (row of watchRows(); track row.instrument.key) {
+              <a class="ak-watch-row grid grid-cols-[1fr_6rem_4rem] items-center gap-1 px-3 py-2.5 text-xs" [class.ak-watch-row--active]="row.instrument.key === instrument()" [routerLink]="['/chart', brokerLinkId(), row.instrument.key]" [attr.aria-current]="row.instrument.key === instrument() ? 'page' : null">
+                <span class="min-w-0 truncate font-semibold" [title]="row.instrument.name">{{ formatLabel(row.instrument.key) }} @if (row.stale) { <span class="text-[9px] font-normal text-warning">stale</span> }</span>
+                <span class="text-right tabular-nums">{{ row.tick ? (row.tick.lastPrice | akMoney) : '—' }}</span>
+                <span class="text-right tabular-nums" [class.text-buy]="(row.change ?? 0) >= 0" [class.text-sell]="(row.change ?? 0) < 0">{{ row.change === undefined ? '—' : ((row.change >= 0 ? '+' : '') + (row.change | number:'1.2-2') + '%') }}</span>
+              </a>
+            } @empty {
+              <p class="px-4 py-6 text-xs leading-relaxed text-text-secondary">Your watchlist is empty. Search a symbol, then use + to pin it here.</p>
+            }
+          </div>
+          <div class="border-t border-border p-4">
+            <div class="flex items-center gap-2"><span class="flex size-8 items-center justify-center rounded bg-brand/15 font-semibold text-brand">{{ instrumentLabel().slice(0, 1) }}</span><h2 class="text-sm font-semibold">{{ instrumentLabel() }}</h2></div>
+            <p class="mt-2 text-xs text-text-secondary">{{ definition()?.name }} · {{ venue() }}</p>
+            @if (quote(); as tick) {
+              <p class="mt-4 text-2xl font-semibold tabular-nums">{{ tick.lastPrice | akMoney }} <span class="text-xs font-normal text-text-tertiary">{{ tick.lastPrice.currency }}</span></p>
+              @if (changePercent() !== undefined) { <p class="mt-1 text-sm tabular-nums" [class.text-buy]="changePercent()! >= 0" [class.text-sell]="changePercent()! < 0">{{ changePercent()! >= 0 ? '+' : '' }}{{ changePercent() | number:'1.2-2' }}% <span class="text-xs text-text-secondary">vs previous close</span></p> }
+              <p class="mt-2 text-[11px] text-text-secondary">{{ isReplay() ? 'Live quote · independent of replay' : 'Last tick' }} · {{ formatTime(tick.timestamp) }}</p>
+              <dl class="mt-5 grid grid-cols-2 gap-y-3 text-xs">
+                <dt class="text-text-secondary">Open</dt><dd class="text-right tabular-nums">{{ tick.open ? (tick.open | akMoney) : '—' }}</dd>
+                <dt class="text-text-secondary">Day high</dt><dd class="text-right tabular-nums">{{ tick.high ? (tick.high | akMoney) : '—' }}</dd>
+                <dt class="text-text-secondary">Day low</dt><dd class="text-right tabular-nums">{{ tick.low ? (tick.low | akMoney) : '—' }}</dd>
+                <dt class="text-text-secondary">Previous close</dt><dd class="text-right tabular-nums">{{ tick.previousClose ? (tick.previousClose | akMoney) : '—' }}</dd>
+                <dt class="text-text-secondary">Volume</dt><dd class="text-right tabular-nums">{{ tick.volume === undefined ? '—' : (tick.volume | number:'1.0-0') }}</dd>
+              </dl>
+            } @else { <p class="my-4 text-xs text-text-secondary">Waiting for the first quote from this broker.</p> }
+            <p class="mt-5 text-[11px] leading-relaxed text-text-tertiary">{{ manifest()?.displayName || link()?.nickname }} · broker market data. Available history and intervals depend on your linked account.</p>
+          </div>
+        </aside>
       }
+    </div>
+    <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-2 px-3 py-2 text-[10px] text-text-secondary">
+      <span role="status">{{ status() }}</span>
+      <span>{{ displayedCandles().length | number }} loaded bars · {{ drawingState().count }} drawings · saved on this device</span>
     </div>
   }
 </section>
+
+<mat-menu #typeMenu="matMenu">
+  @for (type of chartTypes; track type.id) { <button mat-menu-item role="menuitemradio" [attr.aria-checked]="chartType() === type.id" (click)="chartType.set(type.id)"><mat-icon>{{ chartType() === type.id ? 'check' : type.icon }}</mat-icon>{{ type.label }}</button> }
+</mat-menu>
+<mat-menu #indicatorMenu="matMenu">
+  @for (study of studyOptions; track study.id) {
+    <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="selectedStudies().includes(study.id)" (click)="toggleStudy(study.id)"><mat-icon>{{ selectedStudies().includes(study.id) ? 'check_box' : 'check_box_outline_blank' }}</mat-icon><span>{{ study.label }}<small class="block text-[10px] text-text-secondary">{{ study.detail }}</small></span></button>
+  }
+  <p class="max-w-64 px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Calculated from loaded bars. Each study needs enough history to warm up. Values on a forming bar can change.</p>
+</mat-menu>
+<mat-menu #settingsMenu="matMenu">
+  <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showVolume()" (click)="showVolume.set(!showVolume())"><mat-icon>{{ showVolume() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Historical volume</button>
+  <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showGrid()" (click)="showGrid.set(!showGrid())"><mat-icon>{{ showGrid() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Grid lines</button>
+  <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'normal'" (click)="scaleMode.set('normal')"><mat-icon>{{ scaleMode() === 'normal' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Regular scale</button>
+  <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'log'" (click)="scaleMode.set('log')"><mat-icon>{{ scaleMode() === 'log' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Logarithmic scale</button>
+  <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'percentage'" (click)="scaleMode.set('percentage')"><mat-icon>{{ scaleMode() === 'percentage' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Percentage scale</button>
+</mat-menu>
+<mat-menu #exportMenu="matMenu">
+  <button mat-menu-item (click)="chart()?.screenshot(instrumentLabel() + '-' + timeFrame())"><mat-icon>photo_camera</mat-icon>Download chart PNG</button>
+  <button mat-menu-item (click)="chart()?.exportCsv(instrumentLabel() + '-' + timeFrame())"><mat-icon>table_view</mat-icon>Download OHLC CSV</button>
+</mat-menu>
