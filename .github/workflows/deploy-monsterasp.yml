@@ -42,7 +42,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || vars.MONSTERASP_AUTODEPLOY == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Fail with a sentence someone can act on. Without this the first sign of a missing secret is
       # msdeploy reporting a 401 against a URL that reads as empty.
@@ -66,13 +66,13 @@ jobs:
           }
           Write-Host "All four Web Deploy secrets are present."
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22.22.3'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 

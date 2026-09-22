@@ -52,7 +52,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || vars.AZURE_AUTODEPLOY == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Fail with a sentence someone can act on. Without this, a missing variable surfaces as
       # azure/login reporting a login failure against an empty client id.
@@ -75,13 +75,13 @@ jobs:
           fi
           echo "All five settings are present. Deploying to $AZURE_WEBAPP_NAME in $AZURE_RESOURCE_GROUP."
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22.22.3'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -118,7 +118,7 @@ jobs:
           echo "Publish payload: $(du -sh publish | cut -f1)"
 
       - name: Sign in to Azure
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
