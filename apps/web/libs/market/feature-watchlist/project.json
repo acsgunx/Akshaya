@@ -1,0 +1,11 @@
+{
+  "name": "market-feature-watchlist",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/market/feature-watchlist/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:market",
+    "type:feature"
+  ]
+}

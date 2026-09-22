@@ -2,14 +2,15 @@
   "name": "@akshaya/web",
   "version": "0.1.0",
   "private": true,
+  "sideEffects": false,
   "description": "Akshaya multi-broker trading platform — Angular frontend. Renders itself entirely from connector manifests served by the API; contains no broker-specific code.",
   "scripts": {
-    "ng": "ng",
-    "start": "ng serve",
-    "build": "ng build",
-    "watch": "ng build --watch --configuration development",
-    "test": "ng test",
-    "lint": "eslint ."
+    "start": "nx serve",
+    "build": "nx build",
+    "watch": "nx build --watch --configuration development",
+    "test": "nx test",
+    "lint": "eslint .",
+    "graph": "nx graph"
   },
   "dependencies": {
     "@angular/cdk": "^22.1.5",
@@ -32,14 +33,19 @@
     "@angular/cli": "^22.1.7",
     "@angular/compiler-cli": "^22.1.5",
     "@eslint/js": "^9.15.0",
+    "@nx/eslint-plugin": "23.2.1",
     "@tailwindcss/postcss": "^4.3.3",
     "angular-eslint": "^22.2.0",
     "eslint": "^9.15.0",
     "jsdom": "^26.1.0",
+    "nx": "23.2.1",
     "postcss": "^8.5.27",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.15.0",
     "vitest": "^4.1.11"
+  },
+  "nx": {
+    "includedScripts": []
   }
 }

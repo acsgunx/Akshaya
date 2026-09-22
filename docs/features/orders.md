@@ -554,7 +554,7 @@ smallest quantity that will trade.
 | Risk rules | `src/Modules/Trading/Domain/Rules/` |
 | Order aggregate and state machine | `src/Modules/Trading/Domain/Order.cs`, `OrderStateMachine.cs` |
 | HTTP surface | `src/Akshaya.Api/Endpoints/OrderEndpoints.cs`, `PortfolioEndpoints.cs` |
-| Ticket, blotter, fills, dialogs | `apps/web/src/app/features/` |
+| Ticket, blotter, fills, dialogs | `apps/web/libs/orders/` |
 
 ### Related
 

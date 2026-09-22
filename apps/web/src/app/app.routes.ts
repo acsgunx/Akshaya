@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 
-import { anonymousOnlyGuard, authGuard } from './core/auth.guard';
+import { anonymousOnlyGuard, authGuard } from './shell/auth.guard';
 
 /**
  * Every feature is a lazy standalone route (`loadComponent`), never an
@@ -20,50 +20,50 @@ export const routes: Routes = [
     title: 'Sign in · Akshaya',
     canActivate: [anonymousOnlyGuard],
     data: { mode: 'sign-in' },
-    loadComponent: () => import('./features/account/sign-in.component').then((m) => m.SignInComponent),
+    loadComponent: () => import('@akshaya/account/feature-account').then((m) => m.SignInComponent),
   },
   {
     path: 'register',
     title: 'Create account · Akshaya',
     canActivate: [anonymousOnlyGuard],
     data: { mode: 'register' },
-    loadComponent: () => import('./features/account/sign-in.component').then((m) => m.SignInComponent),
+    loadComponent: () => import('@akshaya/account/feature-account').then((m) => m.SignInComponent),
   },
   {
     path: 'account',
     title: 'Account · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/account/profile.component').then((m) => m.ProfileComponent),
+    loadComponent: () => import('@akshaya/account/feature-account').then((m) => m.ProfileComponent),
   },
   {
     path: 'dashboard',
     title: 'Dashboard · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/dashboard/dashboard.component').then((m) => m.DashboardComponent),
+    loadComponent: () => import('@akshaya/portfolio/feature-dashboard').then((m) => m.DashboardComponent),
   },
   {
     path: 'watchlist',
     title: 'Watchlist · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/watchlist/watchlist.component').then((m) => m.WatchlistComponent),
+    loadComponent: () => import('@akshaya/market/feature-watchlist').then((m) => m.WatchlistComponent),
   },
   {
     path: 'positions',
     title: 'Positions · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/positions/positions.component').then((m) => m.PositionsComponent),
+    loadComponent: () => import('@akshaya/portfolio/feature-positions').then((m) => m.PositionsComponent),
   },
   {
     path: 'holdings',
     title: 'Holdings · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/holdings/holdings.component').then((m) => m.HoldingsComponent),
+    loadComponent: () => import('@akshaya/portfolio/feature-holdings').then((m) => m.HoldingsComponent),
   },
   {
     path: 'orders',
     title: 'Orders · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/orders/orders.component').then((m) => m.OrdersComponent),
+    loadComponent: () => import('@akshaya/orders/feature-orders').then((m) => m.OrdersComponent),
   },
   {
     // Executions, not orders. Separate route because it answers a different
@@ -71,21 +71,21 @@ export const routes: Routes = [
     path: 'fills',
     title: 'Fills · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/fills/fills.component').then((m) => m.FillsComponent),
+    loadComponent: () => import('@akshaya/orders/feature-fills').then((m) => m.FillsComponent),
   },
   {
     path: 'connectors',
     title: 'Brokers · Akshaya',
     canActivate: [authGuard],
     loadComponent: () =>
-      import('./features/connectors/connector-catalogue.component').then((m) => m.ConnectorCatalogueComponent),
+      import('@akshaya/account/feature-connectors').then((m) => m.ConnectorCatalogueComponent),
   },
   {
     path: 'connectors/:connectorId/link',
     title: 'Link broker · Akshaya',
     canActivate: [authGuard],
     loadComponent: () =>
-      import('./features/broker-link/broker-link-wizard.component').then((m) => m.BrokerLinkWizardComponent),
+      import('@akshaya/account/feature-broker-link').then((m) => m.BrokerLinkWizardComponent),
   },
   {
     // Deep-linkable chart: /chart/<brokerLinkId>/XNSE:INFY:Equity — same
@@ -97,7 +97,7 @@ export const routes: Routes = [
     path: 'chart/:brokerLinkId/:instrument',
     title: 'Chart · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/chart/chart.component').then((m) => m.ChartComponent),
+    loadComponent: () => import('@akshaya/market/feature-chart').then((m) => m.ChartComponent),
   },
   {
     // Deep-linkable order ticket: /trade/<brokerLinkId>/XNSE:INFY:Equity
@@ -108,7 +108,7 @@ export const routes: Routes = [
     path: 'trade/:brokerLinkId/:instrument',
     title: 'Trade · Akshaya',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/order-ticket/order-ticket.component').then((m) => m.OrderTicketComponent),
+    loadComponent: () => import('@akshaya/orders/feature-order-ticket').then((m) => m.OrderTicketComponent),
   },
   { path: '**', redirectTo: 'dashboard' },
 ];

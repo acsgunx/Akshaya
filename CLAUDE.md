@@ -1,7 +1,7 @@
 # Akshaya — working notes for Claude
 
-.NET 10 trading-system monorepo. `src/` = services, `apps/web` = Angular UI,
-`tests/` = xUnit projects, `libs/` shared. Local build has warnings-as-errors
+.NET 10 trading-system monorepo. `src/` = services, `apps/web` = Angular UI (an Nx
+workspace — see below), `tests/` = xUnit projects, `libs/` shared. Local build has warnings-as-errors
 off (see `Directory.Build.props`); CI turns it on.
 
 ## Testing — keep it cheap
@@ -68,20 +68,41 @@ over Web Deploy). Two things there are load-bearing and must not be "tidied up":
 msdeploy sync deletes the SQLite database and every account in it. See
 `deploy/monsterasp/README.md`.
 
+## Web app structure
+
+`apps/web` is an Nx workspace rooted there, not at the repo root, so CI, the Dockerfile and
+both deploy workflows still just run `npm ci` / `npm run build` and read
+`dist/akshaya-web`. The app (`src/`) is a thin shell; code lives in libraries under
+`apps/web/libs/<domain>/<type>-<name>`, imported only via `@akshaya/<domain>/<name>`.
+`apps/web/README.md` has the map and how to add a library.
+
+`npm run lint` enforces the graph (`@nx/enforce-module-boundaries`): features never import
+features, deep and relative cross-library imports fail, and `lightweight-charts` is banned
+outside `market/ui-price-chart`. Fix a violation by moving code to the right library, not
+by loosening `depConstraints`.
+
+`"sideEffects": false` in `apps/web/package.json` is load-bearing: it lets barrels
+tree-shake. Without it the shell's `@akshaya/shared/data-access` import puts SignalR in the
+initial bundle and the production build fails its budget.
+
+`@nx/angular` is not installed: its optional peers pull Angular 21 tooling that conflicts
+with Angular 22. Nx runs the `@angular/build` builders from `project.json` directly.
+
 ## Chart workspace
 
-`apps/web/src/app/features/chart/` owns broker history, symbol search, replay and the
-watchlist sidebar. `shared/price-chart/` owns chart rendering, study calculations and
-drawing primitives. Keep this dependency behind the lazy chart route.
+`libs/market/feature-chart` owns broker history, symbol search, replay and the
+watchlist sidebar. `libs/market/ui-price-chart` owns chart rendering, study calculations
+and drawing primitives. Keep this dependency behind the lazy chart route.
 
 Lightweight Charts does not parse CSS `color(srgb ...)` returned by `color-mix()`.
 Resolve theme tokens to sRGB `rgb()`/`rgba()` before passing them to the library;
 `PriceChartComponent.token()` handles this using a cached canvas conversion.
 
-Every screen that lists an instrument links to the chart through `shared/chart-link/`,
-which picks the row's first history-capable account and never a link the row doesn't
-name. The chart draws the user's positions, holdings and working orders for that
-instrument as price lines, read from the root `DashboardStore` and `OrdersStore`.
+Every screen that lists an instrument links to the chart through `ChartLinkComponent`
+(`@akshaya/shared/ui`), which picks the row's first history-capable account and never a
+link the row doesn't name. The chart draws the user's positions, holdings and working
+orders for that instrument as price lines, read from the root `DashboardStore` and
+`OrdersStore`.
 
 Chart preferences and drawings are device-local, not server-persisted. Replay only
 uses loaded historical bars; volume is historical because live tick volume may be

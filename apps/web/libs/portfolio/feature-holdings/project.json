@@ -1,0 +1,11 @@
+{
+  "name": "portfolio-feature-holdings",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/portfolio/feature-holdings/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:portfolio",
+    "type:feature"
+  ]
+}

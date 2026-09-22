@@ -1,0 +1,11 @@
+{
+  "name": "orders-feature-order-ticket",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/orders/feature-order-ticket/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:orders",
+    "type:feature"
+  ]
+}

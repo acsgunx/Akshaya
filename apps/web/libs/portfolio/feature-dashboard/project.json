@@ -1,0 +1,11 @@
+{
+  "name": "portfolio-feature-dashboard",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/portfolio/feature-dashboard/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:portfolio",
+    "type:feature"
+  ]
+}

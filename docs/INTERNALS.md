@@ -274,7 +274,7 @@ public abstract record AuthStep
 ```
 
 The client drives a loop over four wire-level cases and has no idea which broker it is talking to.
-[`broker-link-wizard.component.html`](../apps/web/src/app/features/broker-link/broker-link-wizard.component.html)
+[`broker-link-wizard.component.html`](../apps/web/libs/account/feature-broker-link/src/lib/broker-link-wizard.component.html)
 is a `@switch` on `step.type` with four arms — and that is the entire multi-broker login UI.
 
 This is the value of a **closed** sum: seven auth models collapse into four *interaction shapes*,
@@ -659,7 +659,7 @@ not exist. Asymmetric cost again decides the default.
 `PortfolioSourceStatus` and the snapshot returns whatever succeeded, with `IsPartial` and
 `FailedSources` set. The client renders a banner stating that the figures **exclude** those
 accounts, *"they are not zero"*
-([`dashboard.component.html`](../apps/web/src/app/features/dashboard/dashboard.component.html)).
+([`dashboard.component.html`](../apps/web/libs/portfolio/feature-dashboard/src/lib/dashboard.component.html)).
 
 That distinction — *excluded* versus *zero* — is the whole point. Graceful degradation is only
 graceful if the degradation is legible; a partial total presented as a complete one is worse than
@@ -691,7 +691,7 @@ sharing that link's socket**. In a shared-fan-out topology, backpressure couples
 have no business being coupled, so bounded staleness with load shedding beats guaranteed delivery.
 
 The client mirrors this with reference-counted subscriptions
-([`market-data.service.ts`](../apps/web/src/app/core/market-data.service.ts)): a watchlist row and
+([`market-data.service.ts`](../apps/web/libs/shared/data-access/src/lib/market-data.service.ts)): a watchlist row and
 an open order ticket watching the same symbol share one server-side subscription, and unsubscribing
 is a no-op until the last watcher goes away. That is what lets each component subscribe in its own
 `effect` without coordinating with any other feature.
@@ -778,7 +778,7 @@ rejecting those helps nobody — a deliberate asymmetry between the strict produ
 consumer.
 
 The client honours this: `Money.amount` stays a string all the way to
-[`money.pipe.ts`](../apps/web/src/app/core/money.pipe.ts), which is the single place it is parsed
+[`money.pipe.ts`](../apps/web/libs/shared/util/src/lib/money.pipe.ts), which is the single place it is parsed
 to a `number` — at the point of display, exactly where the precision loss of a formatted string
 stops mattering.
 
@@ -862,7 +862,7 @@ the affected subtree.
 Angular's signal graph is **glitch-free**: derived values are recomputed in topological order, so
 an observer never sees an inconsistent intermediate state where one input has updated and another
 has not. This matters concretely here — `changePercent` and `changeIsUp` in
-[`watchlist-row.component.ts`](../apps/web/src/app/features/watchlist/watchlist-row.component.ts)
+[`watchlist-row.component.ts`](../apps/web/libs/market/feature-watchlist/src/lib/watchlist-row.component.ts)
 derive from the same tick, and a glitchy system could momentarily render a positive percentage in
 the "down" colour.
 
@@ -899,7 +899,7 @@ authenticated user to sign-in for the split second before their cookie is checke
 
 ### 5.4 The typed wire boundary
 
-[`api.service.ts`](../apps/web/src/app/core/api.service.ts) is the only file that touches
+[`api.service.ts`](../apps/web/libs/shared/data-access/src/lib/api.service.ts) is the only file that touches
 `HttpClient`. Every response type is one of the wire mirrors in `core/models`, so a shape drift
 against the backend contracts fails to compile rather than surfacing as `undefined` deep in a
 template.
@@ -1088,12 +1088,12 @@ second API replica. A real deployment would persist the matching engine's book.
 1. [`styles/DESIGN.md`](../apps/web/src/styles/DESIGN.md) — the visual rules and their reasoning.
 2. [`styles/styles.scss`](../apps/web/src/styles/styles.scss) — the primitives every screen is
    built from.
-3. [`core/api.service.ts`](../apps/web/src/app/core/api.service.ts) — the whole wire boundary.
-4. [`core/market-data.service.ts`](../apps/web/src/app/core/market-data.service.ts) — signals and
+3. [`shared/data-access` · `api.service.ts`](../apps/web/libs/shared/data-access/src/lib/api.service.ts) — the whole wire boundary.
+4. [`shared/data-access` · `market-data.service.ts`](../apps/web/libs/shared/data-access/src/lib/market-data.service.ts) — signals and
    subscription refcounting.
-5. [`features/order-ticket/`](../apps/web/src/app/features/order-ticket/) — manifest-driven
+5. [`orders/feature-order-ticket`](../apps/web/libs/orders/feature-order-ticket/src/lib/) — manifest-driven
    rendering, and the anti-optimistic-UI argument.
-6. [`features/broker-link/broker-link-wizard.component.html`](../apps/web/src/app/features/broker-link/broker-link-wizard.component.html)
+6. [`account/feature-broker-link` · `broker-link-wizard.component.html`](../apps/web/libs/account/feature-broker-link/src/lib/broker-link-wizard.component.html)
    — four `AuthStep` cases, every broker.
 
 **Related documents**

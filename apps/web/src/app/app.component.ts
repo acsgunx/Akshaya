@@ -24,14 +24,11 @@ import {
 import { MatIconModule } from '@angular/material/icon';
 import { filter, map, take } from 'rxjs';
 
-import { ActivityService } from './core/activity.service';
-import { AuthStore } from './core/auth.store';
-import { dismissBootSplash } from './core/boot-splash';
-import { BrokerLinksStore } from './core/broker-links.store';
-import { ConnectorStore } from './core/connector.store';
-import { ActivityBarComponent } from './shared/activity-bar/activity-bar.component';
-import { AppearanceMenuComponent } from './shared/appearance/appearance-menu.component';
-import { KillSwitchComponent } from './shared/kill-switch/kill-switch.component';
+import { ActivityService, AuthStore, BrokerLinksStore, ConnectorStore } from '@akshaya/shared/data-access';
+import { dismissBootSplash } from './shell/boot-splash';
+import { ActivityBarComponent } from './shell/activity-bar/activity-bar.component';
+import { AppearanceMenuComponent } from './shell/appearance/appearance-menu.component';
+import { KillSwitchComponent } from './shell/kill-switch/kill-switch.component';
 
 /** One bottom-bar destination on the compact layout. */
 interface TabItem {
@@ -58,7 +55,7 @@ interface TabItem {
  * neither render.
  *
  * WAITING, AT THREE SCOPES. Until the first screen has painted, the static
- * splash in `index.html` covers everything (see `core/boot-splash.ts`). After
+ * splash in `index.html` covers everything (see `src/app/shell/boot-splash.ts`). After
  * that, `<ak-activity-bar>` on the header's bottom edge covers any navigation
  * or request in flight, and each screen shows its own data loading in place.
  * DESIGN.md, "Loading and waiting", has the rules.

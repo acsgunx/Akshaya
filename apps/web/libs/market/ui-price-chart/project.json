@@ -1,0 +1,11 @@
+{
+  "name": "market-ui-price-chart",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/market/ui-price-chart/src",
+  "projectType": "library",
+  "prefix": "ak",
+  "tags": [
+    "scope:market",
+    "type:ui"
+  ]
+}
