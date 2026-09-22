@@ -56,6 +56,18 @@
   background-color: color-mix(in srgb, var(--color-brand) 12%, var(--color-surface-2));
 }
 
+// Right-click menu. Not MatMenu: its anchor is a pointer position on a canvas,
+// not an element, so a CDK overlay would open at the wrong place. A real
+// role=menu button list keeps the same keyboard contract without positioning.
+.ak-menu { box-shadow: var(--shadow-ak-2); }
+
+.ak-menu-item {
+  @apply flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left;
+
+  &:hover, &:focus-visible { background-color: var(--color-surface-3); }
+  mat-icon { font-size: 16px; width: 16px; height: 16px; }
+}
+
 // The canvas needs a definite height to measure against; `PriceChartComponent`
 // reads this variable, and the viewport-relative value is what keeps the chart
 // filling the screen without pushing the toolbar off the top.

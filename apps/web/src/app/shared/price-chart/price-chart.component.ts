@@ -21,6 +21,7 @@ import {
   PriceScaleMode,
   TickMarkType,
   createChart,
+  type Coordinate,
   type IChartApi,
   type ISeriesApi,
   type MouseEventParams,
@@ -31,7 +32,7 @@ import {
 import { AppearanceStore } from '../../core/appearance.store';
 import type { Candle, Tick, TimeFrame } from '../../core/models';
 import { type ChartBar, foldTickIntoBar } from './candle-bucket';
-import { ChartDrawings, validDrawing, type ChartDrawing, type DrawingAnchor, type DrawingTool } from './chart-drawings';
+import { ChartDrawings, validDrawing, type ChartDrawing, type DrawingAnchor, type DrawingTool, type MeasureOverlay } from './chart-drawings';
 import { calculateStudies, type ChartType, type StudyId } from './chart-studies';
 
 /**
@@ -127,6 +128,8 @@ export class PriceChartComponent {
   readonly drawingComplete = output<void>();
   readonly drawingState = output<{ undo: boolean; redo: boolean; count: number }>();
   readonly notice = output<string>();
+  /** Right-click on the chart — pane-0 pixel offsets plus the chart value at that point. */
+  readonly chartMenu = output<{ x: number; y: number; price: number | undefined; time: number | undefined }>();
 
   private chart: IChartApi | undefined;
   private priceSeries: ISeriesApi<'Candlestick' | 'Bar' | 'Line' | 'Area'> | undefined;
@@ -139,6 +142,9 @@ export class PriceChartComponent {
   private redoItems: ChartDrawing[] = [];
   private startAnchor: DrawingAnchor | undefined;
   private previewAnchor: DrawingAnchor | undefined;
+  private measureStart: DrawingAnchor | undefined;
+  private measureEnd: DrawingAnchor | undefined;
+  private measurePreview: DrawingAnchor | undefined;
   private hoveredTime: number | undefined;
   private keyboardAnchor: DrawingAnchor | undefined;
   private updateFrame = 0;
@@ -252,6 +258,19 @@ export class PriceChartComponent {
     this.replacePriceSeries();
     this.chart.subscribeCrosshairMove((event) => this.onCrosshair(event));
     this.chart.subscribeClick((event) => this.onChartClick(event));
+    // The library swallows nothing here — the browser's own menu would open
+    // over the canvas, so suppress it and hand the point to the page's menu.
+    element.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      const rect = element.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const time = this.chart?.timeScale().coordinateToTime(x as Coordinate);
+      const price = this.priceSeries?.coordinateToPrice(y as Coordinate);
+      this.chartMenu.emit({ x, y,
+        price: price === null || price === undefined ? undefined : price,
+        time: typeof time === 'number' ? time : undefined });
+    });
     this.destroyRef.onDestroy(() => {
       cancelAnimationFrame(this.updateFrame);
       // Disposes the canvases and the library's own resize listener; without
@@ -503,6 +522,7 @@ export class PriceChartComponent {
     const step = Math.max(10 ** -this.precision(), Math.abs(current.price) * 0.001);
     this.keyboardAnchor = { time: bar.time, price: current.price + vertical * step };
     this.previewAnchor = this.keyboardAnchor;
+    if (this.measureStart && !this.measureEnd) { this.measurePreview = this.keyboardAnchor; }
     this.hoveredTime = bar.time;
     chart.setCrosshairPosition(this.keyboardAnchor.price, bar.time as UTCTimestamp, series);
     this.barChange.emit(bar);
@@ -558,9 +578,27 @@ export class PriceChartComponent {
     this.redoItems = [];
     this.saveDrawings();
   }
+  /** Drops a horizontal line straight onto the chart (context menu "add line at price"). */
+  addHorizontalLine(price: number): void {
+    const time = this.lastBar?.time ?? Math.floor(Date.now() / 1000);
+    this.drawingItems.push({ tool: 'horizontal', start: { time, price }, end: { time, price } });
+    this.redoItems = [];
+    this.saveDrawings();
+  }
+  /** Arms the measure tool with its first point; the next click finishes it. */
+  beginMeasure(anchor: DrawingAnchor): void {
+    this.measureStart = anchor;
+    this.measureEnd = undefined;
+    this.measurePreview = undefined;
+    this.renderDrawings();
+    this.notice.emit('Click the second point on the price chart to finish measuring. Escape cancels.');
+  }
   cancelDrawing(): void {
     this.startAnchor = undefined;
     this.previewAnchor = undefined;
+    this.measureStart = undefined;
+    this.measureEnd = undefined;
+    this.measurePreview = undefined;
     this.renderDrawings();
   }
 
@@ -663,6 +701,10 @@ export class PriceChartComponent {
   private onCrosshair(event: MouseEventParams): void {
     this.hoveredTime = typeof event.time === 'number' ? event.time : undefined;
     this.barChange.emit(this.bars.find((bar) => bar.time === this.hoveredTime) ?? this.lastBar);
+    if (this.measureStart && !this.measureEnd) {
+      this.measurePreview = this.anchorFrom(event);
+      this.renderDrawings();
+    }
     if (this.startAnchor) {
       this.previewAnchor = this.anchorFrom(event);
       this.renderDrawings();
@@ -679,6 +721,17 @@ export class PriceChartComponent {
     const tool = this.drawingTool();
     const anchor = this.anchorFrom(event);
     if (tool === 'cursor' || !anchor) { return; }
+    if (tool === 'measure') {
+      if (this.measureStart && !this.measureEnd) {
+        this.measureEnd = anchor;
+        this.measurePreview = undefined;
+        this.notice.emit(`Measured ${this.measureLines(this.measureStart, anchor).join(' · ')}. Click again to measure a new range.`);
+      } else {
+        this.beginMeasure(anchor);
+      }
+      this.renderDrawings();
+      return;
+    }
     if (this.drawingItems.length >= 200) {
       this.notice.emit('This chart has reached its 200-drawing limit. Remove a drawing before adding another.');
       return;
@@ -697,15 +750,45 @@ export class PriceChartComponent {
 
   private renderDrawings(): void {
     const tool = this.drawingTool();
-    const preview = this.startAnchor && this.previewAnchor && tool !== 'cursor'
+    const preview = this.startAnchor && this.previewAnchor && tool !== 'cursor' && tool !== 'measure'
       ? [{ tool, start: this.startAnchor, end: this.previewAnchor }] : [];
-    this.drawings.update(this.drawingsVisible() ? [...this.drawingItems, ...preview] : [], this.token('--ak-brand', 'currentColor'));
+    const end = this.measureEnd ?? this.measurePreview;
+    const measure: MeasureOverlay | undefined = tool === 'measure' && this.measureStart && end
+      ? { start: this.measureStart, end,
+        color: this.token(end.price >= this.measureStart.price ? '--ak-buy' : '--ak-sell', 'currentColor'),
+        lines: this.measureLines(this.measureStart, end) }
+      : undefined;
+    this.drawings.update(this.drawingsVisible() ? [...this.drawingItems, ...preview] : [],
+      this.token('--ak-brand', 'currentColor'), measure);
+  }
+
+  /** Price change, percentage change, bar count and elapsed time between the two anchors. */
+  private measureLines(start: DrawingAnchor, end: DrawingAnchor): string[] {
+    const delta = end.price - start.price;
+    const sign = delta >= 0 ? '+' : '';
+    const percent = start.price ? delta / start.price * 100 : 0;
+    const low = Math.min(start.time, end.time);
+    const high = Math.max(start.time, end.time);
+    const count = this.bars.filter((bar) => bar.time >= low && bar.time <= high).length;
+    const seconds = Math.abs(end.time - start.time);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const elapsed = [days && `${days}d`, hours && `${hours}h`, minutes && `${minutes}m`]
+      .filter(Boolean).join(' ') || `${seconds}s`;
+    return [
+      `${sign}${delta.toFixed(this.precision())} (${sign}${percent.toFixed(2)}%)`,
+      `${count} ${count === 1 ? 'bar' : 'bars'} · ${elapsed}`,
+    ];
   }
 
   private loadDrawings(): void {
     this.drawingItems = [];
     this.redoItems = [];
     this.startAnchor = undefined;
+    this.measureStart = undefined;
+    this.measureEnd = undefined;
+    this.measurePreview = undefined;
     try {
       const parsed: unknown = JSON.parse(localStorage.getItem(`akshaya.chart.drawings.${this.drawingKey()}`) ?? '[]');
       if (Array.isArray(parsed)) { this.drawingItems = parsed.filter(validDrawing).slice(-200); }

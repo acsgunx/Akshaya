@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
@@ -19,7 +19,7 @@ import { ConnectorStore } from '../../core/connector.store';
 import { timeFrameLabel } from '../../core/labels';
 import { MarketDataService } from '../../core/market-data.service';
 import { MoneyPipe } from '../../core/money.pipe';
-import type { InstrumentDefinition, InstrumentKey, TimeFrame } from '../../core/models';
+import type { Candle, InstrumentDefinition, InstrumentKey, TimeFrame } from '../../core/models';
 import { formatInstrumentLabel, parseInstrumentKey } from '../../core/models';
 import { venueTimeZone } from '../../core/venue-state.service';
 import { ConnectionStatusComponent } from '../../shared/connection-status/connection-status.component';
@@ -87,6 +87,8 @@ export class ChartComponent {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
   protected readonly chart = viewChild(PriceChartComponent);
+  private readonly menuPanel = viewChild<ElementRef<HTMLElement>>('chartMenuPanel');
+  private readonly chartCard = viewChild<ElementRef<HTMLElement>>('chartCard');
   protected readonly chartTypes = CHART_TYPES;
   protected readonly studyOptions = STUDIES;
   protected readonly drawingTools = DRAWING_TOOLS;
@@ -100,6 +102,8 @@ export class ChartComponent {
   protected readonly drawingTool = signal<DrawingTool>('cursor');
   protected readonly drawingsVisible = signal(true);
   protected readonly drawingState = signal({ undo: false, redo: false, count: 0 });
+  /** Pointer position + chart value where the chart was right-clicked, or menu closed. */
+  protected readonly contextMenu = signal<{ x: number; y: number; price: number | undefined; time: number | undefined } | undefined>(undefined);
   protected readonly hoveredBar = signal<ChartBar | undefined>(undefined);
   protected readonly status = signal('Scroll to zoom · drag to pan · double-click an axis to reset');
   protected readonly replayIndex = signal<number | undefined>(undefined);
@@ -303,7 +307,67 @@ export class ChartComponent {
     if (tool !== 'cursor') { this.drawingsVisible.set(true); }
     this.status.set(tool === 'cursor' ? 'Scroll to zoom · drag to pan · double-click an axis to reset'
       : tool === 'horizontal' ? 'Click the price chart to place a horizontal line. Escape cancels.'
-        : 'Click two points on the price chart. Escape cancels.');
+        : tool === 'measure' ? 'Click two points on the price chart to measure the range. Escape cancels.'
+          : 'Click two points on the price chart. Escape cancels.');
+  }
+
+  protected openContextMenu(event: { x: number; y: number; price: number | undefined; time: number | undefined }): void {
+    this.contextMenu.set(event);
+    this.status.set('Chart menu open. Arrow keys move between items, Escape closes.');
+    setTimeout(() => this.menuPanel()?.nativeElement.querySelector('button')?.focus());
+  }
+
+  protected closeContextMenu(restoreFocus = false): void {
+    if (this.contextMenu() === undefined) { return; }
+    // Focus inside the menu dies with it; hand it back to the chart card so
+    // chart shortcuts keep working after the menu closes.
+    const focusInside = this.menuPanel()?.nativeElement.contains(document.activeElement) === true;
+    this.contextMenu.set(undefined);
+    if (restoreFocus || focusInside) { setTimeout(() => this.chartCard()?.nativeElement.focus()); }
+  }
+
+  /** Arrow-key navigation inside the context menu — it is a plain list, not a MatMenu overlay. */
+  protected onMenuKeydown(event: KeyboardEvent): void {
+    const items = [...(this.menuPanel()?.nativeElement.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'ArrowDown' && items.length) { event.preventDefault(); items.at((index + 1) % items.length)?.focus(); }
+    if (event.key === 'ArrowUp' && items.length) { event.preventDefault(); items.at((index - 1 + items.length) % items.length)?.focus(); }
+    if (event.key === 'Home') { event.preventDefault(); items.at(0)?.focus(); }
+    if (event.key === 'End') { event.preventDefault(); items.at(-1)?.focus(); }
+  }
+
+  protected barAt(time: number | undefined): Candle | undefined {
+    return time === undefined ? undefined : this.history().find((bar) => Date.parse(bar.openTime) === time * 1000);
+  }
+
+  protected barText(bar: Candle): string {
+    const format = (value: number) => value.toFixed(this.precision());
+    return `${bar.openTime} O ${format(bar.open)} H ${format(bar.high)} L ${format(bar.low)} C ${format(bar.close)}`;
+  }
+
+  protected copyText(text: string, label: string): void {
+    this.closeContextMenu();
+    const clipboard = navigator.clipboard;
+    if (!clipboard) { this.status.set('Clipboard is not available in this browser context.'); return; }
+    void clipboard.writeText(text).then(
+      () => this.status.set(`${label} copied to clipboard.`),
+      () => this.status.set('Clipboard is not available in this browser context.'),
+    );
+  }
+
+  protected addLineAt(price: number): void {
+    this.drawingsVisible.set(true);
+    this.chart()?.addHorizontalLine(price);
+    this.status.set(`Horizontal line added at ${price.toFixed(this.precision())}.`);
+    this.closeContextMenu();
+  }
+
+  protected measureFrom(menu: { price: number | undefined; time: number | undefined }): void {
+    this.closeContextMenu();
+    const time = menu.time ?? Date.parse(this.history().at(-1)?.openTime ?? '') / 1000;
+    if (menu.price === undefined || !Number.isFinite(time)) { return; }
+    this.selectTool('measure');
+    this.chart()?.beginMeasure({ time, price: menu.price });
   }
 
   protected toggleReplay(): void {
@@ -330,7 +394,7 @@ export class ChartComponent {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') { this.selectTool('cursor'); this.focusMode.set(false); return; }
+    if (event.key === 'Escape') { this.closeContextMenu(true); this.selectTool('cursor'); this.focusMode.set(false); return; }
     if (event.target instanceof HTMLElement && (event.target.closest('input, textarea, select, button, a, [contenteditable="true"]'))) { return; }
     if (event.key.startsWith('Arrow') && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
