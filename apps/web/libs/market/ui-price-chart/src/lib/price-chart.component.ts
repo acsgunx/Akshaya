@@ -12,19 +12,10 @@ import {
   viewChild,
 } from '@angular/core';
 import {
-  AreaSeries,
-  BarSeries,
-  CandlestickSeries,
   CrosshairMode,
-  HistogramSeries,
-  LineSeries,
-  LineStyle,
-  PriceScaleMode,
   createChart,
   type Coordinate,
   type IChartApi,
-  type IPriceLine,
-  type ISeriesApi,
   type MouseEventParams,
   type UTCTimestamp,
 } from 'lightweight-charts';
@@ -33,30 +24,13 @@ import { AppearanceStore } from '@akshaya/shared/data-access';
 import type { Candle, Tick, TimeFrame } from '@akshaya/shared/models';
 import { type ChartBar, foldTickIntoBar } from './candle-bucket';
 import { barsToCsv, downloadFile, normalizeCandles } from './chart-data';
+import { ChartSeries, type ChartPriceLevel } from './chart-series';
 import { DrawingController, type DrawingState } from './chart-drawing-controller';
 import type { DrawingAnchor, DrawingTool } from './chart-drawings';
 import { type ChartType, type StudyId } from './chart-studies';
 import { StudyPanes } from './chart-study-panes';
 import { timeAxisOptions } from './chart-time-format';
 import { ChartTokens } from './chart-tokens';
-
-/**
- * A horizontal price the caller wants marked — an average cost, a resting
- * order's limit or trigger. The chart only draws it; what it means, and
- * whether it should be shown at all, is the caller's business.
- */
-export interface ChartPriceLevel {
-  readonly price: number;
-  /** Short, because it is drawn on the line beside the axis: "Long 50", "Buy 10 limit". */
-  readonly title: string;
-  readonly tone: 'buy' | 'sell' | 'brand';
-  /**
-   * Solid for what is already held, dashed for a resting limit, dotted for a
-   * trigger that has not fired — the line says how real the price is before
-   * anyone reads its label.
-   */
-  readonly kind: 'held' | 'limit' | 'trigger';
-}
 
 /**
  * TradingView Lightweight Charts, wrapped as a dumb presentational component:
@@ -157,12 +131,11 @@ export class PriceChartComponent {
   readonly chartMenu = output<{ x: number; y: number; price: number | undefined; time: number | undefined }>();
 
   private chart: IChartApi | undefined;
-  private priceSeries: ISeriesApi<'Candlestick' | 'Bar' | 'Line' | 'Area'> | undefined;
-  private volumeSeries: ISeriesApi<'Histogram'> | undefined;
+  /** The price, volume and level series. Created with the chart; see `ChartSeries`. */
+  private series: ChartSeries | undefined;
   private lastBar: ChartBar | undefined;
   private bars: ChartBar[] = [];
   private studyPanes: StudyPanes | undefined;
-  private levelLines: IPriceLine[] = [];
   private hoveredTime: number | undefined;
   private keyboardAnchor: DrawingAnchor | undefined;
   private updateFrame = 0;
@@ -246,7 +219,7 @@ export class PriceChartComponent {
     // away the user's pan/zoom on each price change.
     effect(() => {
       const tick = this.tick();
-      if (!tick || !this.priceSeries || this.replay()) {
+      if (!tick || !this.series || this.replay()) {
         return;
       }
       untracked(() => this.applyTick(tick));
@@ -279,6 +252,11 @@ export class PriceChartComponent {
     });
 
     this.studyPanes = new StudyPanes(this.chart, (name, fallback) => this.token(name, fallback));
+    this.series = new ChartSeries(this.chart, (name, fallback) => this.token(name, fallback),
+      (previous, current) => {
+        previous?.detachPrimitive(this.drawing.primitive);
+        current.attachPrimitive(this.drawing.primitive);
+      });
     this.replacePriceSeries();
     this.chart.subscribeCrosshairMove((event) => this.onCrosshair(event));
     this.chart.subscribeClick((event) => this.drawing.click(this.anchorFrom(event)));
@@ -294,8 +272,7 @@ export class PriceChartComponent {
       // it, navigating between instruments leaks one chart per visit.
       this.chart?.remove();
       this.chart = undefined;
-      this.priceSeries = undefined;
-      this.volumeSeries = undefined;
+      this.series = undefined;
       this.studyPanes = undefined;
     });
   }
@@ -320,13 +297,10 @@ export class PriceChartComponent {
    */
   private applyTheme(): void {
     const chart = this.chart;
-    const price = this.priceSeries;
-    if (!chart || !price) {
+    if (!chart) {
       return;
     }
 
-    const up = this.token('--ak-buy', '#3b82f6');
-    const down = this.token('--ak-sell', '#f59e0b');
     const text = this.token('--ak-text-secondary', '#98a1b3');
     const border = this.token('--ak-border', '#2a2f38');
 
@@ -344,20 +318,7 @@ export class PriceChartComponent {
       crosshair: { vertLine: { color: text, labelBackgroundColor: border }, horzLine: { color: text, labelBackgroundColor: border } },
     });
 
-    price.applyOptions({
-      upColor: this.chartType() === 'hollow' ? 'transparent' : up,
-      downColor: down,
-      borderUpColor: up,
-      borderDownColor: down,
-      wickUpColor: up,
-      wickDownColor: down,
-      color: up,
-      lineColor: up,
-      topColor: this.token('--ak-buy-surface', 'transparent'),
-      bottomColor: 'transparent',
-    });
-
-    this.volumeSeries?.applyOptions({ color: border });
+    this.series?.applyTheme(this.chartType());
   }
 
   /**
@@ -371,8 +332,8 @@ export class PriceChartComponent {
 
   private drawHistory(): void {
     const chart = this.chart;
-    const price = this.priceSeries;
-    if (!chart || !price) {
+    const series = this.series;
+    if (!chart || !series) {
       return;
     }
 
@@ -380,33 +341,12 @@ export class PriceChartComponent {
 
     const previousRange = this.replay() ? chart.timeScale().getVisibleLogicalRange() : null;
     this.bars = bars;
-    price.setData(bars.map((bar) => this.pricePoint(bar)));
+    series.setBars(bars, volumes);
     this.lastBar = bars.at(-1);
     this.hoveredTime = undefined;
     this.keyboardAnchor = undefined;
-
-    if (volumes.some((v) => v.value > 0)) {
-      this.volumeSeries ??= chart.addSeries(HistogramSeries, {
-        priceScaleId: 'volume',
-        priceFormat: { type: 'volume' },
-        // The volume scale is an overlay with no axis of its own, so its last-value badge lands
-        // on the PRICE axis — a "2.26M" (or a live bar's "0") sitting among the prices,
-        // covering one. Volume is read off the bars; the badge only gets in the way.
-        lastValueVisible: false,
-        priceLineVisible: false,
-      });
-      // Pinned to the bottom fifth so volume reads as a footer to the price
-      // action rather than competing with it for vertical space.
-      chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-      const up = this.token('--ak-buy-surface', 'transparent');
-      const down = this.token('--ak-sell-surface', 'transparent');
-      this.volumeSeries.setData(volumes.map((v, i) => ({ time: v.time as UTCTimestamp, value: v.value,
-        color: (bars[i]?.close ?? 0) >= (bars[i]?.open ?? 0) ? up : down })));
-      this.applyTheme();
-    } else if (this.volumeSeries) {
-      chart.removeSeries(this.volumeSeries);
-      this.volumeSeries = undefined;
-    }
+    // The volume series may have just been created, and it takes its colour from the theme.
+    if (series.hasVolume) { this.applyTheme(); }
 
     this.drawStudies();
     this.applySettings();
@@ -433,13 +373,10 @@ export class PriceChartComponent {
       return;
     }
 
-    if (this.lastBar?.time === bar.time) { this.bars[this.bars.length - 1] = bar; }
-    else {
-      this.bars.push(bar);
-      this.volumeSeries?.update({ time: bar.time as UTCTimestamp, value: 0 });
-    }
+    const opened = this.lastBar?.time !== bar.time;
+    if (opened) { this.bars.push(bar); } else { this.bars[this.bars.length - 1] = bar; }
     this.lastBar = bar;
-    this.priceSeries?.update(this.pricePoint(bar));
+    this.series?.updateBar(bar, opened);
     if (this.hoveredTime === undefined || this.hoveredTime === bar.time) { this.barChange.emit(bar); }
     cancelAnimationFrame(this.updateFrame);
     this.updateFrame = requestAnimationFrame(() => this.drawStudies(false));
@@ -447,7 +384,7 @@ export class PriceChartComponent {
 
   moveCursor(horizontal: number, vertical: number): void {
     const chart = this.chart;
-    const series = this.priceSeries;
+    const series = this.series?.priceSeries;
     if (!chart || !series || !this.lastBar) { return; }
     const current = this.keyboardAnchor ?? { time: this.lastBar.time, price: this.lastBar.close };
     const index = this.bars.findIndex((bar) => bar.time === current.time);
@@ -467,7 +404,7 @@ export class PriceChartComponent {
     const anchor = this.keyboardAnchor;
     if (!anchor) { return; }
     const x = this.chart?.timeScale().timeToCoordinate(anchor.time as UTCTimestamp);
-    const y = this.priceSeries?.priceToCoordinate(anchor.price);
+    const y = this.series?.priceSeries?.priceToCoordinate(anchor.price);
     // Through the same pixel round trip a mouse click takes, so a cursor
     // parked off-screen places nothing, exactly as a click there would.
     if (x !== null && x !== undefined && y !== null && y !== undefined) {
@@ -510,7 +447,7 @@ export class PriceChartComponent {
     const y = clientY - rect.top;
     if (x < 0 || y < 0 || x > rect.width || y > rect.height) { return false; }
     const time = this.chart?.timeScale().coordinateToTime(x as Coordinate);
-    const price = this.priceSeries?.coordinateToPrice(y as Coordinate);
+    const price = this.series?.priceSeries?.coordinateToPrice(y as Coordinate);
     this.chartMenu.emit({ x, y,
       price: price === null || price === undefined ? undefined : price,
       time: typeof time === 'number' ? time : undefined });
@@ -525,50 +462,16 @@ export class PriceChartComponent {
   beginMeasure(anchor: DrawingAnchor): void { this.drawing.beginMeasure(anchor); }
   cancelDrawing(): void { this.drawing.cancel(); }
 
-  private pricePoint(bar: ChartBar) {
-    return { ...bar, time: bar.time as UTCTimestamp, value: bar.close };
-  }
-
+  /** Swaps the price series for another form, keeping bars, drawings and levels. */
   private replacePriceSeries(): void {
-    const chart = this.chart;
-    if (!chart) { return; }
-    const old = this.priceSeries;
-    const options = { priceLineVisible: true, lastValueVisible: true };
-    switch (this.chartType()) {
-      case 'line': this.priceSeries = chart.addSeries(LineSeries, options); break;
-      case 'area': this.priceSeries = chart.addSeries(AreaSeries, options); break;
-      case 'bars': this.priceSeries = chart.addSeries(BarSeries, options); break;
-      default: this.priceSeries = chart.addSeries(CandlestickSeries, options);
-    }
-    this.priceSeries.setData(this.bars.map((bar) => this.pricePoint(bar)));
-    // A price line belongs to its series and is removed with it, so the old
-    // handles are dropped rather than removed a second time.
-    this.levelLines = [];
-    if (old) { old.detachPrimitive(this.drawing.primitive); chart.removeSeries(old); }
-    this.priceSeries.setSeriesOrder(0);
-    this.priceSeries.attachPrimitive(this.drawing.primitive);
+    this.series?.setType(this.chartType(), this.bars);
     this.applyTheme();
     this.applySettings();
     this.drawLevels();
   }
 
-  /** Rebuilds the caller's reference lines; cheap enough that there is no diffing. */
   private drawLevels(): void {
-    const series = this.priceSeries;
-    for (const line of this.levelLines.splice(0)) { series?.removePriceLine(line); }
-    if (!series) { return; }
-    const style = { held: LineStyle.Solid, limit: LineStyle.Dashed, trigger: LineStyle.Dotted } as const;
-    for (const level of this.priceLevels()) {
-      if (!Number.isFinite(level.price) || level.price <= 0) { continue; }
-      this.levelLines.push(series.createPriceLine({
-        price: level.price,
-        title: level.title,
-        color: this.token(`--ak-${level.tone}`, 'currentColor'),
-        lineWidth: level.kind === 'held' ? 2 : 1,
-        lineStyle: style[level.kind],
-        axisLabelVisible: true,
-      }));
-    }
+    this.series?.setLevels(this.priceLevels());
   }
 
   private applySettings(): void {
@@ -578,10 +481,7 @@ export class PriceChartComponent {
       handleScroll: !drawing,
       handleScale: !drawing,
     });
-    this.priceSeries?.priceScale().applyOptions({ mode: this.scaleMode() === 'log' ? PriceScaleMode.Logarithmic
-      : this.scaleMode() === 'percentage' ? PriceScaleMode.Percentage : PriceScaleMode.Normal });
-    this.volumeSeries?.applyOptions({ visible: this.showVolume() });
-    this.priceSeries?.applyOptions({ priceFormat: { type: 'price', precision: this.precision(), minMove: 10 ** -this.precision() } });
+    this.series?.applySettings(this.scaleMode(), this.precision(), this.showVolume());
     this.host().nativeElement.style.cursor = drawing ? 'crosshair' : '';
     this.drawing.render();
   }
@@ -599,7 +499,7 @@ export class PriceChartComponent {
 
   private anchorFrom(event: MouseEventParams): DrawingAnchor | undefined {
     if (!event.point || (event.paneIndex ?? 0) !== 0 || typeof event.time !== 'number') { return undefined; }
-    const price = this.priceSeries?.coordinateToPrice(event.point.y);
+    const price = this.series?.priceSeries?.coordinateToPrice(event.point.y);
     return price === null || price === undefined ? undefined : { time: event.time, price };
   }
 }
