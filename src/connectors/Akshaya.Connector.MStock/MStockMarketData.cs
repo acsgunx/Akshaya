@@ -196,23 +196,123 @@ public sealed class MStockMarketData : IConnectorMarketData
             return Result<CandleSeries>.Failure(exchange.Error);
         }
 
-        var path = string.Format(
-            CultureInfo.InvariantCulture,
-            _options.HistoricalChartPathFormat,
-            exchange.Value,
-            resolved.Value.ToString(CultureInfo.InvariantCulture),
-            interval.Value.Interval);
-
-        // The window is the only query: no "interval" parameter, which the route does not take.
+        var token = resolved.Value.ToString(CultureInfo.InvariantCulture);
         var from = ClampToBarLimit(request.From, request.To, interval.Value.BarsPerSession);
-        var query = new MStockQuery()
-            .Add("from", MStockTime.FormatDateTime(from, _venueZone))
-            .Add("to", MStockTime.FormatDateTime(request.To, _venueZone));
 
+        // mStock serves a window in two halves: everything before today from the historical
+        // route, today from the intraday one. The historical route alone — all this used to
+        // call — ends at the previous close, so a chart opened mid-session showed yesterday.
+        var venueToday = TimeZoneInfo.ConvertTime(_clock.UtcNow, _venueZone).Date;
+        var todayStart = new DateTimeOffset(venueToday, _venueZone.GetUtcOffset(venueToday));
+
+        var candles = new List<Candle>();
+        var lastCall = (DateTimeOffset?)null;
+
+        if (from < todayStart)
+        {
+            var historyTo = request.To < todayStart ? request.To : todayStart.AddSeconds(-1);
+            var historical = await FetchCandlesAsync(
+                    string.Format(
+                        CultureInfo.InvariantCulture,
+                        _options.HistoricalChartPathFormat,
+                        exchange.Value,
+                        token,
+                        interval.Value.Interval),
+                    // The window is the only query: no "interval" parameter, which the route
+                    // does not take.
+                    new MStockQuery()
+                        .Add("from", MStockTime.FormatDateTime(from, _venueZone))
+                        .Add("to", MStockTime.FormatDateTime(historyTo, _venueZone)),
+                    ct)
+                .ConfigureAwait(false);
+
+            if (historical.IsFailure)
+            {
+                return Result<CandleSeries>.Failure(historical.Error);
+            }
+
+            candles.AddRange(historical.Value);
+            lastCall = DateTimeOffset.UtcNow;
+        }
+
+        if (request.To >= todayStart)
+        {
+            var code = MStockMaps.ToIntradayExchangeCode(exchange.Value);
+            if (code.IsFailure)
+            {
+                return Result<CandleSeries>.Failure(code.Error);
+            }
+
+            // One data request a second is mStock's documented limit. The historical call has
+            // only just returned, so wait out the rest of its second rather than have this one
+            // refused.
+            if (lastCall is { } previous)
+            {
+                var wait = TimeSpan.FromSeconds(1.05) - (DateTimeOffset.UtcNow - previous);
+                if (wait > TimeSpan.Zero)
+                {
+                    await Task.Delay(wait, ct).ConfigureAwait(false);
+                }
+            }
+
+            var intraday = await FetchCandlesAsync(
+                    string.Format(
+                        CultureInfo.InvariantCulture,
+                        _options.IntradayChartPathFormat,
+                        code.Value.ToString(CultureInfo.InvariantCulture),
+                        token,
+                        interval.Value.Interval),
+                    new MStockQuery(),
+                    ct)
+                .ConfigureAwait(false);
+
+            if (intraday.IsFailure)
+            {
+                return Result<CandleSeries>.Failure(intraday.Error);
+            }
+
+            // The route answers with the whole session; keep the part the caller asked for.
+            candles.AddRange(intraday.Value.Where(c => c.OpenTime >= from && c.OpenTime <= request.To));
+        }
+
+        // Oldest first, whatever order they arrived in: the historical route lists candles
+        // oldest first, the intraday one newest first. A STABLE sort, so that among candles
+        // sharing a time the intraday route's — added last, and fresher — stays last.
+        var ordered = candles.OrderBy(static candle => candle.OpenTime).ToList();
+
+        // One candle per time. mStock's historical route repeats some daily candles verbatim
+        // (a year of TCS daily bars came back with five days listed twice, identical OHLCV),
+        // and a chart library that requires strictly ascending time refuses the whole series
+        // over one repeat. Last wins, for the ordering reason above.
+        candles = new List<Candle>(ordered.Count);
+        foreach (var candle in ordered)
+        {
+            if (candles.Count > 0 && candles[^1].OpenTime == candle.OpenTime)
+            {
+                candles[^1] = candle;
+            }
+            else
+            {
+                candles.Add(candle);
+            }
+        }
+
+        return new CandleSeries
+        {
+            Instrument = request.Instrument,
+            TimeFrame = request.TimeFrame,
+            Currency = Inr,
+            Candles = candles,
+        };
+    }
+
+    /// <summary>One chart route's candles, mapped. Both routes answer with the same shape.</summary>
+    private async Task<Result<List<Candle>>> FetchCandlesAsync(string path, MStockQuery query, CancellationToken ct)
+    {
         var response = await _api.GetAsync<MStockCandlesData>(path, query, ct).ConfigureAwait(false);
         if (response.IsFailure)
         {
-            return Result<CandleSeries>.Failure(response.Error);
+            return Result<List<Candle>>.Failure(response.Error);
         }
 
         var rows = response.Value.Candles ?? Array.Empty<IReadOnlyList<JsonElement>>();
@@ -223,23 +323,13 @@ public sealed class MStockMarketData : IConnectorMarketData
             var candle = MapCandle(row);
             if (candle.IsFailure)
             {
-                return Result<CandleSeries>.Failure(candle.Error);
+                return Result<List<Candle>>.Failure(candle.Error);
             }
 
             candles.Add(candle.Value);
         }
 
-        // Oldest first, whatever order they arrived in. The documented samples disagree: the
-        // historical route lists candles oldest first, the intraday one newest first.
-        candles.Sort(static (left, right) => left.OpenTime.CompareTo(right.OpenTime));
-
-        return new CandleSeries
-        {
-            Instrument = request.Instrument,
-            TimeFrame = request.TimeFrame,
-            Currency = Inr,
-            Candles = candles,
-        };
+        return candles;
     }
 
     /// <summary>

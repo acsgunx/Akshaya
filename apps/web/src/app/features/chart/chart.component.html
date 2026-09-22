@@ -89,6 +89,7 @@
           [candles]="store.candles()"
           [timeFrame]="loadedFrame"
           [tick]="quote()"
+          [timeZone]="timeZone()"
           [ariaLabel]="instrumentLabel() + ' ' + label(loadedFrame) + ' price chart'"
         />
       }

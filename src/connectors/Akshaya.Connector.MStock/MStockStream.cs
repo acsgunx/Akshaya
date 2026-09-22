@@ -7,6 +7,8 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Akshaya.Connectors.Abstractions;
 using Akshaya.SharedKernel;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Akshaya.Connector.MStock;
 
@@ -47,6 +49,13 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
     private readonly IMStockInstrumentLookup _instruments;
     private readonly Func<CancellationToken, Task<Result>>? _ensureInstruments;
     private readonly IClock _clock;
+    private readonly ILogger _logger;
+
+    /// <summary>
+    /// Packet lengths already logged once — see <see cref="DecodePacket"/>. Unlocked: only the
+    /// receive loop touches it, and there is one receive loop at a time.
+    /// </summary>
+    private readonly HashSet<int> _seenPacketLengths = [];
 
     private readonly Channel<StreamEvent> _events = Channel.CreateBounded<StreamEvent>(
         new BoundedChannelOptions(EventBufferCapacity)
@@ -75,18 +84,22 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
     /// <param name="clock">Stamps ticks and drives the staleness watchdog.</param>
     /// <param name="ensureInstruments">Loads the script master if this process has not yet.
     /// Without it, the first subscription after a restart could never resolve a token.</param>
+    /// <param name="logger">State changes, broker text frames and first-seen packet shapes —
+    /// what it takes to tell "mStock refused us" from "the market is quiet".</param>
     public MStockStream(
         MStockOptions options,
         BrokerSession session,
         IMStockInstrumentLookup instruments,
         IClock clock,
-        Func<CancellationToken, Task<Result>>? ensureInstruments = null)
+        Func<CancellationToken, Task<Result>>? ensureInstruments = null,
+        ILogger? logger = null)
     {
         _options = options;
         _session = session;
         _instruments = instruments;
         _ensureInstruments = ensureInstruments;
         _clock = clock;
+        _logger = logger ?? NullLogger.Instance;
         _lastMessageAt = clock.UtcNow;
     }
 
@@ -280,7 +293,44 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
             try
             {
                 socket = new ClientWebSocket();
-                await socket.ConnectAsync(BuildStreamUri(), ct).ConfigureAwait(false);
+
+                // Ping/pong liveness, as mStock's own SDK does (a ping every 2.5s, dropped when
+                // no pong comes back). Without it a half-open TCP connection — a NAT timeout, a
+                // laptop waking from sleep — reads as a quiet market until the idle timeout.
+                socket.Options.KeepAliveInterval = _options.StreamKeepAlive;
+                socket.Options.KeepAliveTimeout = _options.StreamKeepAlive * 2;
+
+                // The handshake the working clients send. Python's websocket-client (under both
+                // mStock's SDK and OpenAlgo) adds an Origin of the socket's own host; .NET sends
+                // none and no User-Agent. mStock's servers drop a handshake they will not accept,
+                // and their AWS load balancer reports that as a bare 502, so nothing short of
+                // matching a known-good client says which detail they object to.
+                socket.Options.SetRequestHeader("Origin", $"https://{_options.StreamUrl.Host}");
+                socket.Options.SetRequestHeader("User-Agent", "Akshaya");
+                socket.Options.CollectHttpResponseDetails = true;
+
+                try
+                {
+                    await socket.ConnectAsync(BuildStreamUri(), ct).ConfigureAwait(false);
+                }
+                catch (WebSocketException) when (socket.HttpStatusCode != 0)
+                {
+                    // The refused handshake's status and server are the only diagnostics mStock
+                    // gives. Logged here; the reconnect path below reports the failure itself.
+                    _logger.LogWarning(
+                        "mStock refused the stream handshake: HTTP {Status}, server {Server}.",
+                        (int)socket.HttpStatusCode,
+                        socket.HttpResponseHeaders?.TryGetValue("Server", out var server) == true
+                            ? string.Join(',', server)
+                            : "-");
+                    throw;
+                }
+
+                // mStock drops the session "shortly after" connecting unless this is the first
+                // thing sent (Market Data docs, "Connection Maintenance"; the SDK's
+                // send_login_after_connect). Sent BEFORE the socket is published below, so a
+                // concurrent SubscribeAsync cannot get a message in ahead of it.
+                await SendTextAsync(socket, $"LOGIN:{_session.AccessToken}", ct).ConfigureAwait(false);
 
                 lock (_stateGate)
                 {
@@ -307,9 +357,18 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
             {
                 break;
             }
-            catch (Exception ex) when (ex is WebSocketException or HttpRequestException or IOException
-                                           or InvalidOperationException or ObjectDisposedException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
+                // EVERY other failure reconnects, including the receive loop's idle timeout. This
+                // used to list the exception types it expected, and anything else — that idle
+                // timeout, then an OperationCanceledException, among them — escaped the loop and
+                // faulted the pump: no reconnect, no final state, the event channel never
+                // completed, and a feed that still read "Connected" while delivering nothing. A
+                // price feed that stops silently is the one failure this class exists to prevent.
+                var reason = ex is TimeoutException or WebSocketException
+                    ? ex.Message
+                    : $"{ex.GetType().Name}: {ex.Message}";
+
                 if (!reported)
                 {
                     reported = true;
@@ -320,7 +379,7 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
                         ex.Message)));
                 }
 
-                SetState(StreamState.Reconnecting, ex.Message);
+                SetState(StreamState.Reconnecting, reason);
             }
             finally
             {
@@ -380,9 +439,19 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
 
             do
             {
-                result = await socket
-                    .ReceiveAsync(new ArraySegment<byte>(buffer), idle.Token)
-                    .ConfigureAwait(false);
+                try
+                {
+                    result = await socket
+                        .ReceiveAsync(new ArraySegment<byte>(buffer), idle.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (idle.IsCancellationRequested && !ct.IsCancellationRequested)
+                {
+                    // Named, so the reconnect below says what actually happened: the socket went
+                    // quiet. Every other failure reports its own message.
+                    throw new TimeoutException(
+                        $"No data from mStock for {_options.StreamIdleTimeout.TotalSeconds:0}s; reconnecting.");
+                }
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
@@ -426,21 +495,22 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
         return TimeSpan.FromMilliseconds(Math.Max(100d, cappedMs + jitter));
     }
 
+    /// <summary>
+    /// <c>wss://ws.mstock.trade?ACCESS_TOKEN=…&amp;API_KEY=…</c> — upper-case names, and the
+    /// session's ACCESS token (Market Data docs; the SDK's <c>MTicker</c>). This used to send
+    /// Kite's lower-case <c>api_key</c>/<c>access_token</c> and prefer the session's
+    /// <c>enctoken</c>, and mStock rejects that handshake.
+    ///
+    /// The values go in RAW, as the SDK's plain string format puts them, not percent-encoded:
+    /// a key containing <c>+</c>, <c>/</c> or <c>=</c> would otherwise reach mStock as something
+    /// it never issued. <see cref="Uri"/> still escapes anything that cannot appear in a URL.
+    /// </summary>
     private Uri BuildStreamUri()
     {
         var apiKey = _session.Extras.GetValueOrDefault(MStockSessionKeys.ApiKey) ?? string.Empty;
+        var root = _options.StreamUrl.GetLeftPart(UriPartial.Path).TrimEnd('/');
 
-        // The socket authenticates with the enctoken when there is one — it is issued
-        // specifically for the feed — and falls back to the access token otherwise.
-        var token = _session.Extras.GetValueOrDefault(MStockSessionKeys.EncToken)
-                    ?? _session.AccessToken;
-
-        var builder = new UriBuilder(_options.StreamUrl)
-        {
-            Query = $"api_key={Uri.EscapeDataString(apiKey)}&access_token={Uri.EscapeDataString(token)}",
-        };
-
-        return builder.Uri;
+        return new Uri($"{root}?ACCESS_TOKEN={_session.AccessToken}&API_KEY={apiKey}");
     }
 
     private async Task ResubscribeAsync(CancellationToken ct)
@@ -504,17 +574,11 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
             messages.Add(BuildModeMessage(mode, tokens));
         }
 
-        await _sendGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             foreach (var message in messages)
             {
-                await socket.SendAsync(
-                        Encoding.UTF8.GetBytes(message),
-                        WebSocketMessageType.Text,
-                        endOfMessage: true,
-                        ct)
-                    .ConfigureAwait(false);
+                await SendTextAsync(socket, message, ct).ConfigureAwait(false);
             }
         }
         catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException
@@ -526,12 +590,36 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
                 ex.GetType().Name,
                 ex.Message));
         }
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// One text frame. Serialised: a WebSocket allows only one send in flight at a time.
+    ///
+    /// <paramref name="ct"/> bounds only the wait for the gate, never the send itself. Cancelling
+    /// a <see cref="ClientWebSocket"/> send ABORTS THE SOCKET, and the tokens that reach here
+    /// belong to whoever asked for a subscription — a page that was navigated away from, a
+    /// connector timeout. Passing one through let any one caller giving up tear down the feed
+    /// for every subscriber on the link. A send on a dead socket still ends: the keepalive or
+    /// the idle timeout aborts it, and disconnecting disposes it.
+    /// </summary>
+    private async Task SendTextAsync(ClientWebSocket socket, string message, CancellationToken ct)
+    {
+        await _sendGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await socket.SendAsync(
+                    Encoding.UTF8.GetBytes(message),
+                    WebSocketMessageType.Text,
+                    endOfMessage: true,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
         finally
         {
             _sendGate.Release();
         }
-
-        return Result.Success();
     }
 
     private static string BuildActionMessage(string action, IReadOnlyList<uint> tokens) =>
@@ -561,6 +649,12 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
         {
             return;
         }
+
+        // The broker's replies to LOGIN and to subscriptions are how a refused session shows
+        // itself, and not all of them are JSON. The token is redacted in case one echoes it.
+        _logger.LogInformation(
+            "mStock stream text frame: {Message}",
+            Truncate(message.Replace(_session.AccessToken, "***", StringComparison.Ordinal), 300));
 
         try
         {
@@ -605,9 +699,11 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
     }
 
     /// <summary>
-    /// mStock's binary tick frame, which follows the Kite wire format: a two-byte packet count,
+    /// mStock's binary tick frame, which follows the Kite framing: a two-byte packet count,
     /// then for each packet a two-byte length followed by that many bytes of big-endian
-    /// signed 32-bit fields. Packet length is what identifies the mode.
+    /// 32-bit fields. Packet length is what identifies the layout — see
+    /// <see cref="DecodePacket"/>, where mStock's layouts depart from Kite's. Frames under two
+    /// bytes are heartbeats.
     /// </summary>
     private void DispatchBinary(ReadOnlySpan<byte> frame)
     {
@@ -646,16 +742,35 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
         {
             // Counted, not guessed. A token we do not know is a stale script master, and the
             // ingest job alarms on this counter rather than us inventing an instrument.
-            Interlocked.Increment(ref _unresolvedTicks);
+            if (Interlocked.Increment(ref _unresolvedTicks) == 1)
+            {
+                _logger.LogWarning(
+                    "mStock stream: tick for token {Token} is not in the script master; dropping it (and counting any more).",
+                    token);
+            }
+
             return;
+        }
+
+        if (_seenPacketLengths.Add(packet.Length))
+        {
+            _logger.LogInformation(
+                "mStock stream: first {Length}-byte packet (token {Token}, {Instrument}).",
+                packet.Length,
+                token,
+                instrument);
         }
 
         var now = _clock.UtcNow;
         var last = Price(ReadInt(packet, 1));
 
+        // Packet length is the only thing that says which layout this is. The layouts below
+        // are mStock's own SDK parser (MiraeAsset-mStock/pytradingapi-typeA, mticker.py), which
+        // is what runs against the live socket, checked field by field against the Market
+        // Data docs. `ReadInt(packet, n)` reads the n-th FOUR-BYTE field, i.e. bytes 4n..4n+4.
         var tick = packet.Length switch
         {
-            // 8 bytes: token + last price. The LTP mode most watchlists use.
+            // 8 bytes: token + last price. LTP mode.
             8 => new Tick
             {
                 Instrument = instrument,
@@ -663,8 +778,7 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
                 Timestamp = now,
             },
 
-            // 28 or 32 bytes: an index packet. Indices have no traded volume or book, so the
-            // fields after the OHLC block are absent and must not be read as if they were.
+            // 28 or 32 bytes: the Kite-shaped index packet (32 adds the exchange time).
             28 or 32 => new Tick
             {
                 Instrument = instrument,
@@ -673,13 +787,28 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
                 Low = Price(ReadInt(packet, 3)),
                 Open = Price(ReadInt(packet, 4)),
                 PreviousClose = Price(ReadInt(packet, 5)),
-                Timestamp = packet.Length >= 32
-                    ? DateTimeOffset.FromUnixTimeSeconds(ReadInt(packet, 7))
-                    : now,
+                Timestamp = packet.Length >= 32 ? ExchangeTime(ReadInt(packet, 7), now) : now,
             },
 
-            // 44 bytes and up: a tradable instrument's quote packet, and 184 bytes is the same
-            // thing with the five-level book appended.
+            // 48 bytes: mStock's own index packet. It has to be matched BEFORE the `>= 44`
+            // arm below, which used to swallow it and read an index's circuit limits and
+            // 52-week range as its open, high, low and close. OHLC order is the SDK's (open,
+            // high, low, close); the docs page lists high, low, open, close, but the SDK is
+            // the code that is run against the live socket. Bytes 28-32 are the exchange time
+            // in both.
+            48 => new Tick
+            {
+                Instrument = instrument,
+                LastPrice = last,
+                Open = Price(ReadInt(packet, 2)),
+                High = Price(ReadInt(packet, 3)),
+                Low = Price(ReadInt(packet, 4)),
+                PreviousClose = Price(ReadInt(packet, 5)),
+                Timestamp = ExchangeTime(ReadInt(packet, 7), now),
+            },
+
+            // 44 bytes: a tradable instrument's quote. 184 appends the five-level book from
+            // byte 64, and 200 appends circuit limits and the 52-week range after that.
             >= 44 => new Tick
             {
                 Instrument = instrument,
@@ -691,11 +820,17 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
                 Low = Price(ReadInt(packet, 9)),
                 PreviousClose = Price(ReadInt(packet, 10)),
                 OpenInterest = packet.Length >= 184 ? ReadInt(packet, 12) : null,
+
+                // Best bid and ask: the price of the first bid entry (byte 68) and of the first
+                // ask entry (byte 128). The ask used to be read from byte 188 — the lower
+                // circuit limit on a 200-byte packet, past the end on a 184-byte one.
                 BidPrice = packet.Length >= 184 ? Price(ReadInt(packet, 17)) : null,
-                AskPrice = packet.Length >= 184 ? Price(ReadInt(packet, 47)) : null,
-                Timestamp = packet.Length >= 184
-                    ? DateTimeOffset.FromUnixTimeSeconds(ReadInt(packet, 44))
-                    : now,
+                AskPrice = packet.Length >= 184 ? Price(ReadInt(packet, 32)) : null,
+
+                // The exchange time is field 15 (bytes 60-64). This used to read field 44 —
+                // byte 176, an ask quantity — as a Unix time, so every full tick was stamped
+                // in 1970 and looked hours stale the moment it arrived.
+                Timestamp = packet.Length >= 184 ? ExchangeTime(ReadInt(packet, 15), now) : now,
             },
 
             _ => null,
@@ -771,7 +906,21 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
     private static int ReadInt(ReadOnlySpan<byte> packet, int index) =>
         BinaryPrimitives.ReadInt32BigEndian(packet[(index * 4)..]);
 
+    /// <summary>
+    /// mStock's tick times count seconds from 1980-01-01 UTC, NOT the Unix epoch — the SDK's
+    /// <c>convert_from_unix_timestamp(..., year=1980)</c>, despite its name. Read as Unix
+    /// time, every tick lands ten years in the past and every staleness check calls a live
+    /// feed dead. Zero means the exchange sent no time, so the receive time stands in.
+    /// </summary>
+    private static DateTimeOffset ExchangeTime(int seconds, DateTimeOffset fallback) =>
+        seconds > 0 ? MStockEpoch.AddSeconds(seconds) : fallback;
+
+    private static readonly DateTimeOffset MStockEpoch = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
     private static Money Price(int paise) => new(paise / PaiseDivisor, Currency.Inr);
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : string.Concat(value.AsSpan(0, max), "…");
 
     private void Publish(StreamEvent evt) => _events.Writer.TryWrite(evt);
 
@@ -786,6 +935,7 @@ public sealed class MStockStream : IConnectorStream, IAsyncDisposable
 
         if (changed || reason is not null)
         {
+            _logger.LogInformation("mStock stream {State}: {Reason}", state, reason ?? "-");
             Publish(new StreamEvent.ConnectionChanged(state, reason));
         }
     }

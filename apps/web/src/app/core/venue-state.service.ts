@@ -42,6 +42,15 @@ const VENUE_CALENDAR: Readonly<Record<VenueMic, VenueCalendarEntry>> = {
 };
 
 /**
+ * The IANA time zone a venue trades in, or `undefined` for a venue this table
+ * does not know. What a chart labels its time axis in: an NSE session reads
+ * 09:15-15:30 wherever the trader happens to be sitting.
+ */
+export function venueTimeZone(mic: VenueMic): string | undefined {
+  return VENUE_CALENDAR[mic.toUpperCase()]?.timeZone;
+}
+
+/**
  * Per-venue open/closed state, ticking every second. Every trading-critical
  * surface (order ticket header, watchlist, positions) reads this rather than
  * inferring "is the market open" from tick freshness — the two are

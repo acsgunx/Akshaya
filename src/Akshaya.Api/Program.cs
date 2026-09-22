@@ -141,6 +141,11 @@ try
 
     // ── Trading core + Portfolio module. ─────────────────────────────────────────────────────
     builder.Services.AddTradingCore();
+
+    // Polls every linked broker's order book: corrects what the broker disagrees with, and
+    // adopts orders placed outside Akshaya (the broker's own app or website), which otherwise
+    // never reach the blotter.
+    builder.Services.AddHostedService<ReconciliationHostedService>();
     builder.Services.AddDevelopmentTradingStores(
         Currency.Inr,
         fx => fx
