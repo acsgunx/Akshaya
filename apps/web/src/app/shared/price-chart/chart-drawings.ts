@@ -1,26 +1,38 @@
 import type { IPrimitivePaneRenderer, IPrimitivePaneView, ISeriesPrimitive, SeriesAttachedParameter, UTCTimestamp } from 'lightweight-charts';
 
-export type DrawingTool = 'cursor' | 'horizontal' | 'trend' | 'rectangle' | 'fibonacci';
+export type DrawingTool = 'cursor' | 'horizontal' | 'trend' | 'rectangle' | 'fibonacci' | 'measure';
+export type PersistentDrawingTool = Exclude<DrawingTool, 'cursor' | 'measure'>;
 export interface DrawingAnchor { readonly time: number; readonly price: number }
 export interface ChartDrawing {
-  readonly tool: Exclude<DrawingTool, 'cursor'>;
+  readonly tool: PersistentDrawingTool;
   readonly start: DrawingAnchor;
   readonly end: DrawingAnchor;
 }
 
+/** Transient measure overlay — never persisted, unlike `ChartDrawing`. */
+export interface MeasureOverlay {
+  readonly start: DrawingAnchor;
+  readonly end: DrawingAnchor;
+  readonly color: string;
+  readonly lines: readonly string[];
+}
+
 export const DRAWING_TOOLS: readonly { id: DrawingTool; label: string; icon: string }[] = [
   { id: 'cursor', label: 'Crosshair / pan', icon: 'control_camera' },
+  { id: 'measure', label: 'Measure', icon: 'straighten' },
   { id: 'trend', label: 'Trend line', icon: 'timeline' },
   { id: 'horizontal', label: 'Horizontal line', icon: 'horizontal_rule' },
   { id: 'rectangle', label: 'Rectangle', icon: 'crop_square' },
   { id: 'fibonacci', label: 'Fibonacci retracement', icon: 'format_line_spacing' },
 ];
 
+const PERSISTENT_TOOLS: readonly string[] = ['trend', 'horizontal', 'rectangle', 'fibonacci'];
+
 export function validDrawing(value: unknown): value is ChartDrawing {
   if (!value || typeof value !== 'object') { return false; }
   const drawing = value as Partial<ChartDrawing>;
   const anchor = (point: DrawingAnchor | undefined) => point && Number.isFinite(point.time) && Number.isFinite(point.price);
-  return DRAWING_TOOLS.some((tool) => tool.id !== 'cursor' && tool.id === drawing.tool)
+  return typeof drawing.tool === 'string' && PERSISTENT_TOOLS.includes(drawing.tool)
     && !!anchor(drawing.start) && !!anchor(drawing.end);
 }
 
@@ -28,6 +40,7 @@ export class ChartDrawings implements ISeriesPrimitive {
   private attachedTo: SeriesAttachedParameter | undefined;
   private drawings: readonly ChartDrawing[] = [];
   private color = '';
+  private measure: MeasureOverlay | undefined;
   private readonly view: IPrimitivePaneView = {
     zOrder: () => 'top',
     renderer: () => ({ draw: (target) => this.draw(target) }),
@@ -37,9 +50,10 @@ export class ChartDrawings implements ISeriesPrimitive {
   detached(): void { this.attachedTo = undefined; }
   paneViews(): readonly IPrimitivePaneView[] { return [this.view]; }
 
-  update(drawings: readonly ChartDrawing[], color: string): void {
+  update(drawings: readonly ChartDrawing[], color: string, measure?: MeasureOverlay): void {
     this.drawings = drawings;
     this.color = color;
+    this.measure = measure;
     this.attachedTo?.requestUpdate();
   }
 
@@ -87,7 +101,56 @@ export class ChartDrawings implements ISeriesPrimitive {
           context.beginPath(); context.arc(x ?? 0, y ?? 0, 3, 0, Math.PI * 2); context.fill();
         }
       }
+      if (this.measure) {
+        this.drawMeasure(context, mediaSize, this.measure, attached);
+      }
       context.restore();
     });
+  }
+
+  private drawMeasure(
+    context: CanvasRenderingContext2D,
+    mediaSize: { width: number; height: number },
+    measure: MeasureOverlay,
+    attached: SeriesAttachedParameter,
+  ): void {
+    const x1 = attached.chart.timeScale().timeToCoordinate(measure.start.time as UTCTimestamp);
+    const x2 = attached.chart.timeScale().timeToCoordinate(measure.end.time as UTCTimestamp);
+    const y1 = attached.series.priceToCoordinate(measure.start.price);
+    const y2 = attached.series.priceToCoordinate(measure.end.price);
+    if (x1 === null || x2 === null || y1 === null || y2 === null) { return; }
+
+    const left = Math.min(x1, x2);
+    const top = Math.min(y1, y2);
+    const width = Math.abs(x2 - x1);
+    const height = Math.abs(y2 - y1);
+
+    context.globalAlpha = 0.15;
+    context.fillStyle = measure.color;
+    context.fillRect(left, top, Math.max(width, 1), Math.max(height, 1));
+    context.globalAlpha = 1;
+    context.strokeStyle = measure.color;
+    context.setLineDash([4, 4]);
+    context.strokeRect(left, top, Math.max(width, 1), Math.max(height, 1));
+    context.setLineDash([]);
+    context.fillStyle = measure.color;
+    context.beginPath(); context.arc(x1, y1, 3, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.arc(x2, y2, 3, 0, Math.PI * 2); context.fill();
+
+    if (measure.lines.length === 0) { return; }
+    const padX = 9;
+    const padY = 7;
+    const lineHeight = 15;
+    context.font = '600 11px sans-serif';
+    const boxWidth = Math.max(...measure.lines.map((line) => context.measureText(line).width)) + padX * 2;
+    const boxHeight = measure.lines.length * lineHeight + padY * 2 - 3;
+    const boxX = Math.max(4, Math.min(x2 + 10, mediaSize.width - boxWidth - 4));
+    const boxY = Math.max(4, Math.min(y2 - boxHeight / 2, mediaSize.height - boxHeight - 4));
+    context.fillStyle = measure.color;
+    context.beginPath();
+    context.roundRect(boxX, boxY, boxWidth, boxHeight, 4);
+    context.fill();
+    context.fillStyle = '#ffffff';
+    measure.lines.forEach((line, i) => context.fillText(line, boxX + padX, boxY + padY + i * lineHeight + 4));
   }
 }

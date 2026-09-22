@@ -112,7 +112,7 @@
             <button type="button" class="ak-study" [attr.aria-label]="'Remove ' + study.label" [matTooltip]="study.detail + ' · click to remove'" (click)="toggleStudy(study.id)">{{ study.label }} <span aria-hidden="true">×</span></button>
           }
         </div>
-        <div class="ak-chart-card" tabindex="0" role="group" aria-label="Interactive price chart. Plus and minus zoom. Arrow keys move the cursor. Enter places a drawing point. Escape cancels drawing. Control or Command Z undoes a drawing.">
+        <div #chartCard class="ak-chart-card relative" tabindex="0" role="group" aria-label="Interactive price chart. Right-click opens chart actions. Plus and minus zoom. Arrow keys move the cursor. Enter places a drawing point. Escape cancels drawing. Control or Command Z undoes a drawing.">
           @if (store.loading()) {
             <ak-loading-state label="Loading {{ timeFrame() ? label(timeFrame()!) : '' }} bars…" />
           } @else if (store.error(); as error) {
@@ -128,7 +128,31 @@
             <ak-price-chart [candles]="displayedCandles()" [timeFrame]="loadedFrame" [tick]="quote()" [timeZone]="timeZone()" [ariaLabel]="instrumentLabel() + ' ' + label(loadedFrame) + ' price chart'"
               [chartType]="chartType()" [studies]="selectedStudies()" [showVolume]="showVolume()" [showGrid]="showGrid()" [scaleMode]="scaleMode()" [precision]="precision()"
               [drawingTool]="drawingTool()" [drawingsVisible]="drawingsVisible()" [drawingKey]="brokerLinkId() + ':' + instrument() + ':' + loadedFrame" [replay]="isReplay()"
-              (barChange)="hoveredBar.set($event)" (drawingComplete)="selectTool('cursor')" (drawingState)="drawingState.set($event)" (notice)="status.set($event)" />
+              (barChange)="hoveredBar.set($event)" (drawingComplete)="selectTool('cursor')" (drawingState)="drawingState.set($event)" (notice)="status.set($event)"
+              (chartMenu)="openContextMenu($event)" />
+          }
+          @if (contextMenu(); as menu) {
+            <button type="button" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-20 cursor-default" (click)="closeContextMenu()" (contextmenu)="$event.preventDefault(); closeContextMenu()"></button>
+            <div #chartMenuPanel role="menu" aria-label="Chart actions" (keydown)="onMenuKeydown($event)"
+                 class="ak-menu absolute z-30 w-60 rounded-md border border-border bg-surface-2 py-1 text-xs"
+                 [style.left]="'min(' + menu.x + 'px, calc(100% - 15.5rem))'" [style.top]="'min(' + menu.y + 'px, calc(100% - 19rem))'">
+              <button type="button" role="menuitem" class="ak-menu-item" (click)="chart()?.fitContent(); closeContextMenu()"><mat-icon aria-hidden="true">fit_screen</mat-icon>Reset chart view</button>
+              @if (menu.price !== undefined) {
+                <button type="button" role="menuitem" class="ak-menu-item" (click)="copyText(menu.price!.toFixed(precision()), 'Price')"><mat-icon aria-hidden="true">content_copy</mat-icon>Copy price {{ menu.price | number:numberFormat() }}</button>
+                <button type="button" role="menuitem" class="ak-menu-item" (click)="addLineAt(menu.price!)"><mat-icon aria-hidden="true">horizontal_rule</mat-icon>Line at {{ menu.price | number:numberFormat() }}</button>
+                <button type="button" role="menuitem" class="ak-menu-item" (click)="measureFrom(menu)"><mat-icon aria-hidden="true">straighten</mat-icon>Measure from here</button>
+              }
+              @if (barAt(menu.time); as bar) {
+                <button type="button" role="menuitem" class="ak-menu-item" (click)="copyText(barText(bar), 'Bar values')"><mat-icon aria-hidden="true">content_copy</mat-icon>Copy bar OHLC</button>
+              }
+              <div class="my-1 border-t border-border" role="separator"></div>
+              <button type="button" role="menuitem" class="ak-menu-item" (click)="drawingsVisible.set(!drawingsVisible()); closeContextMenu()"><mat-icon aria-hidden="true">{{ drawingsVisible() ? 'visibility_off' : 'visibility' }}</mat-icon>{{ drawingsVisible() ? 'Hide' : 'Show' }} drawings</button>
+              @if (drawingState().count > 0) {
+                <button type="button" role="menuitem" class="ak-menu-item text-danger" (click)="closeContextMenu(); removeDrawings()"><mat-icon aria-hidden="true">delete_outline</mat-icon>Remove {{ drawingState().count }} drawings</button>
+              }
+              <div class="my-1 border-t border-border" role="separator"></div>
+              <button type="button" role="menuitem" class="ak-menu-item" [routerLink]="['/trade', brokerLinkId(), instrument()]" (click)="closeContextMenu()"><mat-icon aria-hidden="true">north_east</mat-icon>Trade {{ instrumentLabel() }}</button>
+            </div>
           }
         </div>
         <footer class="flex flex-wrap items-center justify-between gap-1 border-t border-border px-2 py-1 text-xs">
