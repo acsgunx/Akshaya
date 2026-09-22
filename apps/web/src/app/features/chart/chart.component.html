@@ -132,8 +132,8 @@
               (chartMenu)="openContextMenu($event)" />
           }
           @if (contextMenu(); as menu) {
-            <button type="button" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-20 cursor-default" (click)="closeContextMenu()" (contextmenu)="$event.preventDefault(); closeContextMenu()"></button>
-            <div #chartMenuPanel role="menu" aria-label="Chart actions" (keydown)="onMenuKeydown($event)"
+            <div class="fixed inset-0 z-20 cursor-default" aria-hidden="true"></div>
+            <div #chartMenuPanel role="menu" aria-label="Chart actions" tabindex="-1" (keydown)="onMenuKeydown($event)"
                  class="ak-menu absolute z-30 w-60 rounded-md border border-border bg-surface-2 py-1 text-xs"
                  [style.left]="'min(' + menu.x + 'px, calc(100% - 15.5rem))'" [style.top]="'min(' + menu.y + 'px, calc(100% - 19rem))'">
               <button type="button" role="menuitem" class="ak-menu-item" (click)="chart()?.fitContent(); closeContextMenu()"><mat-icon aria-hidden="true">fit_screen</mat-icon>Reset chart view</button>

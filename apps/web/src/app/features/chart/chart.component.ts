@@ -75,7 +75,11 @@ import { ChartStore } from './chart.store';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './chart.component.html',
   styleUrl: './chart.component.scss',
-  host: { '(keydown)': 'onKeydown($event)' },
+  host: {
+    '(keydown)': 'onKeydown($event)',
+    '(document:click)': 'onDocumentClick()',
+    '(document:contextmenu)': 'onDocumentContextMenu($event)',
+  },
 })
 export class ChartComponent {
   private readonly brokerLinksStore = inject(BrokerLinksStore);
@@ -324,6 +328,23 @@ export class ChartComponent {
     const focusInside = this.menuPanel()?.nativeElement.contains(document.activeElement) === true;
     this.contextMenu.set(undefined);
     if (restoreFocus || focusInside) { setTimeout(() => this.chartCard()?.nativeElement.focus()); }
+  }
+
+  /** Any click while the menu is open dismisses it — the overlay div swallows
+   *  chart clicks, and menu items close it themselves after their action. */
+  protected onDocumentClick(): void {
+    this.closeContextMenu();
+  }
+
+  protected onDocumentContextMenu(event: MouseEvent): void {
+    if (this.contextMenu() === undefined) { return; }
+    event.preventDefault();
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('ak-price-chart')) { return; }
+    // Right-click lands on the overlay while the menu is open — re-anchor at
+    // the new chart point rather than just dismissing.
+    if (target?.closest('.ak-chart-card') && this.chart()?.emitMenuAt(event.clientX, event.clientY)) { return; }
+    this.closeContextMenu();
   }
 
   /** Arrow-key navigation inside the context menu — it is a plain list, not a MatMenu overlay. */

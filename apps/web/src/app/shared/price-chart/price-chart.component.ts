@@ -262,14 +262,7 @@ export class PriceChartComponent {
     // over the canvas, so suppress it and hand the point to the page's menu.
     element.addEventListener('contextmenu', (event) => {
       event.preventDefault();
-      const rect = element.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const time = this.chart?.timeScale().coordinateToTime(x as Coordinate);
-      const price = this.priceSeries?.coordinateToPrice(y as Coordinate);
-      this.chartMenu.emit({ x, y,
-        price: price === null || price === undefined ? undefined : price,
-        time: typeof time === 'number' ? time : undefined });
+      this.emitMenuAt(event.clientX, event.clientY);
     });
     this.destroyRef.onDestroy(() => {
       cancelAnimationFrame(this.updateFrame);
@@ -578,6 +571,22 @@ export class PriceChartComponent {
     this.redoItems = [];
     this.saveDrawings();
   }
+  /** Emits the chart-menu position for a client point — shared by the canvas
+   *  contextmenu listener and the card backdrop's right-click re-anchor.
+   *  Returns false when the point falls outside the chart surface. */
+  emitMenuAt(clientX: number, clientY: number): boolean {
+    const rect = this.host().nativeElement.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) { return false; }
+    const time = this.chart?.timeScale().coordinateToTime(x as Coordinate);
+    const price = this.priceSeries?.coordinateToPrice(y as Coordinate);
+    this.chartMenu.emit({ x, y,
+      price: price === null || price === undefined ? undefined : price,
+      time: typeof time === 'number' ? time : undefined });
+    return true;
+  }
+
   /** Drops a horizontal line straight onto the chart (context menu "add line at price"). */
   addHorizontalLine(price: number): void {
     const time = this.lastBar?.time ?? Math.floor(Date.now() / 1000);
