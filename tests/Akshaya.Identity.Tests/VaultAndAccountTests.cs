@@ -153,7 +153,12 @@ public sealed class UserAccountServiceTests : IClassFixture<IdentityFixture>
     [Fact]
     public async Task A_password_below_the_minimum_length_is_rejected()
     {
-        var result = await _fixture.Accounts.RegisterAsync("short@example.com", "tiny", null);
+        // One short of the minimum, derived from it. This used to be the literal "tiny", which
+        // became a VALID password when the minimum dropped to four and silently stopped testing
+        // anything.
+        var tooShort = new string('x', UserAccountService.MinimumPasswordLength - 1);
+
+        var result = await _fixture.Accounts.RegisterAsync("short@example.com", tooShort, null);
 
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be(IdentityErrorCodes.InvalidRequest);

@@ -356,6 +356,9 @@ def check_type_resolution() -> CheckResult:
         "ProblemDetailsMapper", "ServiceCollection", "HostApplicationBuilder",
         "TaskCompletionSource", "TimeZoneNotFoundException", "Timer", "Lock",
         "HashSet", "SortedDictionary", "SortedSet", "Queue", "Stack", "LinkedList",
+        # System.Security.Cryptography (the saved-login vault's cipher), System.Security.Claims
+        # (the cookie session's principal) and System.Collections.Generic (search ranking).
+        "AesGcm", "Claim", "ClaimsIdentity", "ClaimsPrincipal", "PriorityQueue",
     }
 
     use_pattern = re.compile(r"\bnew\s+([A-Z][A-Za-z0-9_]{3,})\s*[({<]")

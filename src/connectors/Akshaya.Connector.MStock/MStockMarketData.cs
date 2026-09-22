@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Akshaya.Connectors.Abstractions;
@@ -206,7 +207,7 @@ public sealed class MStockMarketData : IConnectorMarketData
         var todayStart = new DateTimeOffset(venueToday, _venueZone.GetUtcOffset(venueToday));
 
         var candles = new List<Candle>();
-        var lastCall = (DateTimeOffset?)null;
+        long? lastCallAt = null;
 
         if (from < todayStart)
         {
@@ -232,7 +233,7 @@ public sealed class MStockMarketData : IConnectorMarketData
             }
 
             candles.AddRange(historical.Value);
-            lastCall = DateTimeOffset.UtcNow;
+            lastCallAt = Stopwatch.GetTimestamp();
         }
 
         if (request.To >= todayStart)
@@ -245,10 +246,12 @@ public sealed class MStockMarketData : IConnectorMarketData
 
             // One data request a second is mStock's documented limit. The historical call has
             // only just returned, so wait out the rest of its second rather than have this one
-            // refused.
-            if (lastCall is { } previous)
+            // refused. A Stopwatch, not the clock: this measures a real interval against a real
+            // broker, which is monotonic time's job, and an injected IClock the backtester
+            // freezes would make the wait either nothing or forever.
+            if (lastCallAt is { } previous)
             {
-                var wait = TimeSpan.FromSeconds(1.05) - (DateTimeOffset.UtcNow - previous);
+                var wait = TimeSpan.FromSeconds(1.05) - Stopwatch.GetElapsedTime(previous);
                 if (wait > TimeSpan.Zero)
                 {
                     await Task.Delay(wait, ct).ConfigureAwait(false);
