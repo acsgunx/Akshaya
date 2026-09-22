@@ -81,6 +81,10 @@
       "options": {
         "buildTarget": "akshaya-web:build:development",
         "tsConfig": "tsconfig.spec.json",
+        "include": [
+          "**/*.spec.ts",
+          "../libs/**/*.spec.ts"
+        ],
         "runner": "vitest",
         "coverageReporters": [
           "text-summary",
