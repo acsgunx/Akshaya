@@ -111,6 +111,10 @@ free of import-time side effects (no top-level calls, no bare `import './x'`).
 
 A new feature route then imports the library lazily from `src/app/app.routes.ts`.
 
+Specs sit next to their code, in the library. The app's `test` target finds them through
+`include` in `project.json`: the builder resolves those globs from `src/`, not the
+workspace root, so `../libs/**/*.spec.ts` is what reaches the libraries.
+
 ## Wire format notes
 
 `@akshaya/shared/models` mirrors the C# contracts field-for-field, including the JSON
