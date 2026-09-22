@@ -12,6 +12,7 @@ import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import type { BlendedHolding, BrokerHoldingLeg, CurrencyCode, Money } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
+import { ChartLinkComponent } from '../../shared/chart-link/chart-link.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { RefreshButtonComponent } from '../../shared/refresh-button/refresh-button.component';
@@ -54,6 +55,7 @@ export interface HoldingsTotal {
     InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
+    ChartLinkComponent,
     EmptyStateComponent,
     LoadingStateComponent,
     RefreshButtonComponent,

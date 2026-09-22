@@ -19,6 +19,7 @@ import { positionEffectLabel } from '../../core/labels';
 import type { BlendedPosition, ConnectorManifest, ConvertPositionRequest, BrokerPositionLeg } from '../../core/models';
 import { problemDetail } from '../../core/models';
 import { DashboardStore } from '../dashboard/dashboard.store';
+import { ChartLinkComponent } from '../../shared/chart-link/chart-link.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { RefreshButtonComponent } from '../../shared/refresh-button/refresh-button.component';
@@ -54,6 +55,7 @@ import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './con
     InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
+    ChartLinkComponent,
     EmptyStateComponent,
     LoadingStateComponent,
     RefreshButtonComponent,

@@ -1,9 +1,12 @@
 // Column widths shared by the header, the rows and the expanded legs, so a value can never
 // drift out of line with its own heading. Everything else this screen needs — the grid
 // mechanics, hover, badges — comes from the primitives in styles.scss.
+//
+// The trailing 32px is the row's chart link; a leg row leaves it empty, and its Sell stays
+// under Return where it always sat.
 :host {
   --ak-cols: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-price-width)
-    var(--ak-col-pnl-width) var(--ak-col-pnl-width) 5rem;
+    var(--ak-col-pnl-width) var(--ak-col-pnl-width) 5rem 32px;
   --ak-viewport-height: calc(100vh - 380px);
 }
 

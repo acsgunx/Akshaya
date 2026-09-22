@@ -1,8 +1,9 @@
 // This screen's only unique styling is its column layout. The grid mechanics, row hover,
 // expander, badges and loading row all come from the primitives in styles.scss.
 :host {
+  // The trailing 32px is the row's chart link.
   --ak-cols: 32px 1fr var(--ak-col-qty-width) var(--ak-col-price-width) var(--ak-col-price-width)
-    var(--ak-col-pnl-width) var(--ak-col-pnl-width);
+    var(--ak-col-pnl-width) var(--ak-col-pnl-width) 32px;
   --ak-viewport-height: calc(100vh - 240px);
 }
 

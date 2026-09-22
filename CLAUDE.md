@@ -78,6 +78,11 @@ Lightweight Charts does not parse CSS `color(srgb ...)` returned by `color-mix()
 Resolve theme tokens to sRGB `rgb()`/`rgba()` before passing them to the library;
 `PriceChartComponent.token()` handles this using a cached canvas conversion.
 
+Every screen that lists an instrument links to the chart through `shared/chart-link/`,
+which picks the row's first history-capable account and never a link the row doesn't
+name. The chart draws the user's positions, holdings and working orders for that
+instrument as price lines, read from the root `DashboardStore` and `OrdersStore`.
+
 Chart preferences and drawings are device-local, not server-persisted. Replay only
 uses loaded historical bars; volume is historical because live tick volume may be
 session-cumulative rather than per-bar. Range shortcuts zoom within loaded history

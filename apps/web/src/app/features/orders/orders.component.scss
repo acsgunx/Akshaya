@@ -1,7 +1,10 @@
 // Column layout only — everything else comes from the primitives in styles.scss.
+//
+// The last track holds Modify, Cancel and Chart. At 40px it was narrower than Modify and Cancel
+// alone, which spilled leftwards over "Broker said"; 7rem fits all three at touch size.
 :host {
   --ak-cols: 1.4fr 60px 110px var(--ak-col-qty-width) var(--ak-col-qty-width)
-    var(--ak-col-price-width) 130px 1.4fr 40px;
+    var(--ak-col-price-width) 130px 1.4fr 7rem;
   --ak-viewport-height: calc(100vh - 260px);
 }
 

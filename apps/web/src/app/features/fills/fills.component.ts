@@ -14,6 +14,7 @@ import { LayoutService } from '../../core/layout.service';
 import { MoneyPipe } from '../../core/money.pipe';
 import { QuantityPipe } from '../../core/quantity.pipe';
 import type { TradeRecord } from '../../core/models';
+import { ChartLinkComponent } from '../../shared/chart-link/chart-link.component';
 import { EmptyStateComponent } from '../../shared/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../shared/loading-state/loading-state.component';
 import { RefreshingDirective } from '../../shared/refreshing/refreshing.directive';
@@ -50,6 +51,7 @@ import { FillsStore } from './fills.store';
     InstrumentPipe,
     MoneyPipe,
     QuantityPipe,
+    ChartLinkComponent,
     EmptyStateComponent,
     LoadingStateComponent,
     RefreshingDirective,
@@ -172,6 +174,7 @@ import { FillsStore } from './fills.store';
           <span class="ak-col-price">Value</span>
           <span class="ak-col-price">Charges</span>
           <span>Order</span>
+          <span></span>
         </div>
 
         <cdk-virtual-scroll-viewport itemSize="48" class="ak-viewport" [akRefreshing]="store.loading()">
@@ -191,13 +194,14 @@ import { FillsStore } from './fills.store';
             -->
             <span class="ak-col-price ak-muted">{{ trade.charges ? (trade.charges | akMoney) : '—' }}</span>
             <span class="ak-truncate ak-muted tabular-nums">{{ trade.brokerOrderId }}</span>
+            <span class="flex justify-end"><ak-chart-link [instrument]="trade.instrument" [accounts]="[trade]" /></span>
           </div>
         </cdk-virtual-scroll-viewport>
         }
       }
     </section>
   `,
-  styleUrl: '../orders/orders.component.scss',
+  styleUrl: './fills.component.scss',
 })
 export class FillsComponent implements OnInit {
   protected readonly store = inject(FillsStore);

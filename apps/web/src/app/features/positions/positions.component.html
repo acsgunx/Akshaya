@@ -146,6 +146,10 @@
                 </li>
               }
             </ul>
+            <!-- The whole position's chart, not one leg's — so it sits under the legs, not inside one. -->
+            <div class="flex border-t border-border bg-surface-2 px-1 py-1">
+              <ak-chart-link variant="button" [instrument]="pos.instrument" [accounts]="pos.legs" />
+            </div>
           }
         </li>
       }
@@ -159,6 +163,7 @@
       <span class="ak-col-price">Last</span>
       <span class="ak-col-pnl">Unrealised</span>
       <span class="ak-col-pnl">Realised</span>
+      <span></span>
     </div>
 
     <!-- Virtualised: only visible rows are rendered even with thousands of blended positions. -->
@@ -197,6 +202,8 @@
             {{ pos.unrealisedPnl | akMoney }}
           </span>
           <span class="ak-col-pnl">{{ pos.realisedPnl | akMoney }}</span>
+          <!-- A row action, unlike the leg actions below: a chart needs history, not a specific account. -->
+          <span class="flex justify-end"><ak-chart-link [instrument]="pos.instrument" [accounts]="pos.legs" /></span>
         </div>
 
         @if (isExpanded(pos.groupKey)) {
