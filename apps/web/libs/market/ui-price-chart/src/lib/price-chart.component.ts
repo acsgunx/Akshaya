@@ -20,22 +20,25 @@ import {
   LineSeries,
   LineStyle,
   PriceScaleMode,
-  TickMarkType,
   createChart,
   type Coordinate,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
   type MouseEventParams,
-  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
 
 import { AppearanceStore } from '@akshaya/shared/data-access';
 import type { Candle, Tick, TimeFrame } from '@akshaya/shared/models';
 import { type ChartBar, foldTickIntoBar } from './candle-bucket';
-import { ChartDrawings, validDrawing, type ChartDrawing, type DrawingAnchor, type DrawingTool, type MeasureOverlay } from './chart-drawings';
-import { calculateStudies, type ChartType, type StudyId } from './chart-studies';
+import { barsToCsv, downloadFile, normalizeCandles } from './chart-data';
+import { DrawingController, type DrawingState } from './chart-drawing-controller';
+import type { DrawingAnchor, DrawingTool } from './chart-drawings';
+import { type ChartType, type StudyId } from './chart-studies';
+import { StudyPanes } from './chart-study-panes';
+import { timeAxisOptions } from './chart-time-format';
+import { ChartTokens } from './chart-tokens';
 
 /**
  * A horizontal price the caller wants marked — an average cost, a resting
@@ -148,7 +151,7 @@ export class PriceChartComponent {
   readonly priceLevels = input<readonly ChartPriceLevel[]>([]);
   readonly barChange = output<ChartBar | undefined>();
   readonly drawingComplete = output<void>();
-  readonly drawingState = output<{ undo: boolean; redo: boolean; count: number }>();
+  readonly drawingState = output<DrawingState>();
   readonly notice = output<string>();
   /** Right-click on the chart — pane-0 pixel offsets plus the chart value at that point. */
   readonly chartMenu = output<{ x: number; y: number; price: number | undefined; time: number | undefined }>();
@@ -158,33 +161,30 @@ export class PriceChartComponent {
   private volumeSeries: ISeriesApi<'Histogram'> | undefined;
   private lastBar: ChartBar | undefined;
   private bars: ChartBar[] = [];
-  private readonly studySeries: ISeriesApi<'Line' | 'Histogram'>[] = [];
+  private studyPanes: StudyPanes | undefined;
   private levelLines: IPriceLine[] = [];
-  private readonly drawings = new ChartDrawings();
-  private drawingItems: ChartDrawing[] = [];
-  private redoItems: ChartDrawing[] = [];
-  private startAnchor: DrawingAnchor | undefined;
-  private previewAnchor: DrawingAnchor | undefined;
-  private measureStart: DrawingAnchor | undefined;
-  private measureEnd: DrawingAnchor | undefined;
-  private measurePreview: DrawingAnchor | undefined;
   private hoveredTime: number | undefined;
   private keyboardAnchor: DrawingAnchor | undefined;
   private updateFrame = 0;
 
+  /** Created with the chart, because the probe it reads tokens through has to live in the host. */
+  private tokens: ChartTokens | undefined;
+
   /**
-   * Hidden element used to RESOLVE a custom property to a real colour.
-   * `getComputedStyle(el).getPropertyValue('--ak-buy')` hands back the
-   * literal token stream — `light-dark(#1d4ed8, #3b82f6)` — because a custom
-   * property's computed value is its substitution value, not a used colour.
-   * Lightweight Charts cannot parse that and silently paints the candles
-   * near-black. Assigning the var to a REAL colour property and reading that
-   * back forces the resolution, which is what this probe is for; it also
-   * means `color-mix()` and any future token syntax resolve for free.
+   * The drawing tools' state machine. It owns what a click means, the undo
+   * stacks and the saved drawings; this component owns the chart it draws on,
+   * and hands it prices, pixels and tokens through this surface.
    */
-  private readonly probe = document.createElement('span');
-  private readonly colorContext = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-  private readonly colorCache = new Map<string, string>();
+  private readonly drawing = new DrawingController({
+    tool: () => this.drawingTool(),
+    visible: () => this.drawingsVisible(),
+    precision: () => this.precision(),
+    bars: () => this.bars,
+    color: (name) => this.token(name, 'currentColor'),
+    notice: (text) => this.notice.emit(text),
+    state: (state) => this.drawingState.emit(state),
+    completed: () => this.drawingComplete.emit(),
+  });
 
   constructor() {
     // The library measures its container, so it cannot be constructed until
@@ -194,7 +194,7 @@ export class PriceChartComponent {
       this.applyTheme();
       this.applyTimeZone();
       this.drawHistory();
-      this.loadDrawings();
+      this.drawing.load(this.drawingKey());
       this.applySettings();
     });
 
@@ -213,13 +213,12 @@ export class PriceChartComponent {
       this.precision();
       this.drawingTool();
       this.drawingsVisible();
-      this.startAnchor = undefined;
-      this.previewAnchor = undefined;
+      this.drawing.resetPending();
       if (this.chart) { untracked(() => this.applySettings()); }
     });
     effect(() => {
-      this.drawingKey();
-      if (this.chart) { untracked(() => this.loadDrawings()); }
+      const key = this.drawingKey();
+      if (this.chart) { untracked(() => this.drawing.load(key)); }
     });
     effect(() => {
       this.priceLevels();
@@ -265,10 +264,7 @@ export class PriceChartComponent {
 
   private create(): void {
     const element = this.host().nativeElement;
-
-    // Inside the host so it inherits exactly the cascade the chart sits in.
-    this.probe.style.display = 'none';
-    element.appendChild(this.probe);
+    this.tokens = new ChartTokens(element);
 
     this.chart = createChart(element, {
       autoSize: true,
@@ -282,9 +278,10 @@ export class PriceChartComponent {
       crosshair: { mode: CrosshairMode.Normal },
     });
 
+    this.studyPanes = new StudyPanes(this.chart, (name, fallback) => this.token(name, fallback));
     this.replacePriceSeries();
     this.chart.subscribeCrosshairMove((event) => this.onCrosshair(event));
-    this.chart.subscribeClick((event) => this.onChartClick(event));
+    this.chart.subscribeClick((event) => this.drawing.click(this.anchorFrom(event)));
     // The library swallows nothing here — the browser's own menu would open
     // over the canvas, so suppress it and hand the point to the page's menu.
     element.addEventListener('contextmenu', (event) => {
@@ -299,6 +296,7 @@ export class PriceChartComponent {
       this.chart = undefined;
       this.priceSeries = undefined;
       this.volumeSeries = undefined;
+      this.studyPanes = undefined;
     });
   }
 
@@ -313,46 +311,7 @@ export class PriceChartComponent {
       return;
     }
 
-    const locale = navigator.language;
-    const timeZone = this.timeZone();
-    const format = (options: Intl.DateTimeFormatOptions): ((time: Time) => string) => {
-      const formatter = new Intl.DateTimeFormat(locale, { ...options, timeZone });
-      return (time) => (typeof time === 'number' ? formatter.format(time * 1000) : String(time));
-    };
-
-    const clock: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
-    // Intraday: "Mon, 21 Sep, 14:23" — the weekday says more than a year would. A daily or
-    // longer bar has no time of day worth showing (every NSE daily bar "opens" at 09:15), and
-    // a year of bars spans a year boundary, so there it is the date with its year.
-    const daily = ['oneDay', 'oneWeek', 'oneMonth'].includes(this.timeFrame());
-    const crosshair = daily
-      ? format({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-      : format({ weekday: 'short', day: 'numeric', month: 'short', ...clock });
-    const year = format({ year: 'numeric' });
-    const month = format({ month: 'short' });
-    const day = format({ day: 'numeric', month: 'short' });
-    const minute = format(clock);
-    const second = format({ ...clock, second: '2-digit' });
-
-    chart.applyOptions({
-      localization: { locale, timeFormatter: crosshair },
-      timeScale: {
-        tickMarkFormatter: (time: Time, type: TickMarkType) => {
-          switch (type) {
-            case TickMarkType.Year:
-              return year(time);
-            case TickMarkType.Month:
-              return month(time);
-            case TickMarkType.DayOfMonth:
-              return day(time);
-            case TickMarkType.TimeWithSeconds:
-              return second(time);
-            default:
-              return minute(time);
-          }
-        },
-      },
-    });
+    chart.applyOptions(timeAxisOptions(this.timeFrame(), this.timeZone(), navigator.language));
   }
 
   /**
@@ -402,30 +361,12 @@ export class PriceChartComponent {
   }
 
   /**
-   * Current resolved value of one `--ak-*` colour token, or `fallback` when
-   * the property is not set at all. The sentinel round trip is how "not set"
-   * is told apart from "set to something": an unresolvable `var()` leaves the
-   * probe's colour at whatever was assigned before it, so the sentinel going
-   * unchanged is the signal that nothing took.
+   * Current resolved value of one `--ak-*` colour token, or `fallback` before
+   * the chart exists (and therefore the probe that resolves them) or when the
+   * property is not set at all. See `ChartTokens`.
    */
   private token(name: string, fallback: string): string {
-    const sentinel = 'rgb(1, 2, 3)';
-    this.probe.style.color = sentinel;
-    this.probe.style.color = `var(${name})`;
-    const resolved = getComputedStyle(this.probe).color;
-    if (!resolved || resolved === sentinel) { return fallback; }
-    if (/^rgba?\(/.test(resolved)) { return resolved; }
-    const cached = this.colorCache.get(resolved);
-    if (cached) { return cached; }
-    const context = this.colorContext;
-    if (!context) { return fallback; }
-    context.clearRect(0, 0, 1, 1);
-    context.fillStyle = resolved;
-    context.fillRect(0, 0, 1, 1);
-    const [red = 0, green = 0, blue = 0, alpha = 255] = context.getImageData(0, 0, 1, 1).data;
-    const color = `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
-    this.colorCache.set(resolved, color);
-    return color;
+    return this.tokens?.color(name, fallback) ?? fallback;
   }
 
   private drawHistory(): void {
@@ -435,34 +376,7 @@ export class PriceChartComponent {
       return;
     }
 
-    // Keyed by time, last one wins. The library requires STRICTLY ascending
-    // time and throws on the first repeat — leaving the chart blank, not
-    // missing one bar. Brokers do repeat bars: mStock sends some daily candles
-    // twice, verbatim. The connector collapses those too; this is the net
-    // under the next broker that finds a new way to do it.
-    const byTime = new Map<number, Candle>();
-    for (const candle of this.candles()) {
-      const time = Math.floor(Date.parse(candle.openTime) / 1000);
-      if (!Number.isFinite(time)) {
-        // A bar we cannot place on the time axis is dropped rather than
-        // rendered at epoch zero, which would compress the whole chart.
-        continue;
-      }
-      if ([candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)
-        && candle.high >= Math.max(candle.open, candle.close, candle.low)
-        && candle.low <= Math.min(candle.open, candle.close)) {
-        byTime.set(time, candle);
-      }
-    }
-
-    // Ascending, whatever order the connector returned them in: newest-first
-    // (or unsorted) must not silently render an empty chart either.
-    const bars: ChartBar[] = [];
-    const volumes: { time: number; value: number }[] = [];
-    for (const [time, candle] of [...byTime].sort(([a], [b]) => a - b)) {
-      bars.push({ time, open: candle.open, high: candle.high, low: candle.low, close: candle.close });
-      volumes.push({ time, value: Number.isFinite(candle.volume) ? Math.max(0, candle.volume) : 0 });
-    }
+    const { bars, volumes } = normalizeCandles(this.candles());
 
     const previousRange = this.replay() ? chart.timeScale().getVisibleLogicalRange() : null;
     this.bars = bars;
@@ -541,12 +455,10 @@ export class PriceChartComponent {
     if (!bar) { return; }
     const step = Math.max(10 ** -this.precision(), Math.abs(current.price) * 0.001);
     this.keyboardAnchor = { time: bar.time, price: current.price + vertical * step };
-    this.previewAnchor = this.keyboardAnchor;
-    if (this.measureStart && !this.measureEnd) { this.measurePreview = this.keyboardAnchor; }
     this.hoveredTime = bar.time;
     chart.setCrosshairPosition(this.keyboardAnchor.price, bar.time as UTCTimestamp, series);
     this.barChange.emit(bar);
-    this.renderDrawings();
+    this.drawing.cursorMoved(this.keyboardAnchor);
     this.notice.emit(`Cursor price ${this.keyboardAnchor.price.toFixed(this.precision())}. Arrow keys move; Enter places a drawing point.`);
   }
 
@@ -556,8 +468,10 @@ export class PriceChartComponent {
     if (!anchor) { return; }
     const x = this.chart?.timeScale().timeToCoordinate(anchor.time as UTCTimestamp);
     const y = this.priceSeries?.priceToCoordinate(anchor.price);
+    // Through the same pixel round trip a mouse click takes, so a cursor
+    // parked off-screen places nothing, exactly as a click there would.
     if (x !== null && x !== undefined && y !== null && y !== undefined) {
-      this.onChartClick({ point: { x, y }, time: anchor.time as UTCTimestamp, paneIndex: 0, seriesData: new Map() });
+      this.drawing.click(this.anchorFrom({ point: { x, y }, time: anchor.time as UTCTimestamp, paneIndex: 0, seriesData: new Map() }));
     }
   }
 
@@ -579,25 +493,14 @@ export class PriceChartComponent {
   }
   screenshot(name: string): void {
     const canvas = this.chart?.takeScreenshot();
-    canvas?.toBlob((blob) => { if (blob) { this.download(blob, `${name}.png`); } });
+    canvas?.toBlob((blob) => { if (blob) { downloadFile(blob, `${name}.png`); } });
   }
   exportCsv(name: string): void {
-    const rows = this.bars.map((bar) => [new Date(bar.time * 1000).toISOString(), bar.open, bar.high, bar.low, bar.close].join(','));
-    this.download(new Blob([['Time (UTC),Open,High,Low,Close', ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' }), `${name}.csv`);
+    downloadFile(new Blob([barsToCsv(this.bars)], { type: 'text/csv;charset=utf-8' }), `${name}.csv`);
   }
-  undoDrawing(): void {
-    const drawing = this.drawingItems.pop();
-    if (drawing) { this.redoItems.push(drawing); this.saveDrawings(); }
-  }
-  redoDrawing(): void {
-    const drawing = this.redoItems.pop();
-    if (drawing) { this.drawingItems.push(drawing); this.saveDrawings(); }
-  }
-  clearDrawings(): void {
-    this.drawingItems = [];
-    this.redoItems = [];
-    this.saveDrawings();
-  }
+  undoDrawing(): void { this.drawing.undo(); }
+  redoDrawing(): void { this.drawing.redo(); }
+  clearDrawings(): void { this.drawing.clear(); }
   /** Emits the chart-menu position for a client point — shared by the canvas
    *  contextmenu listener and the card backdrop's right-click re-anchor.
    *  Returns false when the point falls outside the chart surface. */
@@ -616,36 +519,11 @@ export class PriceChartComponent {
 
   /** Drops a horizontal line straight onto the chart (context menu "add line at price"). */
   addHorizontalLine(price: number): void {
-    const time = this.lastBar?.time ?? Math.floor(Date.now() / 1000);
-    this.drawingItems.push({ tool: 'horizontal', start: { time, price }, end: { time, price } });
-    this.redoItems = [];
-    this.saveDrawings();
+    this.drawing.addHorizontalLine(price, this.lastBar?.time ?? Math.floor(Date.now() / 1000));
   }
   /** Arms the measure tool with its first point; the next click finishes it. */
-  beginMeasure(anchor: DrawingAnchor): void {
-    this.measureStart = anchor;
-    this.measureEnd = undefined;
-    this.measurePreview = undefined;
-    this.renderDrawings();
-    this.notice.emit('Click the second point on the price chart to finish measuring. Escape cancels.');
-  }
-  cancelDrawing(): void {
-    this.startAnchor = undefined;
-    this.previewAnchor = undefined;
-    this.measureStart = undefined;
-    this.measureEnd = undefined;
-    this.measurePreview = undefined;
-    this.renderDrawings();
-  }
-
-  private download(blob: Blob, name: string): void {
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
+  beginMeasure(anchor: DrawingAnchor): void { this.drawing.beginMeasure(anchor); }
+  cancelDrawing(): void { this.drawing.cancel(); }
 
   private pricePoint(bar: ChartBar) {
     return { ...bar, time: bar.time as UTCTimestamp, value: bar.close };
@@ -666,9 +544,9 @@ export class PriceChartComponent {
     // A price line belongs to its series and is removed with it, so the old
     // handles are dropped rather than removed a second time.
     this.levelLines = [];
-    if (old) { old.detachPrimitive(this.drawings); chart.removeSeries(old); }
+    if (old) { old.detachPrimitive(this.drawing.primitive); chart.removeSeries(old); }
     this.priceSeries.setSeriesOrder(0);
-    this.priceSeries.attachPrimitive(this.drawings);
+    this.priceSeries.attachPrimitive(this.drawing.primitive);
     this.applyTheme();
     this.applySettings();
     this.drawLevels();
@@ -705,165 +583,23 @@ export class PriceChartComponent {
     this.volumeSeries?.applyOptions({ visible: this.showVolume() });
     this.priceSeries?.applyOptions({ priceFormat: { type: 'price', precision: this.precision(), minMove: 10 ** -this.precision() } });
     this.host().nativeElement.style.cursor = drawing ? 'crosshair' : '';
-    this.renderDrawings();
+    this.drawing.render();
   }
 
+  /** Redraws the indicator panes; `rebuild` false is the per-tick path. See `StudyPanes`. */
   private drawStudies(rebuild = true): void {
-    const chart = this.chart;
-    if (!chart) { return; }
-    if (rebuild) {
-      for (const series of this.studySeries.splice(0).reverse()) { chart.removeSeries(series); }
-    }
-    let pane = 0;
-    let index = 0;
-    const colors = { brand: this.token('--ak-brand', 'currentColor'), buy: this.token('--ak-buy', 'currentColor'),
-      sell: this.token('--ak-sell', 'currentColor') };
-    for (const study of calculateStudies(this.bars, this.studies())) {
-      const paneIndex = study.pane ? ++pane : 0;
-      for (const [plotIndex, plot] of study.plots.entries()) {
-        const color = colors[plot.color];
-        let series = this.studySeries[index++];
-        if (!series) {
-          const options = { title: plot.title, color, lineWidth: 1 as const, priceLineVisible: false,
-            lastValueVisible: study.pane, crosshairMarkerVisible: false };
-          series = plot.histogram ? chart.addSeries(HistogramSeries, options, paneIndex) : chart.addSeries(LineSeries, options, paneIndex);
-          this.studySeries.push(series);
-          if (study.pane && study.id !== 'macd') {
-            series.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
-          }
-          if (plotIndex === 0) {
-            for (const level of study.levels ?? []) {
-              series.createPriceLine({ price: level, color: this.token('--ak-text-tertiary', color), lineWidth: 1,
-                lineStyle: 2, axisLabelVisible: false, title: String(level) });
-            }
-          }
-        }
-        const data = plot.points.map((point) => ({ ...point, time: point.time as UTCTimestamp,
-          ...(plot.histogram ? { color: point.value >= 0 ? colors.buy : colors.sell } : {}) }));
-        if (rebuild) { series.setData(data); }
-        else {
-          const lastTime = series.data().at(-1)?.time;
-          for (const point of data) {
-            if (typeof lastTime !== 'number' || point.time >= lastTime) { series.update(point); }
-          }
-        }
-      }
-    }
-    if (rebuild) {
-      chart.panes().forEach((item, i) => {
-        item.setStretchFactor(i === 0 ? 4 : 1.2);
-        if (i > 0) { item.priceScale('right').applyOptions({ mode: PriceScaleMode.Normal }); }
-      });
-    }
+    this.studyPanes?.sync(this.bars, this.studies(), rebuild);
   }
 
   private onCrosshair(event: MouseEventParams): void {
     this.hoveredTime = typeof event.time === 'number' ? event.time : undefined;
     this.barChange.emit(this.bars.find((bar) => bar.time === this.hoveredTime) ?? this.lastBar);
-    if (this.measureStart && !this.measureEnd) {
-      this.measurePreview = this.anchorFrom(event);
-      this.renderDrawings();
-    }
-    if (this.startAnchor) {
-      this.previewAnchor = this.anchorFrom(event);
-      this.renderDrawings();
-    }
+    this.drawing.pointerMoved(() => this.anchorFrom(event));
   }
 
   private anchorFrom(event: MouseEventParams): DrawingAnchor | undefined {
     if (!event.point || (event.paneIndex ?? 0) !== 0 || typeof event.time !== 'number') { return undefined; }
     const price = this.priceSeries?.coordinateToPrice(event.point.y);
     return price === null || price === undefined ? undefined : { time: event.time, price };
-  }
-
-  private onChartClick(event: MouseEventParams): void {
-    const tool = this.drawingTool();
-    const anchor = this.anchorFrom(event);
-    if (tool === 'cursor' || !anchor) { return; }
-    if (tool === 'measure') {
-      if (this.measureStart && !this.measureEnd) {
-        this.measureEnd = anchor;
-        this.measurePreview = undefined;
-        this.notice.emit(`Measured ${this.measureLines(this.measureStart, anchor).join(' · ')}. Click again to measure a new range.`);
-      } else {
-        this.beginMeasure(anchor);
-      }
-      this.renderDrawings();
-      return;
-    }
-    if (this.drawingItems.length >= 200) {
-      this.notice.emit('This chart has reached its 200-drawing limit. Remove a drawing before adding another.');
-      return;
-    }
-    if (tool !== 'horizontal' && !this.startAnchor) {
-      this.startAnchor = anchor;
-      this.notice.emit('Choose the second point on the price chart. Escape cancels.');
-      return;
-    }
-    this.drawingItems.push({ tool, start: this.startAnchor ?? anchor, end: anchor });
-    this.redoItems = [];
-    this.cancelDrawing();
-    this.saveDrawings();
-    this.drawingComplete.emit();
-  }
-
-  private renderDrawings(): void {
-    const tool = this.drawingTool();
-    const preview = this.startAnchor && this.previewAnchor && tool !== 'cursor' && tool !== 'measure'
-      ? [{ tool, start: this.startAnchor, end: this.previewAnchor }] : [];
-    const end = this.measureEnd ?? this.measurePreview;
-    const measure: MeasureOverlay | undefined = tool === 'measure' && this.measureStart && end
-      ? { start: this.measureStart, end,
-        color: this.token(end.price >= this.measureStart.price ? '--ak-buy' : '--ak-sell', 'currentColor'),
-        lines: this.measureLines(this.measureStart, end) }
-      : undefined;
-    this.drawings.update(this.drawingsVisible() ? [...this.drawingItems, ...preview] : [],
-      this.token('--ak-brand', 'currentColor'), measure);
-  }
-
-  /** Price change, percentage change, bar count and elapsed time between the two anchors. */
-  private measureLines(start: DrawingAnchor, end: DrawingAnchor): string[] {
-    const delta = end.price - start.price;
-    const sign = delta >= 0 ? '+' : '';
-    const percent = start.price ? delta / start.price * 100 : 0;
-    const low = Math.min(start.time, end.time);
-    const high = Math.max(start.time, end.time);
-    const count = this.bars.filter((bar) => bar.time >= low && bar.time <= high).length;
-    const seconds = Math.abs(end.time - start.time);
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const elapsed = [days && `${days}d`, hours && `${hours}h`, minutes && `${minutes}m`]
-      .filter(Boolean).join(' ') || `${seconds}s`;
-    return [
-      `${sign}${delta.toFixed(this.precision())} (${sign}${percent.toFixed(2)}%)`,
-      `${count} ${count === 1 ? 'bar' : 'bars'} · ${elapsed}`,
-    ];
-  }
-
-  private loadDrawings(): void {
-    this.drawingItems = [];
-    this.redoItems = [];
-    this.startAnchor = undefined;
-    this.measureStart = undefined;
-    this.measureEnd = undefined;
-    this.measurePreview = undefined;
-    try {
-      const parsed: unknown = JSON.parse(localStorage.getItem(`akshaya.chart.drawings.${this.drawingKey()}`) ?? '[]');
-      if (Array.isArray(parsed)) { this.drawingItems = parsed.filter(validDrawing).slice(-200); }
-    } catch { this.notice.emit('Saved drawings could not be restored on this device.'); }
-    this.publishDrawings();
-  }
-
-  private saveDrawings(): void {
-    this.drawingItems = this.drawingItems.slice(-200);
-    try { localStorage.setItem(`akshaya.chart.drawings.${this.drawingKey()}`, JSON.stringify(this.drawingItems)); }
-    catch { this.notice.emit('Drawings are available for this session only; device storage is unavailable.'); }
-    this.publishDrawings();
-  }
-
-  private publishDrawings(): void {
-    this.renderDrawings();
-    this.drawingState.emit({ undo: this.drawingItems.length > 0, redo: this.redoItems.length > 0, count: this.drawingItems.length });
   }
 }
