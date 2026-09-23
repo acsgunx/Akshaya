@@ -64,11 +64,25 @@ RUN dotnet restore src/Akshaya.Api/Akshaya.Api.csproj
 
 COPY src/ ./src/
 
-RUN dotnet publish src/Akshaya.Api/Akshaya.Api.csproj \
+# The commit this image is built from, reported by GET /api/version and shown in the app's
+# header. .git is dockerignored, so the SDK cannot stamp SourceRevisionId itself — a manual
+# build passes --build-arg GIT_SHA=$(git rev-parse HEAD); Render and Railway inject their own
+# commit variables as build args automatically. Declared just above the RUN that consumes
+# them so a new commit cannot bust the restore layer's cache.
+ARG GIT_SHA=""
+ARG RENDER_GIT_COMMIT=""
+ARG RAILWAY_GIT_COMMIT_SHA=""
+
+# SOURCE_ID feeds SourceRevisionId, which the SDK appends to InformationalVersion as "+sha" —
+# the value /api/version reports. With no arg supplied the publish still works; it just reports
+# the bare version with no commit.
+RUN SOURCE_ID="${GIT_SHA:-${RENDER_GIT_COMMIT:-$RAILWAY_GIT_COMMIT_SHA}}" \
+ && dotnet publish src/Akshaya.Api/Akshaya.Api.csproj \
       --configuration Release \
       --no-restore \
       --output /app/publish \
-      /p:UseAppHost=false
+      /p:UseAppHost=false \
+      ${SOURCE_ID:+/p:SourceRevisionId=$SOURCE_ID}
 
 # The Angular output lands in wwwroot, which is the ONLY thing that turns on the SPA hosting block
 # in Program.cs. A publish without this directory serves the API alone and is still perfectly valid

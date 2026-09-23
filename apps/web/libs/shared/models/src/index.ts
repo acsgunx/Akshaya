@@ -8,3 +8,4 @@ export * from './lib/orders.model';
 export * from './lib/portfolio.model';
 export * from './lib/market-data.model';
 export * from './lib/kill-switch.model';
+export * from './lib/build-info.model';

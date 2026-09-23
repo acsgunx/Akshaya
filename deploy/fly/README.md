@@ -35,8 +35,12 @@ fly secrets set \
 Deploy:
 
 ```bash
-fly deploy --config deploy/fly/fly.toml --dockerfile deploy/Dockerfile
+fly deploy --config deploy/fly/fly.toml --dockerfile deploy/Dockerfile \
+  --build-arg GIT_SHA="$(git rev-parse HEAD)"
 ```
+
+The `GIT_SHA` build arg is what `GET /api/version` reports and the app's header shows — without
+it a container deploy has no `.git` to stamp itself from, and the version label loses its commit.
 
 ## Get the seeded account's password
 

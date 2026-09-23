@@ -3,10 +3,12 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
 import { SKIP_ACTIVITY_BAR } from './interceptors/activity.interceptor';
+import { SKIP_ERROR_TOAST } from './interceptors/error.interceptor';
 import type {
   AuthCredentials,
   AuthStepWire,
   BrokerLink,
+  BuildInfo,
   CancelAllRequest,
   CancelAllResult,
   CandleSeries,
@@ -81,6 +83,20 @@ export class ApiService {
 
   deleteSavedCredential(id: string): Observable<void> {
     return this.http.delete<void>(`/api/account/credentials/${encodeURIComponent(id)}`);
+  }
+
+  // ---- Build identity ---------------------------------------------------------
+
+  /**
+   * The running build's version and source commit — the shell renders it so a
+   * redeploy is verifiable by looking at the header, and it is anonymous on the
+   * backend (no tenant data), so the sign-in screen can show it too. Both
+   * ambient affordances are skipped: the activity bar must not pulse for it,
+   * and a failure is silent — the missing label is itself the answer.
+   */
+  getBuildInfo(): Observable<BuildInfo> {
+    const context = new HttpContext().set(SKIP_ACTIVITY_BAR, true).set(SKIP_ERROR_TOAST, true);
+    return this.http.get<BuildInfo>('/api/version', { context });
   }
 
   // ---- Connectors (the manifest is the whole point) --------------------------

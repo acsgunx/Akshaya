@@ -32,6 +32,11 @@
     -->
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <!--
+      Reported by GET /api/version and shown in the web shell. Kept in step with
+      apps/web/package.json; the git commit rides along as +sha in InformationalVersion.
+    -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <!--
