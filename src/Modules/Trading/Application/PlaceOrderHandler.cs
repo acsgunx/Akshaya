@@ -164,7 +164,7 @@ public sealed class PlaceOrderHandler(
         // second session and a second set of sockets to ask a question this one can answer.
         var lastPriceTask = TryGetLastPriceAsync(connector, request.Instrument, ct);
         var instrumentTask = TryResolveInstrumentAsync(connector, request.Instrument, ct);
-        var snapshotTask = _snapshots.GetAsync(command.TenantId, command.UserId, link.Id, ct, connector);
+        var snapshotTask = _snapshots.GetAsync(command.TenantId, command.UserId, link.Id, connector, ct);
 
         await Task.WhenAll(lastPriceTask, instrumentTask, snapshotTask);
 
