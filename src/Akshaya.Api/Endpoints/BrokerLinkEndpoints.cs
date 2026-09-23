@@ -175,6 +175,27 @@ public static class BrokerLinkEndpoints
                 existingPendingId: id);
         });
 
+        group.MapPatch("/{id}", async (
+            string id,
+            UpdateLinkRequestDto request,
+            ICurrentUserAccessor user,
+            IBrokerLinkStore links,
+            CancellationToken ct) =>
+        {
+            var link = await links.GetAsync(id, ct);
+            // Not-found rather than forbidden — same rule as DELETE below.
+            if (link is null || !string.Equals(link.TenantId, user.TenantId, StringComparison.Ordinal))
+            {
+                return ProblemDetailsMapper.ToProblem(new Error(
+                    ConnectorErrorCodes.InvalidRequest,
+                    $"No broker link '{id}' exists for this account."));
+            }
+
+            var updated = link with { IsActive = request.IsActive };
+            await links.SaveAsync(updated, ct);
+            return Results.Ok(BrokerLinkDto.From(updated));
+        });
+
         group.MapDelete("/{id}", async (
             string id,
             ICurrentUserAccessor user,

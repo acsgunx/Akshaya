@@ -135,6 +135,15 @@ export class ApiService {
     return this.http.post<AuthStepWire>(`/api/links/${encodeURIComponent(linkId)}/continue`, { response, state });
   }
 
+  /**
+   * Pauses or resumes a link. Pausing keeps the session — resume needs no
+   * re-authentication while it is still valid — but drops the link out of
+   * polling/streaming and makes order placement refuse it.
+   */
+  setLinkActive(linkId: string, isActive: boolean): Observable<BrokerLink> {
+    return this.http.patch<BrokerLink>(`/api/links/${encodeURIComponent(linkId)}`, { isActive });
+  }
+
   unlink(linkId: string): Observable<void> {
     return this.http.delete<void>(`/api/links/${encodeURIComponent(linkId)}`);
   }

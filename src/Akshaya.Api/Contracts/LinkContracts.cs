@@ -63,6 +63,17 @@ public sealed class BeginLinkRequestDtoValidator : AbstractValidator<BeginLinkRe
     }
 }
 
+/// <summary>Update the mutable flags on a link. Today that is only the on/off switch.</summary>
+public sealed record UpdateLinkRequestDto
+{
+    /// <summary>
+    /// False pauses the link: the session is KEPT (a resume while it is still valid needs
+    /// no re-authentication), but the link drops out of polling, streaming and
+    /// reconciliation, and order placement refuses it — see `BrokerLinkResolver`.
+    /// </summary>
+    public required bool IsActive { get; init; }
+}
+
 /// <summary>Answer a challenge, or hand back an OAuth code, and continue the flow.</summary>
 public sealed record ContinueLinkRequestDto
 {

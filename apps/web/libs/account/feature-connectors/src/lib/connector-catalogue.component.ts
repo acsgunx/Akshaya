@@ -27,7 +27,7 @@ const SESSION_WARN_WITHIN_MS = 15 * 60_000;
  */
 const SESSION_SENTINEL_MS = 366 * 24 * 60 * 60 * 1000;
 
-type LinkState = 'connected' | 'expired' | 'inactive';
+type LinkState = 'connected' | 'expired' | 'paused';
 
 interface LinkStatus {
   readonly state: LinkState;
@@ -39,6 +39,8 @@ interface LinkStatus {
   readonly detail: string;
   /** True turns the detail line warning-amber — an expiry that is minutes away, not hours. */
   readonly urgent: boolean;
+  /** The labelled action the row offers — reconnect the session, or resume a paused link. */
+  readonly action?: 'reconnect' | 'resume';
 }
 
 /**
@@ -136,14 +138,19 @@ export class ConnectorCatalogueComponent implements OnInit {
    * at whatever value the last render saw.
    */
   protected linkStatus(link: BrokerLink): LinkStatus {
+    // Paused outranks expired: the user switched the link off themselves, and
+    // the detail line still says if the session died underneath the pause.
     if (!link.isActive) {
       return {
-        state: 'inactive',
-        label: 'Inactive',
+        state: 'paused',
+        label: 'Paused',
         labelClass: 'text-text-tertiary',
         dotClass: 'bg-text-tertiary',
-        detail: 'Not monitored or tradable. Sign in again to revive it, or remove it.',
+        detail: link.hasSession
+          ? 'Paused — orders, polling and streaming are off until you resume.'
+          : 'Paused, and the session has ended — sign in again to use it.',
         urgent: false,
+        action: link.hasSession ? 'resume' : 'reconnect',
       };
     }
 
@@ -158,6 +165,7 @@ export class ConnectorCatalogueComponent implements OnInit {
         dotClass: 'bg-warning',
         detail: 'Sign in again to trade and stream on this account.',
         urgent: false,
+        action: 'reconnect',
       };
     }
 
@@ -188,6 +196,21 @@ export class ConnectorCatalogueComponent implements OnInit {
           : 'Ready to trade and stream.'),
       urgent: false,
     };
+  }
+
+  /**
+   * Pause/resume needs no confirmation: it is scoped to one account, reverses
+   * in one click, and the row flips to its paused state immediately after —
+   * the feedback IS the confirmation.
+   */
+  protected async setActive(link: BrokerLink, active: boolean): Promise<void> {
+    try {
+      await firstValueFrom(this.api.setLinkActive(link.id, active));
+    } catch {
+      // The error interceptor has already toasted what the API said.
+      return;
+    }
+    this.links.load();
   }
 
   protected async unlink(link: BrokerLink, connectorName: string): Promise<void> {
