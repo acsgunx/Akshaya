@@ -104,11 +104,13 @@ public sealed class DependencyRules
 
         var violations = new List<string>();
 
-        foreach (var csproj in RepoRoot.Value.EnumerateFiles("*.csproj", SearchOption.AllDirectories))
+        // ProjectFiles() prunes build output and nested checkouts. Without that this walk also
+        // reads the git worktrees under .claude/, and reports every connector project in every
+        // one of them — a failure CI cannot reproduce, because CI has no worktrees.
+        foreach (var csproj in RepoRoot.ProjectFiles())
         {
             var relative = RepoRoot.RelativePath(csproj);
-            if (relative.Contains("/bin/", StringComparison.Ordinal)
-                || relative.StartsWith("src/connectors/", StringComparison.Ordinal)
+            if (relative.StartsWith("src/connectors/", StringComparison.Ordinal)
                 || relative.StartsWith("tests/", StringComparison.Ordinal)
                 || allowed.Contains(relative))
             {
