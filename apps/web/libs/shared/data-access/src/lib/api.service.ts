@@ -121,6 +121,12 @@ export class ApiService {
     redirectUri?: string;
     savedCredentialId?: string;
     rememberFields?: readonly string[];
+    /**
+     * Set when this login is a reconnect for an existing link: the API revokes
+     * and removes that link once the new session is accepted, so a daily
+     * re-login never stacks a dead duplicate on the brokers screen.
+     */
+    replacesLinkId?: string;
   }): Observable<AuthStepWire> {
     return this.http.post<AuthStepWire>('/api/links', request);
   }

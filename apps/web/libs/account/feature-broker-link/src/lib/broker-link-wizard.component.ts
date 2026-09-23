@@ -9,7 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
 
-import { AuthStore, ConnectorStore } from '@akshaya/shared/data-access';
+import { AuthStore, BrokerLinksStore, ConnectorStore } from '@akshaya/shared/data-access';
 import { challengeKindLabel } from '@akshaya/shared/util';
 import type { AuthCredentials, SavedCredential } from '@akshaya/shared/models';
 import { LoadingStateComponent } from '@akshaya/shared/ui';
@@ -57,12 +57,22 @@ import { BrokerLinkStore } from './broker-link.store';
 })
 export class BrokerLinkWizardComponent {
   private readonly connectorStore = inject(ConnectorStore);
+  private readonly brokerLinks = inject(BrokerLinksStore);
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthStore);
   protected readonly store = inject(BrokerLinkStore);
   protected readonly challengeKindLabel = challengeKindLabel;
 
   readonly connectorId = input.required<string>();
+
+  /**
+   * `?replace=<linkId>` — bound from the query string. Set when the user is
+   * re-authenticating an existing link (a session that expired at venue
+   * midnight, say): the API drops that link once this login completes, so the
+   * brokers screen shows the fresh session INSTEAD of the dead one, not
+   * beside it.
+   */
+  readonly replace = input<string | undefined>(undefined);
 
   protected readonly manifest = computed(() => this.connectorStore.manifestFor(this.connectorId()));
 
@@ -178,6 +188,19 @@ export class BrokerLinkWizardComponent {
       }
     }, 1000);
 
+    // A reconnect keeps the old link's nickname unless the user changes it —
+    // retyping the name of the account they are re-signing-into is friction
+    // with no purpose.
+    effect(() => {
+      const replaced = this.replace();
+      if (replaced && !this.nicknameControl.dirty) {
+        const nickname = this.brokerLinks.linkFor(replaced)?.nickname;
+        if (nickname) {
+          this.nicknameControl.setValue(nickname);
+        }
+      }
+    });
+
     // Saved logins for this connector decide whether the form opens as "reuse"
     // or "type it all in", so they have to be loaded before the form is useful.
     void this.auth.loadSavedCredentials();
@@ -247,6 +270,7 @@ export class BrokerLinkWizardComponent {
       redirectUri: `${window.location.origin}/connectors/${this.connectorId()}/link`,
       savedCredentialId: this.selectedSaved()?.id,
       rememberFields: remember,
+      replacesLinkId: this.replace(),
     });
   }
 
