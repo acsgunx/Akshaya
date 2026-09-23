@@ -116,16 +116,10 @@ public sealed class BrokerLeakageRules
         // The order ticket and the link wizard are ONE component each, rendering from the
         // manifest. A broker name in the Angular app means someone forked a component, and the
         // next broker will cost a UI change instead of a config change.
-        var webDir = new DirectoryInfo(Path.Combine(RepoRoot.Value.FullName, "apps/web/src"));
-        if (!webDir.Exists)
-        {
-            return;
-        }
-
         var violations = new List<string>();
 
         var sourceExtensions = new[] { ".ts", ".html", ".scss" };
-        foreach (var file in webDir.EnumerateFiles("*", SearchOption.AllDirectories))
+        foreach (var file in RepoRoot.FilesUnder("*", "apps/web/src"))
         {
             if (!sourceExtensions.Contains(file.Extension, StringComparer.OrdinalIgnoreCase))
             {
