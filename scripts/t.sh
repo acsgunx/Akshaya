@@ -30,7 +30,7 @@ done
 dotnet test "$target" \
   --nologo -v q --no-restore \
   --logger "console;verbosity=minimal" \
-  "${extra[@]}" 2>&1 \
+  ${extra[@]+"${extra[@]}"} 2>&1 \
 | grep -E '^(Passed!|Failed!|Test Run|  +(Failed|Passed|Skipped)|\[xUnit)|error [A-Z]|\[FAIL\]|Assert\.|Expected:|Actual:|^\s+at Akshaya' \
 | head -n 150
 rc=${PIPESTATUS[0]}
