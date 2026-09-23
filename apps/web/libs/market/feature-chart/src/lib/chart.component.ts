@@ -41,6 +41,9 @@ import { ChartSidebarComponent } from './chart-sidebar.component';
 import { ChartToolsComponent } from './chart-tools.component';
 import { ChartStore } from './chart.store';
 
+/** The frame a chart opens on when the broker serves it — see `timeFrame`. */
+const DEFAULT_TIME_FRAME: TimeFrame = 'oneDay';
+
 /**
  * The chart screen. Like the order ticket, it is told a LINK and an
  * instrument and asks that link's manifest what it may offer:
@@ -156,25 +159,41 @@ export class ChartComponent {
     () => this.manifest()?.marketData.historicalTimeFrames ?? [],
   );
 
-  /** `undefined` until the manifest arrives and picks the broker's first offered frame. */
+  /** `undefined` until the user picks a frame; the default below stands in until then. */
   private readonly chosenTimeFrame = signal<TimeFrame | undefined>(undefined);
+  /**
+   * Opening frame: the daily bar. A chart opened from a position, an order or
+   * a watchlist row is being opened to answer "where is this instrument",
+   * which a day chart answers and a one-minute chart — the first entry in
+   * every broker's declared list, and so the old default — does not.
+   *
+   * Still chosen from the broker's OWN list, not asserted: a connector that
+   * declares no daily history falls back to its first offered frame, exactly
+   * as before.
+   */
   protected readonly timeFrame = computed(() => {
+    const frames = this.timeFrames();
     const chosen = this.chosenTimeFrame();
-    return chosen && this.timeFrames().includes(chosen) ? chosen : this.timeFrames()[0];
+    if (chosen && frames.includes(chosen)) { return chosen; }
+    return frames.includes(DEFAULT_TIME_FRAME) ? DEFAULT_TIME_FRAME : frames[0];
   });
 
   protected readonly quote = computed(() => this.marketData.tickFor(this.instrument())());
   protected readonly connectionState = this.marketData.connectionState;
+  /**
+   * When the last tick ARRIVED — `MarketDataService.lastTickAtFor`, never
+   * `quote().timestamp`. The tick carries the exchange's time on the print,
+   * so a symbol that has not traded in the last minute (or any symbol at all
+   * in a quiet patch) reports a timestamp minutes old while its ticks keep
+   * landing every second. Measuring freshness from it is what put "prices
+   * last updated 47s ago — this view may be out of date" over a live chart.
+   */
+  protected readonly lastUpdatedAt = computed(() => this.marketData.lastTickAtFor(this.instrument())());
   protected readonly lastTickAgeMs = computed(() => {
-    const timestamp = this.quote()?.timestamp;
-    const at = timestamp ? Date.parse(timestamp) : NaN;
-    return Number.isFinite(at) ? Math.max(0, this.clock() - at) : undefined;
+    const at = this.lastUpdatedAt();
+    return at === undefined ? undefined : Math.max(0, this.clock() - at);
   });
   protected readonly isFeedStale = computed(() => (this.lastTickAgeMs() ?? Number.POSITIVE_INFINITY) > 15_000);
-  protected readonly lastUpdatedAt = computed(() => {
-    const age = this.lastTickAgeMs();
-    return age === undefined ? undefined : Date.now() - age;
-  });
 
   /** The venue's own zone, so an NSE chart reads 09:15-15:30 wherever the trader is. */
   protected readonly timeZone = computed(() => {
@@ -233,9 +252,11 @@ export class ChartComponent {
     return this.watchlist.watched().map((instrument) => {
       const tick = this.marketData.tickFor(instrument.key)();
       const previous = Number(tick?.previousClose?.amount);
+      // Arrival time, not the print's exchange time — same reason as `lastUpdatedAt`.
+      const arrivedAt = this.marketData.lastTickAtFor(instrument.key)();
       return { instrument, tick,
         change: previous > 0 && tick ? (Number(tick.lastPrice.amount) - previous) / previous * 100 : undefined,
-        stale: !tick || !Number.isFinite(Date.parse(tick.timestamp)) || now - Date.parse(tick.timestamp) > 15000,
+        stale: arrivedAt === undefined || now - arrivedAt > 15000,
       };
     });
   });
