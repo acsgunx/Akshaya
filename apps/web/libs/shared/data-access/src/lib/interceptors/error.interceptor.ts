@@ -1,6 +1,5 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
-import { inject } from '@angular/core';
-import { MatSnackBar } from '@angular/material/snack-bar';
+import { Injector, inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 
 import type { ApiProblem } from '@akshaya/shared/models';
@@ -14,7 +13,14 @@ import type { ApiProblem } from '@akshaya/shared/models';
  * the caller. This is purely "make sure a human sees what the broker said".
  */
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
-  const snackBar = inject(MatSnackBar);
+  // `Injector`, not `MatSnackBar`: this interceptor is registered in the app
+  // shell, so injecting the snack bar here would import it — and the CDK
+  // overlay under it — into the initial bundle for a surface that only ever
+  // appears after a request has already failed. It is fetched on the first
+  // failure instead. The rethrow below stays synchronous either way, and
+  // every store also keeps its own `error` state, so a screen still shows
+  // what went wrong even if the toast never arrives.
+  const injector = inject(Injector);
 
   return next(req).pipe(
     catchError((err: unknown) => {
@@ -24,9 +30,14 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
           ? `${problem.detail ?? problem.title ?? 'Request failed'} — broker said: "${problem.vendorMessage}"`
           : (problem?.detail ?? problem?.title ?? `Request failed (${err.status})`);
 
-        snackBar.open(message, 'Dismiss', { duration: 8000, panelClass: ['ak-snack-error'] });
+        void toast(injector, message);
       }
       return throwError(() => err);
     }),
   );
 };
+
+async function toast(injector: Injector, message: string): Promise<void> {
+  const { MatSnackBar } = await import('@angular/material/snack-bar');
+  injector.get(MatSnackBar).open(message, 'Dismiss', { duration: 8000, panelClass: ['ak-snack-error'] });
+}

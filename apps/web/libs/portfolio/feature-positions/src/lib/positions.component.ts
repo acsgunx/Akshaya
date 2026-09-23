@@ -19,6 +19,7 @@ import type {
 import { problemDetail } from '@akshaya/shared/models';
 import { DashboardStore } from '@akshaya/portfolio/data-access';
 import {
+  AK_DIALOG_DEFAULTS,
   ChartLinkComponent,
   EmptyStateComponent,
   LoadingStateComponent,
@@ -178,6 +179,7 @@ export class PositionsComponent implements OnInit {
       ConvertPositionDialogData,
       ConvertPositionRequest
     >(ConvertPositionDialogComponent, {
+      ...AK_DIALOG_DEFAULTS,
       data: {
         brokerLinkId: leg.brokerLinkId,
         instrument: pos.instrument,
