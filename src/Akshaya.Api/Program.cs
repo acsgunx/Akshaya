@@ -793,6 +793,18 @@ internal sealed class NonDisposingConnectorProxy(IBrokerConnector inner) : IBrok
 /// </summary>
 internal sealed class DevPaperMarketDataSource : IMarketDataSource
 {
+    /// <summary>
+    /// The tick size every seeded instrument declares below. Generated prices are snapped to it.
+    ///
+    /// Not cosmetic. A simulator that emits 2903.8717150823218 for an instrument whose tick is
+    /// 0.05 is quoting a price the venue would reject, so anything reading these prices — the
+    /// risk gate's price-band rule, a backtest, a human reading the chart — is judging against a
+    /// number that could never trade. It is also expensive twice over: each of those prices
+    /// serialises as eighteen characters instead of seven, on every one of the OHLC fields of
+    /// every candle in a history response, and again on every tick pushed over SignalR.
+    /// </summary>
+    private const decimal SeedTickSize = 0.05m;
+
     private static readonly (string Symbol, decimal Price)[] Seed =
     [
         ("RELIANCE", 2900.00m),
@@ -857,16 +869,20 @@ internal sealed class DevPaperMarketDataSource : IMarketDataSource
         for (var open = request.From; open < request.To; open += step)
         {
             var changePercent = ((decimal)rng.NextDouble() - 0.5m) * 0.02m;
-            var close = Math.Max(0.05m, price * (1 + changePercent));
-            var high = Math.Max(price, close) * (1 + (decimal)rng.NextDouble() * 0.002m);
-            var low = Math.Min(price, close) * (1 - (decimal)rng.NextDouble() * 0.002m);
+            var close = Snap(Math.Max(SeedTickSize, price * (1 + changePercent)));
+            var high = Snap(Math.Max(price, close) * (1 + (decimal)rng.NextDouble() * 0.002m));
+            var low = Snap(Math.Min(price, close) * (1 - (decimal)rng.NextDouble() * 0.002m));
 
             candles.Add(new Candle
             {
                 OpenTime = open,
                 Open = price,
-                High = high,
-                Low = low,
+
+                // Snapping can invert the extremes when the move was smaller than one tick, so
+                // the bounds are re-established afterwards. A candle whose high is below its
+                // close is not a rounding artefact a chart can draw around; it is a broken bar.
+                High = Math.Max(high, Math.Max(price, close)),
+                Low = Math.Min(low, Math.Min(price, close)),
                 Close = close,
                 Volume = rng.Next(1_000, 50_000),
             });
@@ -891,7 +907,7 @@ internal sealed class DevPaperMarketDataSource : IMarketDataSource
             {
                 var previous = _prices[key];
                 var changePercent = ((decimal)_random.NextDouble() - 0.5m) * 0.004m;
-                var next = Math.Max(0.05m, previous * (1 + changePercent));
+                var next = Snap(Math.Max(SeedTickSize, previous * (1 + changePercent)));
                 _prices[key] = next;
 
                 yield return new Tick
@@ -900,8 +916,8 @@ internal sealed class DevPaperMarketDataSource : IMarketDataSource
                     LastPrice = new Money(next, Currency.Inr),
                     LastQuantity = new Quantity(_random.Next(1, 100)),
                     Volume = _random.Next(1_000, 100_000),
-                    BidPrice = new Money(Math.Round(next * 0.999m, 2), Currency.Inr),
-                    AskPrice = new Money(Math.Round(next * 1.001m, 2), Currency.Inr),
+                    BidPrice = new Money(Snap(next * 0.999m), Currency.Inr),
+                    AskPrice = new Money(Snap(next * 1.001m), Currency.Inr),
                     PreviousClose = new Money(previous, Currency.Inr),
                     Timestamp = _clock.UtcNow,
                 };
@@ -920,6 +936,12 @@ internal sealed class DevPaperMarketDataSource : IMarketDataSource
     }
 
     private static InstrumentKey Key(string symbol) => new(Venue.Nse, symbol, AssetClass.Equity);
+
+    /// <summary>
+    /// Snaps a generated price to <see cref="SeedTickSize"/> — the nearest price this instrument
+    /// could actually trade at.
+    /// </summary>
+    private static decimal Snap(decimal price) => Math.Round(price / SeedTickSize) * SeedTickSize;
 }
 
 /// <summary>
