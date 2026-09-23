@@ -5,7 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
 
-import { InstrumentPipe, MoneyPipe } from '@akshaya/shared/util';
+import { ClockService, InstrumentPipe, MoneyPipe } from '@akshaya/shared/util';
 import { MarketDataService } from '@akshaya/shared/data-access';
 import type { InstrumentDefinition } from '@akshaya/shared/models';
 import { ConnectionStatusComponent } from '@akshaya/shared/ui';
@@ -192,6 +192,7 @@ type FlashDirection = 'up' | 'down' | undefined;
 export class WatchlistRowComponent {
   private readonly marketData = inject(MarketDataService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly clock = inject(ClockService);
 
   readonly instrument = input.required<InstrumentDefinition>();
 
@@ -207,8 +208,15 @@ export class WatchlistRowComponent {
   protected readonly actionsOpen = signal(false);
 
   protected readonly quote = computed(() => this.marketData.tickFor(this.instrument().key)());
-  protected readonly ageMs = computed(() => this.marketData.ageMsFor(this.instrument().key)());
-  protected readonly isStale = computed(() => (this.ageMs() ?? Number.POSITIVE_INFINITY) > 15_000);
+  /**
+   * When this row's last tick ARRIVED, measured against the shared ticking
+   * clock — never an age handed over by the service. An age computed at the
+   * service only re-evaluates when the NEXT tick lands, so it sits at ≈0 for
+   * as long as the feed is silent and this row shows a live dot over a dead
+   * price. Same shape as the chart screen's `lastUpdatedAt`.
+   */
+  private readonly lastTickAt = computed(() => this.marketData.lastTickAtFor(this.instrument().key)());
+  protected readonly isStale = this.clock.isOlderThan(this.lastTickAt, 15_000);
   protected readonly connectionState = this.marketData.connectionState;
 
   private readonly flash = signal<FlashDirection>(undefined);

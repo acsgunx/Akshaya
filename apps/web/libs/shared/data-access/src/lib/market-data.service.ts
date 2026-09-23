@@ -1,7 +1,8 @@
-import { Injectable, Signal, computed, signal } from '@angular/core';
+import { Injectable, Signal, computed, inject, signal } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 
 import type { InstrumentKey, OrderRecord, StreamState, Tick } from '@akshaya/shared/models';
+import { ClockService } from '@akshaya/shared/util';
 
 /** One live subscription: which link it runs through, and how many components want it. */
 interface StreamSubscription {
@@ -31,6 +32,8 @@ function streamKey(brokerLinkId: string, instrument: InstrumentKey): string {
  */
 @Injectable({ providedIn: 'root' })
 export class MarketDataService {
+  private readonly clock = inject(ClockService);
+
   private hub: signalR.HubConnection | undefined;
 
   /**
@@ -51,10 +54,21 @@ export class MarketDataService {
   private readonly _orderUpdate = signal<OrderRecord | undefined>(undefined);
   readonly orderUpdate = this._orderUpdate.asReadonly();
 
-  /** True once >10s have passed with the hub connected but no tick for a WATCHED instrument. Read by `stale-banner`. */
+  /**
+   * True once >10s have passed with the hub connected but no tick for a
+   * WATCHED instrument.
+   *
+   * Measured against the shared `ClockService`, not a bare `Date.now()`: a
+   * `computed` re-evaluates only when a SIGNAL dependency changes, so reading
+   * the wall clock here would pin this to the instant the last tick landed
+   * and leave it `false` for as long as the feed stayed silent — reporting
+   * healthy exactly when it is not. See `ClockService` for the general case.
+   *
+   * Lazy, so the ticking dependency costs nothing until something reads it.
+   */
   readonly isAnyWatchedInstrumentStale = computed(() => {
     const lastAt = this._lastTickAt();
-    const now = Date.now();
+    const now = this.clock.now();
     for (const { instrument } of this.refCounts.values()) {
       const at = lastAt.get(instrument);
       if (at === undefined || now - at > 10_000) {
@@ -158,14 +172,6 @@ export class MarketDataService {
     return computed(() => this._ticks().get(instrument));
   }
 
-  /** Milliseconds since the last tick for this instrument, or undefined if none has arrived yet. */
-  ageMsFor(instrument: InstrumentKey): Signal<number | undefined> {
-    return computed(() => {
-      const at = this._lastTickAt().get(instrument);
-      return at === undefined ? undefined : Date.now() - at;
-    });
-  }
-
   /**
    * Epoch ms at which this instrument's last tick ARRIVED here, or undefined
    * if none has.
@@ -178,9 +184,11 @@ export class MarketDataService {
    * second. Judging freshness by it puts an "out of date" warning over a
    * perfectly live screen.
    *
-   * Returned raw rather than as an age so the caller can subtract its own
-   * ticking clock: an age computed here would only be recomputed when the
-   * NEXT tick lands, which is precisely the moment it stops being wrong.
+   * Returned raw rather than as an age so the caller can subtract a TICKING
+   * clock — `ClockService` (`@akshaya/shared/util`), which every freshness
+   * check in the app shares. An age computed here would only be recomputed
+   * when the NEXT tick lands, which is precisely the moment it stops being
+   * wrong; that is why there is no `ageMsFor` beside this.
    */
   lastTickAtFor(instrument: InstrumentKey): Signal<number | undefined> {
     return computed(() => this._lastTickAt().get(instrument));
