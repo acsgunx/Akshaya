@@ -47,8 +47,26 @@ export const AuthStore = signalStore(
     displayName: computed(() => store.user()?.displayName || store.user()?.email || ''),
   })),
   withMethods((store, api = inject(ApiService)) => {
+    /**
+     * The `/me` probe currently in flight, or undefined when none is.
+     *
+     * This is what makes `restore()` genuinely safe to call repeatedly, which
+     * it always claimed to be and was not. Two callers race it on every boot —
+     * `AppComponent.ngOnInit` and `authGuard` — and both read `restoring` as
+     * true because neither has answered yet, so both issued their own request.
+     * The probe hits the identity database, so that was two connections, two
+     * queries and two round trips to learn one thing.
+     */
+    let inFlight: Promise<void> | undefined;
+
     /** Resolves once the session is known either way. Safe to call repeatedly. */
-    async function restore(): Promise<void> {
+    function restore(): Promise<void> {
+      return (inFlight ??= probe().finally(() => {
+        inFlight = undefined;
+      }));
+    }
+
+    async function probe(): Promise<void> {
       try {
         const user = await firstValueFrom(api.me());
         patchState(store, { user: user ?? undefined, restoring: false });
