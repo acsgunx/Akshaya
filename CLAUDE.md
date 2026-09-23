@@ -4,6 +4,12 @@
 workspace — see below), `tests/` = xUnit projects, `libs/` shared. Local build has warnings-as-errors
 off (see `Directory.Build.props`); CI turns it on.
 
+## Git workflow
+
+Every change goes through a pull request — never commit or push directly to
+`main`, no matter how small the diff. Branch off `main`, commit, push the
+branch, open the PR with `gh`, and report the URL.
+
 ## Testing — keep it cheap
 
 `dotnet test` on this repo is expensive in context (restore + build chatter,
