@@ -25,7 +25,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { catchError, filter, map, of, take } from 'rxjs';
 
 import { ActivityService, ApiService, AuthStore, BrokerLinksStore, ConnectorStore } from '@akshaya/shared/data-access';
-import { formatBuildInfo, type BuildInfo } from '@akshaya/shared/models';
+import { formatBuildDetail, formatBuildInfo, type BuildInfo } from '@akshaya/shared/models';
 import { BrandMarkComponent } from '@akshaya/shared/ui';
 import { dismissBootSplash } from './shell/boot-splash';
 import { ActivityBarComponent } from './shell/activity-bar/activity-bar.component';
@@ -96,7 +96,7 @@ interface TabItem {
               <!-- Compact has no room for it; the account screen shows the same label there. -->
               <span
                 class="shrink-0 text-[11px] text-text-tertiary max-lg:hidden"
-                [title]="info.commit ? 'commit ' + info.commit : null"
+                [title]="formatBuildDetail(info) || null"
               >{{ formatBuildInfo(info) }}</span>
             }
             <nav class="hidden flex-1 gap-1 lg:flex" aria-label="Primary">
@@ -139,7 +139,10 @@ interface TabItem {
         <ak-activity-bar class="fixed inset-x-0 top-[env(safe-area-inset-top)] z-30" />
         <!-- "Did the deploy land" is checkable before signing in too. -->
         @if (buildInfo(); as info) {
-          <span class="fixed right-4 bottom-3 z-10 text-[11px] text-text-tertiary">{{ formatBuildInfo(info) }}</span>
+          <span
+            class="fixed right-4 bottom-3 z-10 text-[11px] text-text-tertiary"
+            [title]="formatBuildDetail(info) || null"
+          >{{ formatBuildInfo(info) }}</span>
         }
       }
 
@@ -286,6 +289,7 @@ export class AppComponent implements OnInit {
     inject(ApiService).getBuildInfo().pipe(catchError(() => of<BuildInfo | undefined>(undefined))),
   );
   protected readonly formatBuildInfo = formatBuildInfo;
+  protected readonly formatBuildDetail = formatBuildDetail;
 
   constructor() {
     // The splash stays up until the FIRST navigation has settled and painted:

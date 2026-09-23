@@ -14,7 +14,7 @@ import {
   LoadingStateComponent,
   SectionTabsComponent,
 } from '@akshaya/shared/ui';
-import { formatBuildInfo, type BuildInfo, type SavedCredential } from '@akshaya/shared/models';
+import { formatBuildDetail, formatBuildInfo, type BuildInfo, type SavedCredential } from '@akshaya/shared/models';
 
 /**
  * The account screen: who you are, and which broker logins this platform is
@@ -48,6 +48,7 @@ export class ProfileComponent implements OnInit {
   protected readonly auth = inject(AuthStore);
   protected readonly accountTabs = ACCOUNT_TABS;
   protected readonly formatBuildInfo = formatBuildInfo;
+  protected readonly formatBuildDetail = formatBuildDetail;
 
   /** The deployed build's version — the compact layout's copy of the header label. */
   protected readonly buildInfo = toSignal(

@@ -31,6 +31,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      Stamped once per compile and surfaced by GET /api/version as "builtAt" — the commit
+      says WHAT is deployed, this says WHEN it was built. Evaluated at evaluation time,
+      so every build of the same commit still reports its own moment.
+    -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildTimestampUtc</_Parameter1>
+      <_Parameter2>$([System.DateTime]::UtcNow.ToString('o'))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Modules\Trading\Akshaya.Modules.Trading.csproj" />
     <ProjectReference Include="..\Modules\Portfolio\Akshaya.Modules.Portfolio.csproj" />
     <ProjectReference Include="..\Modules\MarketData\Akshaya.Modules.MarketData.csproj" />
