@@ -67,8 +67,18 @@ public sealed class BlendedPortfolioService(
         // Rule 1: every broker at once.
         var fetches = await Task.WhenAll(accounts.Select(link => FetchAsync(link, parts, ct)));
 
-        var positions = await BlendPositionsAsync(fetches, ct);
-        var holdings = await BlendHoldingsAsync(fetches, ct);
+        // Rule 5, added: RESOLVE EACH DISTINCT INSTRUMENT ONCE, UP FRONT, CONCURRENTLY.
+        //
+        // Blending used to await a resolve inside the row loop, which is an N+1 in the shape
+        // that hides best: it is invisible while the resolver is the null one that answers from
+        // nothing, and it becomes the slowest thing on the dashboard the day a real resolver is
+        // wired in behind the same port. A portfolio of three hundred rows would then be three
+        // hundred lookups, in series, and the same instrument held at four brokers would be
+        // looked up four times.
+        var identityMap = await ResolveIdentitiesAsync(fetches, ct);
+
+        var positions = BlendPositions(fetches, identityMap);
+        var holdings = BlendHoldings(fetches, identityMap);
         var balances = BlendBalances(fetches);
         var pnl = await SummarisePnlAsync(fetches, displayCurrency, ct);
 
@@ -196,11 +206,83 @@ public sealed class BlendedPortfolioService(
         return null;
     }
 
-    // ───────────────────────────── blending ─────────────────────────────
+    // ───────────────────────────── identity ─────────────────────────────
 
-    private async Task<IReadOnlyList<BlendedPosition>> BlendPositionsAsync(
+    /// <summary>
+    /// Every distinct instrument across every broker, resolved once and in parallel.
+    ///
+    /// Deduplicating is the more valuable half: the whole reason blending exists is that the
+    /// same instrument appears at several brokers, so the naive per-row loop looked up the
+    /// popular names repeatedly and the unpopular ones once. This asks each question once.
+    ///
+    /// A resolve that throws is recorded as <see cref="InstrumentIdentity.Unknown"/> rather
+    /// than failing the snapshot — that is exactly the conservative fallback rule 3 describes,
+    /// and one unanswerable lookup must not blank a dashboard.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<InstrumentKey, InstrumentIdentity>> ResolveIdentitiesAsync(
         IReadOnlyList<LinkFetch> fetches,
         CancellationToken ct)
+    {
+        var distinct = new HashSet<InstrumentKey>();
+
+        foreach (var fetch in fetches)
+        {
+            foreach (var position in fetch.Positions)
+            {
+                if (!position.IsFlat)
+                {
+                    distinct.Add(position.Instrument);
+                }
+            }
+
+            foreach (var holding in fetch.Holdings)
+            {
+                if (holding.Quantity.Value != 0m)
+                {
+                    distinct.Add(holding.Instrument);
+                }
+            }
+        }
+
+        if (distinct.Count == 0)
+        {
+            return new Dictionary<InstrumentKey, InstrumentIdentity>();
+        }
+
+        var keys = distinct.ToArray();
+        var resolved = await Task.WhenAll(keys.Select(key => ResolveOneAsync(key, ct)));
+
+        var map = new Dictionary<InstrumentKey, InstrumentIdentity>(keys.Length);
+        for (var i = 0; i < keys.Length; i++)
+        {
+            map[keys[i]] = resolved[i];
+        }
+
+        return map;
+    }
+
+    private async Task<InstrumentIdentity> ResolveOneAsync(InstrumentKey key, CancellationToken ct)
+    {
+        try
+        {
+            return await identities.ResolveAsync(key, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Resolving the identity of {Instrument} threw; grouping by canonical key instead.", key);
+            return InstrumentIdentity.Unknown;
+        }
+    }
+
+    // ───────────────────────────── blending ─────────────────────────────
+
+    private static IReadOnlyList<BlendedPosition> BlendPositions(
+        IReadOnlyList<LinkFetch> fetches,
+        IReadOnlyDictionary<InstrumentKey, InstrumentIdentity> identities)
     {
         var groups = new Dictionary<GroupKey, List<(PortfolioLink Link, BrokerPosition Position, InstrumentIdentity Identity)>>();
 
@@ -208,7 +290,7 @@ public sealed class BlendedPortfolioService(
         {
             foreach (var position in fetch.Positions.Where(p => !p.IsFlat))
             {
-                var identity = await identities.ResolveAsync(position.Instrument, ct);
+                var identity = identities.GetValueOrDefault(position.Instrument, InstrumentIdentity.Unknown);
 
                 // Rule 2 and Rule 3 meet here: identity decides WHICH rows merge, currency
                 // decides whether they MAY.
@@ -267,9 +349,9 @@ public sealed class BlendedPortfolioService(
         return [.. blended.OrderBy(b => b.Instrument.Symbol, StringComparer.Ordinal).ThenBy(b => b.Currency.Code, StringComparer.Ordinal)];
     }
 
-    private async Task<IReadOnlyList<BlendedHolding>> BlendHoldingsAsync(
+    private static IReadOnlyList<BlendedHolding> BlendHoldings(
         IReadOnlyList<LinkFetch> fetches,
-        CancellationToken ct)
+        IReadOnlyDictionary<InstrumentKey, InstrumentIdentity> identities)
     {
         var groups = new Dictionary<GroupKey, List<(PortfolioLink Link, BrokerHolding Holding, InstrumentIdentity Identity)>>();
 
@@ -280,7 +362,7 @@ public sealed class BlendedPortfolioService(
                 // A holding often carries its own ISIN. Prefer it over the resolver: it came
                 // from the broker's own books about this exact line, which is better evidence
                 // than a lookup keyed on a canonical symbol.
-                var resolved = await identities.ResolveAsync(holding.Instrument, ct);
+                var resolved = identities.GetValueOrDefault(holding.Instrument, InstrumentIdentity.Unknown);
                 var identity = holding.Isin is { Length: > 0 } isin
                     ? new InstrumentIdentity(isin, resolved.Figi)
                     : resolved;

@@ -33,8 +33,10 @@ public sealed class MStockPlugin : IConnectorPlugin
         var logger = context.LoggerFactory.CreateLogger<MStockConnector>();
 
         var connector = context.Session is null
-            ? MStockConnector.CreateUnauthenticated(context.Manifest, options, logger, context.Clock)
-            : new MStockConnector(context.Manifest, context.Session, options, logger, context.Clock);
+            ? MStockConnector.CreateUnauthenticated(
+                context.Manifest, options, logger, context.Clock, context.HttpClientFactory)
+            : new MStockConnector(
+                context.Manifest, context.Session, options, logger, context.Clock, context.HttpClientFactory);
 
         return Result<IBrokerConnector>.Success(connector);
     }

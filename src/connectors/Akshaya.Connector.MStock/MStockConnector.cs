@@ -45,12 +45,19 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
     /// <param name="options">Endpoint and timeout configuration.</param>
     /// <param name="logger">Host-supplied logger, already scoped with connector and tenant ids.</param>
     /// <param name="clock">Injected so tests and the backtester can control expiry.</param>
+    /// <param name="httpClientFactory">
+    /// The host's shared connection pool, keyed by connector id. Supplied in production; null in
+    /// tests, where this connector falls back to owning a client of its own. Using the pooled one
+    /// is what stops every request-scoped activation paying a fresh TLS handshake — see
+    /// <c>ConnectorHttpClientPool</c>.
+    /// </param>
     public MStockConnector(
         ConnectorManifest manifest,
         BrokerSession? session,
         MStockOptions options,
         ILogger<MStockConnector> logger,
-        IClock? clock = null)
+        IClock? clock = null,
+        Func<string, HttpClient>? httpClientFactory = null)
         : base(manifest, session, logger, clock)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -70,7 +77,12 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
         // every order until it finishes would make a restart look like an outage.
         Symbols = new MStockSymbolTranslator(_instruments);
 
-        _api = MStockApi.Create(options, Errors, session, logger: Logger);
+        _api = MStockApi.Create(
+            options,
+            Errors,
+            session,
+            httpClientFactory?.Invoke(manifest.Id),
+            Logger);
 
         AuthFacet = new MStockAuth(options, Errors, Clock);
         ReferenceFacet = new MStockReference(_api, options, _master, Clock);
@@ -138,8 +150,9 @@ public sealed class MStockConnector : ConnectorBase, IAsyncDisposable
         ConnectorManifest manifest,
         MStockOptions options,
         ILogger<MStockConnector> logger,
-        IClock? clock = null) =>
-        new(manifest, session: null, options, logger, clock);
+        IClock? clock = null,
+        Func<string, HttpClient>? httpClientFactory = null) =>
+        new(manifest, session: null, options, logger, clock, httpClientFactory);
 
     /// <summary>
     /// Health for mStock folds in two things the base class cannot know: whether the script

@@ -50,12 +50,19 @@ public sealed class ZerodhaConnector : ConnectorBase
     /// <param name="options">Endpoint and timeout configuration.</param>
     /// <param name="logger">Host-supplied logger, already scoped with connector and tenant ids.</param>
     /// <param name="clock">Injected so tests and the backtester can control expiry.</param>
+    /// <param name="httpClientFactory">
+    /// The host's shared connection pool, keyed by connector id. Supplied in production; null in
+    /// tests, where this connector falls back to owning a client of its own. Using the pooled one
+    /// is what stops every request-scoped activation paying a fresh TLS handshake — see
+    /// <c>ConnectorHttpClientPool</c>.
+    /// </param>
     public ZerodhaConnector(
         ConnectorManifest manifest,
         BrokerSession? session,
         ZerodhaOptions options,
         ILogger<ZerodhaConnector> logger,
-        IClock? clock = null)
+        IClock? clock = null,
+        Func<string, HttpClient>? httpClientFactory = null)
         : base(manifest, session, logger, clock)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -73,7 +80,12 @@ public sealed class ZerodhaConnector : ConnectorBase
         // translates correctly with no master at all. Only monthly derivatives need it.
         Symbols = new ZerodhaSymbolTranslator(Instruments);
 
-        _api = ZerodhaApi.Create(options, Errors, session, logger: Logger);
+        _api = ZerodhaApi.Create(
+            options,
+            Errors,
+            session,
+            httpClientFactory?.Invoke(manifest.Id),
+            Logger);
 
         AuthFacet = new ZerodhaAuth(options, Errors, Clock);
         OrdersFacet = new ZerodhaOrders(_api, options, Symbols, Clock, Tags, Logger);
@@ -143,8 +155,9 @@ public sealed class ZerodhaConnector : ConnectorBase
         ConnectorManifest manifest,
         ZerodhaOptions options,
         ILogger<ZerodhaConnector> logger,
-        IClock? clock = null) =>
-        new(manifest, session: null, options, logger, clock);
+        IClock? clock = null,
+        Func<string, HttpClient>? httpClientFactory = null) =>
+        new(manifest, session: null, options, logger, clock, httpClientFactory);
 
     /// <summary>
     /// Health folds in three things the base class cannot know: whether the instrument master has

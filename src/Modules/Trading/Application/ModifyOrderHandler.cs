@@ -111,9 +111,20 @@ public sealed class ModifyOrderHandler(
         var policy = await policies.GetAsync(command.TenantId, ct);
         var now = clock.UtcNow;
 
-        var quote = await connector.MarketData.GetQuoteAsync(order.Instrument, ct);
-        var instrument = await connector.Reference.ResolveAsync(order.Instrument, ct);
-        var snapshot = await snapshots.GetAsync(command.TenantId, command.UserId, order.BrokerLinkId, ct);
+        // Concurrently, for the reason spelled out in PlaceOrderHandler: three independent
+        // broker round trips on the order path cost one round trip together and three in
+        // sequence. An amendment is as time-critical as a placement — more so, usually, since
+        // it is chasing a price that is moving. The snapshot reuses this connector rather than
+        // activating a second one for the link we already have open.
+        var quoteTask = connector.MarketData.GetQuoteAsync(order.Instrument, ct);
+        var instrumentTask = connector.Reference.ResolveAsync(order.Instrument, ct);
+        var snapshotTask = snapshots.GetAsync(command.TenantId, command.UserId, order.BrokerLinkId, ct, connector);
+
+        await Task.WhenAll(quoteTask, instrumentTask, snapshotTask);
+
+        var quote = await quoteTask;
+        var instrument = await instrumentTask;
+        var snapshot = await snapshotTask;
 
         var decision = await riskGate.EvaluateAsync(
             new RiskEvaluationContext

@@ -184,29 +184,26 @@ public static class OrderEndpoints
 
             var query = new OrderQuery { From = from, To = to, Instrument = instrumentKey };
 
+            // EVERY BROKER AT ONCE — the same rule BlendedPortfolioService states as its first
+            // one, and for the same reason. This is the only fan-out in the API that used to
+            // walk its links in sequence, so five linked brokers at 400ms each cost two
+            // seconds of spinner rather than 400ms. Nothing about a fills list makes one
+            // broker's answer depend on another's.
+            var perLink = await Task.WhenAll(targets.Select(link => FetchTradesAsync(link, query, linkResolver, ct)));
+
             var trades = new List<TradeDto>();
             var warnings = new List<string>();
 
-            foreach (var link in targets)
+            // Merged in the order the links were listed, so the response is stable across calls
+            // rather than ordered by whichever broker happened to answer first.
+            foreach (var (linkTrades, warning) in perLink)
             {
-                var connectorResult = await linkResolver.ConnectAsync(link, ct);
-                if (connectorResult.IsFailure)
+                trades.AddRange(linkTrades);
+
+                if (warning is not null)
                 {
-                    warnings.Add($"{link.Id}: {connectorResult.Error.Message}");
-                    continue;
+                    warnings.Add(warning);
                 }
-
-                await using var connector = connectorResult.Value;
-
-                var found = await connector.Orders.GetTradesAsync(query, ct);
-                if (found.IsFailure)
-                {
-                    // Named and skipped, never fatal. See TradesResponse.Warnings.
-                    warnings.Add($"{connector.Manifest.DisplayName}: {found.Error.Message}");
-                    continue;
-                }
-
-                trades.AddRange(found.Value.Select(t => TradeDto.From(t, link.Id, link.ConnectorId)));
             }
 
             // Newest first: a fills list is read from the top, and the most recent execution is
@@ -267,13 +264,33 @@ public static class OrderEndpoints
 
             var warnings = new List<string>();
 
+            // Two independent broker calls, started together. This estimate runs while the
+            // trader is looking at the order ticket with the quantity box still focused, so its
+            // latency is felt directly — and margin does not depend on charges.
+            var marginTask = connector.Manifest.Orders.MarginEstimate
+                ? connector.Orders.EstimateMarginAsync(placeRequest, ct)
+                : null;
+
+            var chargesTask = connector.Manifest.Orders.ChargesEstimate
+                ? connector.Orders.EstimateChargesAsync(placeRequest, ct)
+                : null;
+
+            if (marginTask is not null || chargesTask is not null)
+            {
+                await Task.WhenAll(new Task?[] { marginTask, chargesTask }.OfType<Task>());
+            }
+
             Money? marginRequired = null;
             Money? marginAvailable = null;
             bool? isMarginSufficient = null;
 
-            if (connector.Manifest.Orders.MarginEstimate)
+            if (marginTask is null)
             {
-                var margin = await connector.Orders.EstimateMarginAsync(placeRequest, ct);
+                warnings.Add("This broker does not offer a margin estimate.");
+            }
+            else
+            {
+                var margin = await marginTask;
                 if (margin.IsSuccess)
                 {
                     marginRequired = margin.Value.Required;
@@ -285,17 +302,17 @@ public static class OrderEndpoints
                     warnings.Add($"Margin could not be estimated: {margin.Error.Message}");
                 }
             }
-            else
-            {
-                warnings.Add("This broker does not offer a margin estimate.");
-            }
 
             IReadOnlyList<ChargeLineDto> charges = [];
             Money? totalCharges = null;
 
-            if (connector.Manifest.Orders.ChargesEstimate)
+            if (chargesTask is null)
             {
-                var estimate = await connector.Orders.EstimateChargesAsync(placeRequest, ct);
+                warnings.Add("This broker does not offer an itemised charges estimate.");
+            }
+            else
+            {
+                var estimate = await chargesTask;
                 if (estimate.IsSuccess)
                 {
                     charges = [.. estimate.Value.Lines.Select(l => new ChargeLineDto(l.Name, l.Amount, l.Note))];
@@ -305,10 +322,6 @@ public static class OrderEndpoints
                 {
                     warnings.Add($"Charges could not be estimated: {estimate.Error.Message}");
                 }
-            }
-            else
-            {
-                warnings.Add("This broker does not offer an itemised charges estimate.");
             }
 
             return Results.Ok(new OrderEstimateResponse(
@@ -321,5 +334,46 @@ public static class OrderEndpoints
         });
 
         return app;
+    }
+
+    /// <summary>
+    /// One link's fills, with its failure captured rather than thrown.
+    ///
+    /// A broker that is down must cost this endpoint a WARNING and nothing else — that is the
+    /// existing contract on <see cref="TradesResponse.Warnings"/>. Because the links now run
+    /// concurrently, that has to hold per task: an exception escaping here would fault the
+    /// whole <c>Task.WhenAll</c> and blank a blotter that four other brokers had answered.
+    /// </summary>
+    private static async Task<(IReadOnlyList<TradeDto> Trades, string? Warning)> FetchTradesAsync(
+        BrokerLink link,
+        OrderQuery query,
+        BrokerLinkResolver linkResolver,
+        CancellationToken ct)
+    {
+        try
+        {
+            var connectorResult = await linkResolver.ConnectAsync(link, ct);
+            if (connectorResult.IsFailure)
+            {
+                return ([], $"{link.Id}: {connectorResult.Error.Message}");
+            }
+
+            await using var connector = connectorResult.Value;
+
+            var found = await connector.Orders.GetTradesAsync(query, ct);
+            return found.IsFailure
+                ? ([], $"{connector.Manifest.DisplayName}: {found.Error.Message}")
+                : ([.. found.Value.Select(t => TradeDto.From(t, link.Id, link.ConnectorId))], null);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The caller went away. Propagate as itself rather than reporting it as a broker
+            // problem the user could act on.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return ([], $"{link.Id}: {ex.Message}");
+        }
     }
 }

@@ -53,12 +53,19 @@ public sealed class FyersConnector : ConnectorBase
     /// <param name="options">Endpoint and timeout configuration.</param>
     /// <param name="logger">Host-supplied logger, already scoped with connector and tenant ids.</param>
     /// <param name="clock">Injected so tests and the backtester can control expiry.</param>
+    /// <param name="httpClientFactory">
+    /// The host's shared connection pool, keyed by connector id. Supplied in production; null in
+    /// tests, where this connector falls back to owning a client of its own. Using the pooled one
+    /// is what stops every request-scoped activation paying a fresh TLS handshake — see
+    /// <c>ConnectorHttpClientPool</c>.
+    /// </param>
     public FyersConnector(
         ConnectorManifest manifest,
         BrokerSession? session,
         FyersOptions options,
         ILogger<FyersConnector> logger,
-        IClock? clock = null)
+        IClock? clock = null,
+        Func<string, HttpClient>? httpClientFactory = null)
         : base(manifest, session, logger, clock)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -78,7 +85,12 @@ public sealed class FyersConnector : ConnectorBase
         // NSE order until it finishes would make a restart look like an outage.
         Symbols = new FyersSymbolTranslator(Instruments);
 
-        _api = FyersApi.Create(options, Errors, session, logger: Logger);
+        _api = FyersApi.Create(
+            options,
+            Errors,
+            session,
+            httpClientFactory?.Invoke(manifest.Id),
+            Logger);
 
         AuthFacet = new FyersAuth(options, Errors, Clock);
         OrdersFacet = new FyersOrders(_api, options, Symbols, Clock, Logger);
@@ -136,8 +148,9 @@ public sealed class FyersConnector : ConnectorBase
         ConnectorManifest manifest,
         FyersOptions options,
         ILogger<FyersConnector> logger,
-        IClock? clock = null) =>
-        new(manifest, session: null, options, logger, clock);
+        IClock? clock = null,
+        Func<string, HttpClient>? httpClientFactory = null) =>
+        new(manifest, session: null, options, logger, clock, httpClientFactory);
 
     /// <summary>
     /// Health folds in two things the base class cannot know: whether the symbol master has been
