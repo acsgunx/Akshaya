@@ -25,46 +25,79 @@ public sealed class ConnectorRiskSnapshotProvider(
     IClock clock,
     ILogger<ConnectorRiskSnapshotProvider> logger) : IRiskSnapshotProvider
 {
-    public async Task<RiskSnapshot> GetAsync(
+    public Task<RiskSnapshot> GetAsync(
         string tenantId,
         string userId,
         string brokerLinkId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IBrokerConnector? connector = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(brokerLinkId);
 
-        var now = clock.UtcNow;
-        if (cache.TryGet(brokerLinkId, now, out var cached))
-        {
-            return cached;
-        }
-
-        var snapshot = await BuildAsync(tenantId, brokerLinkId, ct);
-        cache.Set(brokerLinkId, now, snapshot);
-        return snapshot;
+        // SINGLE-FLIGHT, not merely cached. A cache alone makes the SECOND order cheap; it does
+        // nothing for the first N orders that arrive together on a cold entry, which is exactly
+        // the shape of a trader firing a basket — each one would make its own positions and
+        // balances call, and they would all be asking the same question. GetOrBuildAsync
+        // collapses them into one broker round trip that everyone waits on.
+        return cache.GetOrBuildAsync(
+            brokerLinkId,
+            clock.UtcNow,
+            token => BuildAsync(tenantId, brokerLinkId, connector, token),
+            ct);
     }
 
     private async Task<RiskSnapshot> BuildAsync(
         string tenantId,
         string brokerLinkId,
+        IBrokerConnector? supplied,
         CancellationToken ct)
     {
-        var connectorResult = await linkResolver.ResolveAsync(tenantId, brokerLinkId, ct);
-        if (connectorResult.IsFailure)
-        {
-            logger.LogWarning(
-                "Could not build a risk snapshot for link {LinkId}: {Error}",
-                brokerLinkId,
-                connectorResult.Error);
+        // A connector the caller already holds open is used as-is and NEVER disposed — it is
+        // not ours. Only when we had to activate one of our own do we own its lifetime.
+        IBrokerConnector connector;
+        IBrokerConnector? owned = null;
 
-            // Partial, not empty-and-confident. An empty snapshot that claimed completeness
-            // would silently switch off the daily loss limit.
-            return RiskSnapshot.Empty with { IsPartial = true };
+        if (supplied is not null)
+        {
+            connector = supplied;
+        }
+        else
+        {
+            var connectorResult = await linkResolver.ResolveAsync(tenantId, brokerLinkId, ct);
+            if (connectorResult.IsFailure)
+            {
+                logger.LogWarning(
+                    "Could not build a risk snapshot for link {LinkId}: {Error}",
+                    brokerLinkId,
+                    connectorResult.Error);
+
+                // Partial, not empty-and-confident. An empty snapshot that claimed completeness
+                // would silently switch off the daily loss limit.
+                return RiskSnapshot.Empty with { IsPartial = true };
+            }
+
+            connector = owned = connectorResult.Value;
         }
 
-        await using var connector = connectorResult.Value;
+        try
+        {
+            return await ReadAsync(connector, brokerLinkId, ct);
+        }
+        finally
+        {
+            if (owned is not null)
+            {
+                await owned.DisposeAsync();
+            }
+        }
+    }
 
+    private async Task<RiskSnapshot> ReadAsync(
+        IBrokerConnector connector,
+        string brokerLinkId,
+        CancellationToken ct)
+    {
         var positionsTask = connector.Portfolio.GetPositionsAsync(ct);
         var balancesTask = connector.Portfolio.GetBalancesAsync(ct);
         await Task.WhenAll(positionsTask, balancesTask);

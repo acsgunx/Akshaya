@@ -12,6 +12,7 @@
 
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
@@ -37,6 +38,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -127,6 +129,16 @@ try
     });
 
     builder.Services.AddSingleton<ConnectorCatalog>();
+
+    // ONE OUTBOUND CONNECTION POOL PER CONNECTOR, FOR THE LIFE OF THE PROCESS.
+    //
+    // Connectors are request-scoped by design, and before this each activation also built and
+    // then disposed its own HttpClient — so every portfolio refresh, every quote and every
+    // order paid a fresh DNS lookup, TCP handshake and TLS handshake to the broker before it
+    // could send anything. That handshake is the single largest avoidable cost on the whole
+    // read path. The pool is handed to connectors through ConnectorActivationContext, which
+    // has always had the hook for it; nothing was filling it in.
+    builder.Services.AddSingleton<ConnectorHttpClientPool>();
     builder.Services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
     builder.Services.AddSingleton<IConnectorAuditSink, LoggingConnectorAuditSink>();
     // Gateways are run by the operator and probed here, not launched by this process. A runtime
@@ -385,6 +397,45 @@ try
         };
     });
 
+    // ── Response compression. ─────────────────────────────────────────────────────────────────
+    //
+    // The portfolio snapshot is the biggest thing this API returns and the most repetitive: one
+    // row per blended position, each carrying a leg per broker, each leg carrying several Money
+    // objects that serialise as {"amount":…,"currency":…}. That shape compresses by roughly an
+    // order of magnitude, and on a phone on mobile data the transfer is a visible part of how
+    // long the dashboard spends showing a spinner. The single-container deployments serve the
+    // Angular bundle from this same pipeline, so they get it on the bundle too.
+    //
+    // EnableForHttps is on, and that is a deliberate BREACH trade-off rather than an oversight.
+    // Leaving it off would mean compression never applies in any real deployment, since they
+    // are all HTTPS. BREACH needs a secret in the RESPONSE BODY next to attacker-controlled
+    // content; this API keeps its session in an HttpOnly cookie, issues no CSRF token in a
+    // body, and never echoes one user's secret into another's response. If a body-borne token
+    // is ever added, this flag is the line to revisit.
+    builder.Services.AddResponseCompression(options =>
+    {
+        options.EnableForHttps = true;
+        options.Providers.Add<BrotliCompressionProvider>();
+        options.Providers.Add<GzipCompressionProvider>();
+
+        // The defaults omit JSON's +json suffixes and the SPA's own asset types.
+        options.MimeTypes =
+        [
+            .. ResponseCompressionDefaults.MimeTypes,
+            "application/json",
+            "application/problem+json",
+            "application/javascript",
+            "text/javascript",
+            "image/svg+xml",
+        ];
+    });
+
+    // Fastest, not Optimal. Brotli's default quality is 11, which spends more CPU per response
+    // than the bytes it saves are worth on an API whose payloads are tens of kilobytes — and
+    // that CPU is on the request's own critical path.
+    builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+    builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+
     // ── ProblemDetails + OpenAPI + Scalar. ────────────────────────────────────────────────────
     builder.Services.AddProblemDetails();
     builder.Services.AddOpenApi();
@@ -432,6 +483,10 @@ try
     {
         app.UseCors();
     }
+
+    // Before the static-file and endpoint middleware, so it covers both the API's JSON and the
+    // Angular bundle in the single-container deployments.
+    app.UseResponseCompression();
 
     // ── The Angular app, served from this origin when it has been published into wwwroot. ─────
     //

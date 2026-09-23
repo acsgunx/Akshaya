@@ -1,3 +1,4 @@
+using Akshaya.Connectors.Abstractions;
 using Akshaya.SharedKernel;
 
 namespace Akshaya.Modules.Trading.Ports;
@@ -50,9 +51,21 @@ public sealed record RiskSnapshot
 /// </summary>
 public interface IRiskSnapshotProvider
 {
+    /// <summary>
+    /// The snapshot for one link, from cache when it is warm.
+    /// </summary>
+    /// <param name="connector">
+    /// A connector the CALLER already holds open for this link, when it has one. Supplying it
+    /// is not an optimisation of style: the order path resolves a connector, and an
+    /// implementation that activated a second one for the same link would open a second
+    /// session, a second set of sockets and a second decorator chain to ask a question the
+    /// caller's own connector could already answer. The caller keeps ownership — the provider
+    /// must never dispose a connector it was handed.
+    /// </param>
     Task<RiskSnapshot> GetAsync(
         string tenantId,
         string userId,
         string brokerLinkId,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        IBrokerConnector? connector = null);
 }

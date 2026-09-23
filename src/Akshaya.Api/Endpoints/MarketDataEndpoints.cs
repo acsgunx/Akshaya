@@ -2,6 +2,7 @@ using Akshaya.Api.Infrastructure;
 using Akshaya.Connectors.Abstractions;
 using Akshaya.Modules.MarketData;
 using Akshaya.Modules.Trading.Application;
+using Akshaya.Modules.Trading.Ports;
 using Akshaya.SharedKernel;
 
 namespace Akshaya.Api.Endpoints;
@@ -35,10 +36,11 @@ public static class MarketDataEndpoints
             int? limit,
             ICurrentUserAccessor user,
             BrokerLinkResolver linkResolver,
+            IConnectorFactory connectors,
             InstrumentMaster master,
             CancellationToken ct) =>
         {
-            var indexResult = await GetIndexAsync(user.TenantId, brokerLinkId, linkResolver, master, ct);
+            var indexResult = await GetIndexAsync(user.TenantId, brokerLinkId, linkResolver, connectors, master, ct);
             return indexResult.IsFailure
                 ? ProblemDetailsMapper.ToProblem(indexResult.Error)
                 : Results.Ok(indexResult.Value.Search(query, Math.Clamp(limit ?? 20, 1, MaxSearchResults)));
@@ -49,6 +51,7 @@ public static class MarketDataEndpoints
             string instrument,
             ICurrentUserAccessor user,
             BrokerLinkResolver linkResolver,
+            IConnectorFactory connectors,
             InstrumentMaster master,
             CancellationToken ct) =>
         {
@@ -57,7 +60,7 @@ public static class MarketDataEndpoints
                 return ProblemDetailsMapper.ValidationProblem([$"'{instrument}' is not a valid instrument key."]);
             }
 
-            var indexResult = await GetIndexAsync(user.TenantId, brokerLinkId, linkResolver, master, ct);
+            var indexResult = await GetIndexAsync(user.TenantId, brokerLinkId, linkResolver, connectors, master, ct);
             if (indexResult.IsFailure)
             {
                 return ProblemDetailsMapper.ToProblem(indexResult.Error);
@@ -184,17 +187,27 @@ public static class MarketDataEndpoints
 
     /// <summary>
     /// The instrument master for whichever connector this link belongs to, loading it on first
-    /// use.
+    /// use and refreshing it behind the caller once it has aged out.
     ///
     /// The fast path — a warm master, which is every request after the first — resolves the
     /// link only far enough to learn its connector id and never activates a connector at all:
-    /// no session decrypt, no decorator chain, no broker round trip. A connector is built only
-    /// when the master actually has to be loaded, and it is disposed as soon as it has been.
+    /// no session decrypt, no decorator chain, no broker round trip.
+    ///
+    /// THE AGED-OUT PATH IS THE ONE THAT USED TO HURT. When the snapshot passed its refresh
+    /// interval, the next caller — whoever happened to type into the search box first — was
+    /// made to wait for a few hundred thousand rows to download inside their request. They had
+    /// done nothing different from the caller a second earlier who got an instant answer. Now
+    /// they get the previous snapshot immediately and the reload runs behind them on a
+    /// connector of its own, so nobody's keystroke pays for it.
+    ///
+    /// Only a genuinely COLD master — nothing loaded, ever — still blocks, because there is
+    /// nothing else to answer with.
     /// </summary>
     private static async Task<Result<InstrumentSearchIndex>> GetIndexAsync(
         string tenantId,
         string brokerLinkId,
         BrokerLinkResolver linkResolver,
+        IConnectorFactory connectors,
         InstrumentMaster master,
         CancellationToken ct)
     {
@@ -205,11 +218,19 @@ public static class MarketDataEndpoints
         }
 
         var link = linkResult.Value;
-        if (master.TryGetFresh(link.ConnectorId, out var warm))
+
+        if (master.TryGetForServing(link.ConnectorId, out var servable, out var refreshDue))
         {
-            return warm;
+            if (refreshDue)
+            {
+                StartBackgroundRefresh(link, connectors, master);
+            }
+
+            return servable;
         }
 
+        // Cold. This caller pays for the first load, on their own connector and their own
+        // cancellation token.
         var connectorResult = await linkResolver.ConnectAsync(link, ct);
         if (connectorResult.IsFailure)
         {
@@ -218,12 +239,80 @@ public static class MarketDataEndpoints
 
         await using var connector = connectorResult.Value;
 
-        // The connector must outlive the load, which is why this is awaited here rather than
-        // handed to the master as a background job: `master` holds no session of its own.
         return await master.GetOrLoadAsync(
             link.ConnectorId,
             token => connector.Reference.GetInstrumentsAsync(ct: token),
             ct);
+    }
+
+    /// <summary>
+    /// Kicks off a reload on a connector that OUTLIVES the request which noticed it was due.
+    ///
+    /// The connector cannot be the request's own: that one is disposed the moment the response
+    /// is written, and the download would die with it a few thousand rows in. So this activates
+    /// its own and hands the master a cleanup that disposes it when the load ends, however it
+    /// ends. The master starts at most one of these per connector, so a burst of keystrokes
+    /// after the interval elapsed produces one download.
+    ///
+    /// IT TAKES THE SINGLETON <see cref="IConnectorFactory"/>, NOT THE SCOPED
+    /// <c>BrokerLinkResolver</c>. The work here deliberately outlives the request, and so
+    /// outlives that request's DI scope; holding a scoped service past the end of its scope is
+    /// the kind of bug that does not fail today and fails inexplicably the day someone gives
+    /// that service a disposable dependency. The link — session included — is already in hand,
+    /// which is everything the resolver would have contributed.
+    /// </summary>
+    private static void StartBackgroundRefresh(
+        BrokerLink link,
+        IConnectorFactory connectors,
+        InstrumentMaster master)
+    {
+        if (link.Session is not { } session)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            IBrokerConnector? connector = null;
+            try
+            {
+                // Detached from the request's token on purpose: the request has already been
+                // answered from the stale snapshot, and cancelling on its completion would mean
+                // the refresh never finishes.
+                var connectorResult = await connectors.CreateAsync(link.ConnectorId, session, CancellationToken.None);
+                if (connectorResult.IsFailure)
+                {
+                    return;
+                }
+
+                connector = connectorResult.Value;
+
+                // Ownership passes to the master: it disposes the connector through the cleanup
+                // when the load ends. If it declines the refresh — one is already running — we
+                // still own it and dispose it below.
+                var handedOver = master.RefreshInBackground(
+                    link.ConnectorId,
+                    token => connector.Reference.GetInstrumentsAsync(ct: token),
+                    connector.DisposeAsync);
+
+                if (handedOver)
+                {
+                    connector = null;
+                }
+            }
+            catch (Exception)
+            {
+                // Nothing awaits this task. A background refresh that cannot even start is a
+                // no-op: the stale snapshot keeps being served and the next request tries again.
+            }
+            finally
+            {
+                if (connector is not null)
+                {
+                    await connector.DisposeAsync();
+                }
+            }
+        });
     }
 
     /// <summary>

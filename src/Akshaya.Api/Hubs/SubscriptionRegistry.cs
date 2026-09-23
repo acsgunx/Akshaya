@@ -126,6 +126,14 @@ public sealed class SubscriptionRegistry : IDisposable
             }
 
             var newlySubscribed = new List<InstrumentKey>(instruments.Count);
+
+            // The group joins are started together rather than awaited one at a time. Against
+            // the in-process group manager each is already complete when it returns, but a
+            // deployment with a backplane makes every one of them a round trip — and a trader
+            // loading a fifty-symbol watchlist would then wait for fifty of them in series
+            // before their first tick could possibly arrive.
+            var joins = new List<Task>(instruments.Count);
+
             foreach (var instrument in instruments)
             {
                 var subscribers = stream.Subscribers.GetOrAdd(
@@ -137,8 +145,10 @@ public sealed class SubscriptionRegistry : IDisposable
                     newlySubscribed.Add(instrument);
                 }
 
-                await _hub.Groups.AddToGroupAsync(connectionId, InstrumentGroup(brokerLinkId, instrument), ct);
+                joins.Add(_hub.Groups.AddToGroupAsync(connectionId, InstrumentGroup(brokerLinkId, instrument), ct));
             }
+
+            await Task.WhenAll(joins);
 
             if (newlySubscribed.Count > 0 && stream.Connector.Stream is { } upstream)
             {
@@ -187,6 +197,8 @@ public sealed class SubscriptionRegistry : IDisposable
             }
 
             var newlyEmpty = new List<InstrumentKey>(instruments.Count);
+            var leaves = new List<Task>(instruments.Count);
+
             foreach (var instrument in instruments)
             {
                 if (stream.Subscribers.TryGetValue(instrument, out var subscribers))
@@ -198,8 +210,13 @@ public sealed class SubscriptionRegistry : IDisposable
                     }
                 }
 
-                await _hub.Groups.RemoveFromGroupAsync(connectionId, InstrumentGroup(brokerLinkId, instrument), ct);
+                leaves.Add(_hub.Groups.RemoveFromGroupAsync(connectionId, InstrumentGroup(brokerLinkId, instrument), ct));
             }
+
+            // Concurrently, for the reason given in SubscribeAsync. Leaving matters just as
+            // much: a watchlist switch is an unsubscribe followed by a subscribe, and the user
+            // is waiting on both.
+            await Task.WhenAll(leaves);
 
             if (newlyEmpty.Count > 0 && stream.Connector.Stream is { } upstream)
             {
@@ -391,53 +408,112 @@ public sealed class SubscriptionRegistry : IDisposable
         var push = new StreamStatePush(brokerLinkId, evt.State.ToString(), evt.Reason);
 
         // A snapshot: sending must never run inside the same enumeration a concurrent
-        // subscribe/unsubscribe is mutating.
-        foreach (var instrument in stream.Subscribers.Keys.ToArray())
+        // subscribe/unsubscribe is mutating. The sends themselves go out together — this runs
+        // on the upstream pump, and walking a large watchlist one group at a time would hold
+        // up every tick behind the reconnect notice that triggered it.
+        var sends = stream.Subscribers.Keys
+            .ToArray()
+            .Select(instrument => SendStreamStateAsync(brokerLinkId, instrument, push, ct));
+
+        await Task.WhenAll(sends);
+    }
+
+    private async Task SendStreamStateAsync(
+        string brokerLinkId,
+        InstrumentKey instrument,
+        StreamStatePush push,
+        CancellationToken ct)
+    {
+        try
         {
-            try
-            {
-                await _hub.Clients.Group(InstrumentGroup(brokerLinkId, instrument)).SendAsync("streamState", push, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to broadcast stream state for {LinkId}/{Instrument}.", brokerLinkId, instrument);
-            }
+            await _hub.Clients.Group(InstrumentGroup(brokerLinkId, instrument)).SendAsync("streamState", push, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to broadcast stream state for {LinkId}/{Instrument}.", brokerLinkId, instrument);
         }
     }
 
-    /// <summary>The conflation flush: at most once per <see cref="ConflationInterval"/>, per instrument, per link.</summary>
+    /// <summary>
+    /// The conflation flush: at most once per <see cref="ConflationInterval"/>, per instrument, per link.
+    ///
+    /// ═══════════════════ TWO THINGS HERE ARE LOAD-BEARING FOR LATENCY ═══════════════════
+    ///
+    /// NON-REENTRANT. The timer fires every 250ms whether or not the previous flush has
+    /// finished, and the callback that starts it is fire-and-forget. A watchlist big enough
+    /// that a flush takes longer than the interval would therefore start a second flush on top
+    /// of the first, then a third, until the overlapping flushes were competing for the same
+    /// Pending dictionary and the tape fell steadily further behind — the classic timer
+    /// pile-up, and it gets worse exactly when the market is busiest. The gate below drops a
+    /// tick that arrives while a flush is running, which is CORRECT rather than merely
+    /// acceptable: conflation already drops intermediate ticks by design, and the next flush
+    /// carries the latest price regardless.
+    ///
+    /// CONCURRENT SENDS. Each instrument goes to its own SignalR group, and those groups are
+    /// independent. Awaiting them one after another made a hundred-symbol watchlist a hundred
+    /// sequential round trips through the hub four times a second, so the last symbol in the
+    /// dictionary updated visibly later than the first. Started together they cost one.
+    /// ═══════════════════════════════════════════════════════════════════════════════════
+    /// </summary>
     private async Task FlushConflatedAsync(string brokerLinkId, LinkStream stream)
     {
-        if (stream.Pending.IsEmpty)
+        if (stream.Pending.IsEmpty || !stream.TryBeginFlush())
         {
             return;
         }
 
-        foreach (var instrument in stream.Pending.Keys.ToArray())
+        try
         {
-            if (!stream.Pending.TryRemove(instrument, out var tick))
+            List<Task>? sends = null;
+
+            foreach (var instrument in stream.Pending.Keys.ToArray())
             {
-                continue;
+                if (!stream.Pending.TryRemove(instrument, out var tick))
+                {
+                    continue;
+                }
+
+                (sends ??= []).Add(SendTickAsync(brokerLinkId, stream, instrument, tick));
             }
 
-            try
+            if (sends is not null)
             {
-                await _hub.Clients
-                    .Group(InstrumentGroup(brokerLinkId, instrument))
-                    .SendAsync("tick", MarketTickPush.From(tick), stream.Cts.Token);
+                await Task.WhenAll(sends);
             }
-            catch (OperationCanceledException)
-            {
-                // The link was torn down mid-flush; nothing further to send.
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to push a conflated tick for {Instrument} on link {LinkId}.", instrument, brokerLinkId);
-            }
+        }
+        finally
+        {
+            stream.EndFlush();
+        }
+    }
+
+    /// <summary>
+    /// One instrument's push, with its failure swallowed rather than thrown.
+    ///
+    /// Because the sends now run together, an exception escaping here would fault the whole
+    /// <c>Task.WhenAll</c> — and that task is awaited inside a fire-and-forget flush, so a
+    /// single wedged browser tab would take down the tape for every other subscriber on the
+    /// link. The failure is logged against the instrument it belongs to and nothing else stops.
+    /// </summary>
+    private async Task SendTickAsync(string brokerLinkId, LinkStream stream, InstrumentKey instrument, Tick tick)
+    {
+        try
+        {
+            await _hub.Clients
+                .Group(InstrumentGroup(brokerLinkId, instrument))
+                .SendAsync("tick", MarketTickPush.From(tick), stream.Cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The link was torn down mid-flush; nothing further to send.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to push a conflated tick for {Instrument} on link {LinkId}.", instrument, brokerLinkId);
         }
     }
 
@@ -487,6 +563,14 @@ public sealed class SubscriptionRegistry : IDisposable
         public Task PumpTask { get; set; } = Task.CompletedTask;
 
         public Timer ConflationTimer { get; set; } = null!;
+
+        /// <summary>0 = idle, 1 = a flush is running. See <see cref="FlushConflatedAsync"/>.</summary>
+        private int _flushing;
+
+        /// <summary>True when this caller won the right to flush; false when one is already running.</summary>
+        public bool TryBeginFlush() => Interlocked.CompareExchange(ref _flushing, 1, 0) == 0;
+
+        public void EndFlush() => Interlocked.Exchange(ref _flushing, 0);
     }
 }
 

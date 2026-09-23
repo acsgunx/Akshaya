@@ -33,8 +33,10 @@ public sealed class FyersPlugin : IConnectorPlugin
         var logger = context.LoggerFactory.CreateLogger<FyersConnector>();
 
         var connector = context.Session is null
-            ? FyersConnector.CreateUnauthenticated(context.Manifest, options, logger, context.Clock)
-            : new FyersConnector(context.Manifest, context.Session, options, logger, context.Clock);
+            ? FyersConnector.CreateUnauthenticated(
+                context.Manifest, options, logger, context.Clock, context.HttpClientFactory)
+            : new FyersConnector(
+                context.Manifest, context.Session, options, logger, context.Clock, context.HttpClientFactory);
 
         return Result<IBrokerConnector>.Success(connector);
     }

@@ -142,34 +142,65 @@ public sealed class ReconciliationService(
         return await ReconcileLinkAsync(link, "stream-reconnect", ct);
     }
 
-    /// <summary>One pass over every active link.</summary>
+    /// <summary>
+    /// One pass over every active link, ALL LINKS AT ONCE.
+    ///
+    /// This runs on a timer rather than in a request, so its own wall-clock time is not what a
+    /// trader feels — but it is not free to them either. A sequential pass holds the whole
+    /// reconciliation window open for the sum of every broker's round trip, and for all of that
+    /// time it is drawing on the same per-credential rate-limit buckets the trader's own quotes
+    /// and orders draw on. A pass that takes six seconds instead of one is five extra seconds
+    /// of competing with the user for their own broker's budget, every interval, all day.
+    ///
+    /// One unreachable broker must still not stop the others: each link's failure is captured
+    /// inside its own task rather than faulting the group.
+    /// </summary>
     public async Task<IReadOnlyList<ReconciliationReport>> ReconcileAllAsync(CancellationToken ct = default)
     {
         var active = await links.ListActiveAsync(ct);
-        var reports = new List<ReconciliationReport>(active.Count);
+        var usable = active.Where(l => l.IsUsable).ToArray();
 
-        foreach (var link in active.Where(l => l.IsUsable))
+        if (usable.Length == 0)
         {
-            ct.ThrowIfCancellationRequested();
+            return [];
+        }
 
+        var results = await Task.WhenAll(usable.Select(link => SafeReconcileAsync(link, ct)));
+
+        // Ordered by the link listing rather than by which broker answered first, so two
+        // consecutive passes over an unchanged account read identically in the log.
+        return [.. results.Where(r => r is not null).Select(r => r!)];
+    }
+
+    /// <summary>One link's pass, with its failure logged instead of thrown. Null means it failed.</summary>
+    private async Task<ReconciliationReport?> SafeReconcileAsync(BrokerLink link, CancellationToken ct)
+    {
+        try
+        {
             var report = await ReconcileLinkAsync(link, "interval", ct);
             if (report.IsSuccess)
             {
-                reports.Add(report.Value);
+                return report.Value;
             }
-            else
-            {
-                // One unreachable broker must not stop the others being reconciled. The failure
-                // is logged and the loop continues; a link that stays unreachable shows up in
-                // its own health check, not by starving every other link of reconciliation.
-                logger.LogWarning(
-                    "Reconciliation of link {LinkId} failed: {Error}",
-                    link.Id,
-                    report.Error);
-            }
-        }
 
-        return reports;
+            // A link that stays unreachable shows up in its own health check, not by starving
+            // every other link of reconciliation.
+            logger.LogWarning(
+                "Reconciliation of link {LinkId} failed: {Error}",
+                link.Id,
+                report.Error);
+
+            return null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Reconciliation of link {LinkId} threw; the pass continues.", link.Id);
+            return null;
+        }
     }
 
     /// <summary>
@@ -211,6 +242,21 @@ public sealed class ReconciliationService(
             .GroupBy(o => o.BrokerOrderId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
+        // The heuristic leg's index, built once per pass rather than rescanned per order.
+        // Without it, every local order that neither exact match could pair walked the whole
+        // broker book — and the orders that reach the heuristic are precisely the ones at a
+        // broker that round-trips no client id, so for those brokers it was EVERY order. A
+        // day's book on both sides made that quadratic, on a timer, holding the pass open
+        // against the trader's own rate-limit budget.
+        //
+        // Bucketed on the same three fields the heuristic requires exactly, so a bucket holds
+        // every candidate and nothing else; the time-window and claimed checks still run per
+        // candidate, because those depend on the local order and on what earlier orders took.
+        var heuristicBuckets = book
+            .Where(o => o.ClientOrderId is null)
+            .GroupBy(o => (o.Instrument, o.Side, o.Quantity))
+            .ToDictionary(g => g.Key, g => g.ToArray());
+
         var claimed = new HashSet<string>(StringComparer.Ordinal);
         var corrected = 0;
         var unaccounted = 0;
@@ -218,7 +264,7 @@ public sealed class ReconciliationService(
 
         foreach (var order in local)
         {
-            var match = Match(order, byClientOrderId, byBrokerOrderId, book, claimed);
+            var match = Match(order, byClientOrderId, byBrokerOrderId, heuristicBuckets, claimed);
 
             if (match is null)
             {
@@ -331,7 +377,7 @@ public sealed class ReconciliationService(
         Order order,
         Dictionary<Guid, BrokerOrder> byClientOrderId,
         Dictionary<string, BrokerOrder> byBrokerOrderId,
-        IReadOnlyList<BrokerOrder> book,
+        Dictionary<(InstrumentKey Instrument, Side Side, Quantity Quantity), BrokerOrder[]> heuristicBuckets,
         HashSet<string> claimed)
     {
         if (byClientOrderId.TryGetValue(order.ClientOrderId, out var byClient))
@@ -345,27 +391,44 @@ public sealed class ReconciliationService(
             return (byBroker, OrderMatchMethod.BrokerOrderId);
         }
 
-        var candidates = book
-            .Where(b => !claimed.Contains(b.BrokerOrderId)
-                        && b.ClientOrderId is null
-                        && b.Instrument == order.Instrument
-                        && b.Side == order.Request.Side
-                        && b.Quantity == order.Request.Quantity
-                        && Within(b.PlacedAt, order.CreatedAt, _options.MatchWindow))
-            .Take(2)
-            .ToArray();
-
-        if (candidates.Length == 1)
+        if (!heuristicBuckets.TryGetValue(
+                (order.Instrument, order.Request.Side, order.Request.Quantity),
+                out var bucket))
         {
-            return (candidates[0], OrderMatchMethod.Heuristic);
+            return null;
         }
 
-        if (candidates.Length > 1)
+        // Still "stop after two", because the refusal below only needs to know that a second
+        // one exists — see the method remarks for why finding two is a reason to do nothing.
+        BrokerOrder? only = null;
+        var found = 0;
+
+        foreach (var candidate in bucket)
+        {
+            if (claimed.Contains(candidate.BrokerOrderId)
+                || !Within(candidate.PlacedAt, order.CreatedAt, _options.MatchWindow))
+            {
+                continue;
+            }
+
+            only ??= candidate;
+            if (++found > 1)
+            {
+                break;
+            }
+        }
+
+        if (found == 1)
+        {
+            return (only!, OrderMatchMethod.Heuristic);
+        }
+
+        if (found > 1)
         {
             logger.LogWarning(
                 "Order {OrderId} has {Count} equally plausible matches at the broker; refusing to guess.",
                 order.Id,
-                candidates.Length);
+                found);
         }
 
         return null;

@@ -91,6 +91,13 @@ public sealed class ConnectorHostOptions
 
     public ConnectorRateLimiterOptions RateLimiter { get; set; } = new();
 
+    /// <summary>
+    /// The shared outbound connection pool every connector's HTTP client is built over. See
+    /// <see cref="ConnectorHttpClientPool"/> for why request-scoped connectors must not each
+    /// own their sockets.
+    /// </summary>
+    public ConnectorHttpPoolOptions HttpPool { get; set; } = new();
+
     /// <summary>How long a gateway health probe result is trusted before re-probing.</summary>
     public TimeSpan GatewayProbeCacheDuration { get; set; } = TimeSpan.FromSeconds(10);
 

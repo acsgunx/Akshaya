@@ -32,8 +32,10 @@ public sealed class ZerodhaPlugin : IConnectorPlugin
         var logger = context.LoggerFactory.CreateLogger<ZerodhaConnector>();
 
         var connector = context.Session is null
-            ? ZerodhaConnector.CreateUnauthenticated(context.Manifest, options, logger, context.Clock)
-            : new ZerodhaConnector(context.Manifest, context.Session, options, logger, context.Clock);
+            ? ZerodhaConnector.CreateUnauthenticated(
+                context.Manifest, options, logger, context.Clock, context.HttpClientFactory)
+            : new ZerodhaConnector(
+                context.Manifest, context.Session, options, logger, context.Clock, context.HttpClientFactory);
 
         return Result<IBrokerConnector>.Success(connector);
     }

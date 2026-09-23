@@ -137,6 +137,149 @@ public sealed class InstrumentMaster : IDisposable
         }
     }
 
+    /// <summary>
+    /// The snapshot to SERVE right now, even when it has aged out, saying whether a refresh is
+    /// due. Returns false only when nothing usable is held at all.
+    ///
+    /// This is the read half of stale-while-revalidate: it is what lets the caller that
+    /// happens to arrive first after the refresh interval elapsed get an answer immediately
+    /// instead of being the one who pays for the whole download. Pair it with
+    /// <see cref="RefreshInBackground"/>.
+    /// </summary>
+    /// <param name="connectorId">Which connector's master.</param>
+    /// <param name="index">The snapshot to serve, fresh or stale.</param>
+    /// <param name="refreshDue">True when the snapshot has aged out and a reload should start.</param>
+    public bool TryGetForServing(string connectorId, out InstrumentSearchIndex index, out bool refreshDue)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectorId);
+
+        Slot? slot;
+        lock (_slotsGate)
+        {
+            _slots.TryGetValue(connectorId, out slot);
+        }
+
+        if (slot?.Current is not { } current)
+        {
+            index = null!;
+            refreshDue = true;
+            return false;
+        }
+
+        if (IsFresh(current))
+        {
+            index = current.Index;
+            refreshDue = false;
+            return true;
+        }
+
+        // Aged out. Serveable only while the operator allows it and only up to MaxStaleAge —
+        // past that a stale list is misinformation rather than a stand-in, and the caller
+        // waits for a real one.
+        var age = _clock.UtcNow - current.LoadedAt;
+        if (_options.ServeStaleWhileRefreshing && age <= _options.MaxStaleAge)
+        {
+            index = current.Index;
+            refreshDue = true;
+            return true;
+        }
+
+        index = null!;
+        refreshDue = true;
+        return false;
+    }
+
+    /// <summary>
+    /// Starts at most ONE background reload for this connector and returns immediately.
+    ///
+    /// The caller supplies a loader that owns everything it needs for the whole download —
+    /// crucially including the connector, which is why <paramref name="cleanup"/> exists: the
+    /// request that triggered this refresh returns long before the download finishes, so the
+    /// connector must NOT be the request's own <c>await using</c> one. Cleanup runs however the
+    /// load ends.
+    ///
+    /// Returns false when a load for this connector is already running, which is the whole
+    /// point: a hundred keystrokes arriving after the interval elapsed must start one download.
+    /// </summary>
+    public bool RefreshInBackground(string connectorId, InstrumentLoader load, Func<ValueTask>? cleanup = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectorId);
+        ArgumentNullException.ThrowIfNull(load);
+
+        if (_disposed)
+        {
+            return false;
+        }
+
+        var slot = GetSlot(connectorId);
+
+        // Non-blocking: if the gate is taken, somebody is already downloading this master and
+        // there is nothing useful for us to add.
+        if (!slot.Gate.Wait(0))
+        {
+            return false;
+        }
+
+        _ = RunBackgroundRefreshAsync(connectorId, slot, load, cleanup);
+        return true;
+    }
+
+    /// <summary>Owns the gate it was handed and always releases it. Never throws to its caller.</summary>
+    private async Task RunBackgroundRefreshAsync(
+        string connectorId,
+        Slot slot,
+        InstrumentLoader load,
+        Func<ValueTask>? cleanup)
+    {
+        // Yield first so the request thread that started this returns its response immediately
+        // rather than running the first synchronous stretch of the download.
+        await Task.Yield();
+
+        try
+        {
+            // CancellationToken.None on purpose. This load is deliberately detached from the
+            // request that noticed the snapshot was stale — that request has already been
+            // answered from the stale copy, and cancelling the download when it completes
+            // would mean the refresh never happens at all.
+            var result = await LoadAsync(connectorId, load, CancellationToken.None).ConfigureAwait(false);
+
+            if (result.IsSuccess)
+            {
+                slot.Current = new Snapshot(result.Value, _clock.UtcNow);
+            }
+            else
+            {
+                // The stale snapshot stays exactly where it is and keeps being served. A failed
+                // background refresh must be invisible to traders and visible in the log.
+                _logger.LogWarning(
+                    "Background refresh of the instrument master for {ConnectorId} failed ({Error}); the previous snapshot stands.",
+                    connectorId,
+                    result.Error.Code);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Nothing awaits this task, so an escaping exception would be an unobserved one.
+            _logger.LogError(ex, "Background refresh of the instrument master for {ConnectorId} threw.", connectorId);
+        }
+        finally
+        {
+            slot.Gate.Release();
+
+            if (cleanup is not null)
+            {
+                try
+                {
+                    await cleanup().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Cleaning up after the {ConnectorId} instrument-master refresh threw.", connectorId);
+                }
+            }
+        }
+    }
+
     /// <summary>Drops a connector's snapshot, forcing the next caller to reload it.</summary>
     public void Invalidate(string connectorId)
     {

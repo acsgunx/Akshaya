@@ -17,6 +17,9 @@ public sealed class RiskSnapshotCache
     private readonly ConcurrentDictionary<string, (DateTimeOffset At, RiskSnapshot Snapshot)> _entries =
         new(StringComparer.Ordinal);
 
+    /// <summary>One gate per link, so a build for one broker never blocks a build for another.</summary>
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new(StringComparer.Ordinal);
+
     /// <summary>
     /// How long a snapshot is reused. Short enough that a closed position disappears from the
     /// count within a few orders, long enough that a burst of orders makes one broker call.
@@ -41,6 +44,57 @@ public sealed class RiskSnapshotCache
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         _entries[brokerLinkId] = (now, snapshot);
+    }
+
+    /// <summary>
+    /// The cached snapshot, or ONE build shared by every caller that arrives while it runs.
+    ///
+    /// WHY SINGLE-FLIGHT AND NOT JUST A CACHE. A plain check-then-build races: ten orders sent
+    /// together on a cold entry all miss, all build, and all make their own positions and
+    /// balances calls — ten round trips and ten rate-limit permits spent answering one
+    /// question. The lost permits are the worse half, because they come out of the same bucket
+    /// the trader's own quotes draw on. Under the gate the check is repeated, so the nine that
+    /// queued behind the first take its answer instead of repeating its work.
+    ///
+    /// A PARTIAL snapshot is cached like any other, exactly as the un-gated version did. It is
+    /// tempting to skip it so a recovered broker is noticed sooner, but the failure that
+    /// produces a partial is usually a timeout: not caching it would make every subsequent
+    /// order wait out its own timeout, serialised behind this gate, which is far worse than
+    /// judging on a few seconds of known-partial data that the rules already fail closed on.
+    /// </summary>
+    public async Task<RiskSnapshot> GetOrBuildAsync(
+        string brokerLinkId,
+        DateTimeOffset now,
+        Func<CancellationToken, Task<RiskSnapshot>> build,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(brokerLinkId);
+        ArgumentNullException.ThrowIfNull(build);
+
+        if (TryGet(brokerLinkId, now, out var cached))
+        {
+            return cached;
+        }
+
+        var gate = _gates.GetOrAdd(brokerLinkId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // Re-check under the gate: the caller ahead of us has very likely just published
+            // the snapshot we were about to fetch again.
+            if (TryGet(brokerLinkId, now, out var justBuilt))
+            {
+                return justBuilt;
+            }
+
+            var snapshot = await build(ct).ConfigureAwait(false);
+            Set(brokerLinkId, now, snapshot);
+            return snapshot;
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>

@@ -150,9 +150,27 @@ public sealed class PlaceOrderHandler(
         // ── 4. Risk gate ───────────────────────────────────────────────────────────────────
         // Market data and account state are fetched once, here, and shared by every rule so
         // that ten rules do not make ten calls and every rule judges the same instant.
-        var lastTradedPrice = await TryGetLastPriceAsync(connector, request.Instrument, ct);
-        var instrument = await TryResolveInstrumentAsync(connector, request.Instrument, ct);
-        var snapshot = await _snapshots.GetAsync(command.TenantId, command.UserId, link.Id, ct);
+        //
+        // CONCURRENTLY, and that is not a micro-optimisation. These are three INDEPENDENT
+        // broker round trips on the one path where latency is measured in what it costs: run
+        // in sequence they add up — three times the slowest broker's round trip, spent between
+        // the trader pressing buy and the order leaving the building, every single time. Run
+        // together they cost one. They touch different endpoints, and whether they may truly
+        // execute at once is the connector's own rate limiter's decision, which is where that
+        // decision belongs.
+        //
+        // The snapshot is handed THIS connector rather than being left to resolve its own: it
+        // needs the same link we already have open, and activating a second one would mean a
+        // second session and a second set of sockets to ask a question this one can answer.
+        var lastPriceTask = TryGetLastPriceAsync(connector, request.Instrument, ct);
+        var instrumentTask = TryResolveInstrumentAsync(connector, request.Instrument, ct);
+        var snapshotTask = _snapshots.GetAsync(command.TenantId, command.UserId, link.Id, ct, connector);
+
+        await Task.WhenAll(lastPriceTask, instrumentTask, snapshotTask);
+
+        var lastTradedPrice = await lastPriceTask;
+        var instrument = await instrumentTask;
+        var snapshot = await snapshotTask;
 
         var riskContext = capabilityContext with
         {

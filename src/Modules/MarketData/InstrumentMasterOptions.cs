@@ -31,4 +31,28 @@ public sealed record InstrumentMasterOptions
     /// a trader is searching for were almost certainly in it.
     /// </summary>
     public bool ServeStaleOnRefreshFailure { get; init; } = true;
+
+    /// <summary>
+    /// Whether an aged-out snapshot is served immediately while its replacement downloads
+    /// behind it, instead of making the caller wait for the download.
+    ///
+    /// On by default, because the alternative is a cliff: for twelve hours the search box is
+    /// instant, and then one unlucky trader's keystroke is the one that pays for a few hundred
+    /// thousand rows to come down the wire. They did nothing different; they just arrived
+    /// first after the interval elapsed. What they get instead is the list from twelve hours
+    /// ago — which, for a search box, differs from the fresh one by a handful of new strikes —
+    /// and the fresh one lands moments later for everyone.
+    ///
+    /// It does NOT apply to the first load. With nothing in memory there is nothing to serve,
+    /// so that caller waits; <see cref="TimeSpan.Zero"/> here turns the behaviour off entirely.
+    /// </summary>
+    public bool ServeStaleWhileRefreshing { get; init; } = true;
+
+    /// <summary>
+    /// How far past <see cref="RefreshInterval"/> a snapshot may still be served while a
+    /// refresh runs. Past this it is treated as no snapshot at all and the caller waits, so a
+    /// broker whose master has been failing to download for days cannot leave the search box
+    /// quietly answering from a list that predates half the contracts on it.
+    /// </summary>
+    public TimeSpan MaxStaleAge { get; init; } = TimeSpan.FromDays(3);
 }

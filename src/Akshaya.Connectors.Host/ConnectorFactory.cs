@@ -65,6 +65,7 @@ public sealed class ConnectorFactory : IConnectorFactory
     private readonly IRateLimitStore _rateLimitStore;
     private readonly IConnectorAuditSink _auditSink;
     private readonly IGatewaySupervisor _gateways;
+    private readonly ConnectorHttpClientPool _httpPool;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ConnectorFactory> _logger;
     private readonly IClock _clock;
@@ -75,6 +76,7 @@ public sealed class ConnectorFactory : IConnectorFactory
         IRateLimitStore rateLimitStore,
         IConnectorAuditSink auditSink,
         IGatewaySupervisor gateways,
+        ConnectorHttpClientPool httpPool,
         ILoggerFactory loggerFactory,
         IClock clock)
     {
@@ -83,6 +85,7 @@ public sealed class ConnectorFactory : IConnectorFactory
         ArgumentNullException.ThrowIfNull(rateLimitStore);
         ArgumentNullException.ThrowIfNull(auditSink);
         ArgumentNullException.ThrowIfNull(gateways);
+        ArgumentNullException.ThrowIfNull(httpPool);
         ArgumentNullException.ThrowIfNull(loggerFactory);
         ArgumentNullException.ThrowIfNull(clock);
 
@@ -91,6 +94,7 @@ public sealed class ConnectorFactory : IConnectorFactory
         _rateLimitStore = rateLimitStore;
         _auditSink = auditSink;
         _gateways = gateways;
+        _httpPool = httpPool;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<ConnectorFactory>();
         _clock = clock;
@@ -193,6 +197,13 @@ public sealed class ConnectorFactory : IConnectorFactory
             LoggerFactory = _loggerFactory,
             Clock = _clock,
             Settings = _options.SettingsFor(entry.Manifest.Id),
+
+            // THE FIX FOR THE PER-REQUEST TLS HANDSHAKE. Connectors are request-scoped, so a
+            // connector that builds its own HttpClient also throws away its connection pool
+            // when the request ends. Handing one over the host's shared, per-connector pool
+            // means the second call to a broker reuses the first call's open, warm TLS
+            // connection instead of negotiating a new one. See ConnectorHttpClientPool.
+            HttpClientFactory = _httpPool.AsFactory(),
             Gateway = gatewayEndpoint is null
                 ? null
                 : new GatewayAddress(gatewayEndpoint.Host, gatewayEndpoint.Port),
