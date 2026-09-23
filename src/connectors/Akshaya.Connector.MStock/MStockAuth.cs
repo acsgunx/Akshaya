@@ -86,6 +86,27 @@ public sealed class MStockAuth : IConnectorAuth
         return nominal < venueMidnight ? nominal : venueMidnight;
     }
 
+    /// <summary>
+    /// When the session token was actually minted.
+    ///
+    /// <c>login_time</c> is the broker's claim of that instant, and it is trusted only while it
+    /// can describe a token issued by the call that just returned: never in the future, and never
+    /// older than the token's own lifetime — a timestamp that stale cannot name a session minted
+    /// seconds ago. A bare date, a bare time-of-day, or a stale value parses cleanly but lands
+    /// outside that window, and anchoring <see cref="ComputeExpiry"/> to it would birth an
+    /// already-expired session — the token is valid, yet the catalogue shows "Session expired"
+    /// immediately. When the claim is implausible the exchange's own instant is the anchor.
+    /// </summary>
+    private DateTimeOffset ResolveIssuedAt(string? loginTime)
+    {
+        var now = _clock.UtcNow;
+        return MStockTime.Parse(loginTime) is { } parsed
+            && parsed <= now
+            && now - parsed <= _options.TokenLifetime
+            ? parsed
+            : now;
+    }
+
     /// <inheritdoc />
     public async Task<Result<AuthStep>> BeginAsync(AuthContext context, CancellationToken ct = default)
     {
@@ -362,7 +383,7 @@ public sealed class MStockAuth : IConnectorAuth
                 "user_id"));
         }
 
-        var issuedAt = MStockTime.ParseOr(data.LoginTime, _clock.UtcNow);
+        var issuedAt = ResolveIssuedAt(data.LoginTime);
 
         var extras = new Dictionary<string, string>(StringComparer.Ordinal)
         {
