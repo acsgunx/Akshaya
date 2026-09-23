@@ -1,4 +1,4 @@
-import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { HttpContextToken, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { Injector, inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 
@@ -12,6 +12,15 @@ import type { ApiProblem } from '@akshaya/shared/models';
  * key doc — while a quote fetch usually can be), so that decision stays with
  * the caller. This is purely "make sure a human sees what the broker said".
  */
+
+/**
+ * Set on requests that are ambient rather than user-initiated — the build-info
+ * check, for example, where a failure's only answer is the missing label
+ * itself and a toast would report a problem nobody can act on. The error is
+ * still rethrown to the caller unchanged.
+ */
+export const SKIP_ERROR_TOAST = new HttpContextToken<boolean>(() => false);
+
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   // `Injector`, not `MatSnackBar`: this interceptor is registered in the app
   // shell, so injecting the snack bar here would import it — and the CDK
@@ -24,7 +33,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((err: unknown) => {
-      if (err instanceof HttpErrorResponse) {
+      if (err instanceof HttpErrorResponse && !req.context.get(SKIP_ERROR_TOAST)) {
         const problem = err.error as ApiProblem | undefined;
         const message = problem?.vendorMessage
           ? `${problem.detail ?? problem.title ?? 'Request failed'} — broker said: "${problem.vendorMessage}"`

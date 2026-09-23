@@ -4,7 +4,10 @@
 #   fly volumes create akshaya_data --size 1 --region sin
 #   fly secrets set CredentialProtection__ActiveKeyId=prod-1 \
 #                   CredentialProtection__Keys__prod-1="$(openssl rand -base64 32)"
-#   fly deploy --config deploy/fly/fly.toml --dockerfile deploy/Dockerfile
+#   fly deploy --config deploy/fly/fly.toml --dockerfile deploy/Dockerfile \
+#     --build-arg GIT_SHA="$(git rev-parse HEAD)"
+#
+#   The build arg stamps the commit that GET /api/version reports.
 #
 # See README.md in this directory for the full walkthrough.
 

@@ -522,6 +522,10 @@ try
     app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
     app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = _ => true }).AllowAnonymous();
 
+    // Anonymous for the same reason as the probes: "which commit is running" has to be
+    // answerable before a login exists.
+    app.MapVersionEndpoints();
+
     app.MapOpenApi().AllowAnonymous();
     app.MapScalarApiReference();
 

@@ -1,11 +1,12 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, of } from 'rxjs';
 
-import { AuthStore, ConnectorStore } from '@akshaya/shared/data-access';
+import { ApiService, AuthStore, ConnectorStore } from '@akshaya/shared/data-access';
 import {
   ACCOUNT_TABS,
   ConfirmDialogService,
@@ -13,7 +14,7 @@ import {
   LoadingStateComponent,
   SectionTabsComponent,
 } from '@akshaya/shared/ui';
-import type { SavedCredential } from '@akshaya/shared/models';
+import { formatBuildInfo, type BuildInfo, type SavedCredential } from '@akshaya/shared/models';
 
 /**
  * The account screen: who you are, and which broker logins this platform is
@@ -46,6 +47,12 @@ export class ProfileComponent implements OnInit {
   private readonly confirm = inject(ConfirmDialogService);
   protected readonly auth = inject(AuthStore);
   protected readonly accountTabs = ACCOUNT_TABS;
+  protected readonly formatBuildInfo = formatBuildInfo;
+
+  /** The deployed build's version — the compact layout's copy of the header label. */
+  protected readonly buildInfo = toSignal(
+    inject(ApiService).getBuildInfo().pipe(catchError(() => of<BuildInfo | undefined>(undefined))),
+  );
 
   ngOnInit(): void {
     void this.auth.loadSavedCredentials();

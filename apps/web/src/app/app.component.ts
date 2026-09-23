@@ -22,9 +22,10 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
-import { filter, map, take } from 'rxjs';
+import { catchError, filter, map, of, take } from 'rxjs';
 
-import { ActivityService, AuthStore, BrokerLinksStore, ConnectorStore } from '@akshaya/shared/data-access';
+import { ActivityService, ApiService, AuthStore, BrokerLinksStore, ConnectorStore } from '@akshaya/shared/data-access';
+import { formatBuildInfo, type BuildInfo } from '@akshaya/shared/models';
 import { BrandMarkComponent } from '@akshaya/shared/ui';
 import { dismissBootSplash } from './shell/boot-splash';
 import { ActivityBarComponent } from './shell/activity-bar/activity-bar.component';
@@ -91,6 +92,13 @@ interface TabItem {
             -->
             <ak-brand-mark class="size-7" />
             <span class="min-w-0 truncate text-base font-bold">Akshaya</span>
+            @if (buildInfo(); as info) {
+              <!-- Compact has no room for it; the account screen shows the same label there. -->
+              <span
+                class="shrink-0 text-[11px] text-text-tertiary max-lg:hidden"
+                [title]="info.commit ? 'commit ' + info.commit : null"
+              >{{ formatBuildInfo(info) }}</span>
+            }
             <nav class="hidden flex-1 gap-1 lg:flex" aria-label="Primary">
               @for (item of navItems; track item.path) {
                 <a class="ak-navlink" [routerLink]="item.path" routerLinkActive="active">{{ item.label }}</a>
@@ -129,6 +137,10 @@ interface TabItem {
       } @else {
         <!-- No header on the sign-in screens, so the bar pins to the top of the viewport. -->
         <ak-activity-bar class="fixed inset-x-0 top-[env(safe-area-inset-top)] z-30" />
+        <!-- "Did the deploy land" is checkable before signing in too. -->
+        @if (buildInfo(); as info) {
+          <span class="fixed right-4 bottom-3 z-10 text-[11px] text-text-tertiary">{{ formatBuildInfo(info) }}</span>
+        }
       }
 
       <main
@@ -264,6 +276,16 @@ export class AppComponent implements OnInit {
   private readonly brokerLinksStore = inject(BrokerLinksStore);
   protected readonly auth = inject(AuthStore);
   protected readonly activity = inject(ActivityService);
+
+  /**
+   * The deployed build's identity, fetched even before sign-in — the endpoint
+   * is anonymous, so the sign-in screen can answer "did that deploy land" too.
+   * A failure just means no label; nothing on screen could act on it anyway.
+   */
+  protected readonly buildInfo = toSignal(
+    inject(ApiService).getBuildInfo().pipe(catchError(() => of<BuildInfo | undefined>(undefined))),
+  );
+  protected readonly formatBuildInfo = formatBuildInfo;
 
   constructor() {
     // The splash stays up until the FIRST navigation has settled and painted:
