@@ -164,6 +164,7 @@ tests/
 scripts/                           Dev and verification scripts (see scripts/README.md)
 docs/                              Architecture, internals, ADRs, per-connector notes, compliance
   features/orders.md               Buy/sell orders end to end — options, mStock mapping, failure modes
+  features/broker-links.md         Link status UX, reconnect-replaces, pause/resume, session persistence
 ```
 
 ---
