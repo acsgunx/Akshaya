@@ -166,6 +166,26 @@ export class MarketDataService {
     });
   }
 
+  /**
+   * Epoch ms at which this instrument's last tick ARRIVED here, or undefined
+   * if none has.
+   *
+   * This — not `Tick.timestamp` — is what "is the feed alive" is measured
+   * against. `Tick.timestamp` is the EXCHANGE's own time on the print
+   * (`ExchangeTime(...)` in the mStock/Zerodha packet readers, the last-trade
+   * time elsewhere), so an instrument that simply has not traded for a minute
+   * reports a timestamp a minute old while its ticks keep landing every
+   * second. Judging freshness by it puts an "out of date" warning over a
+   * perfectly live screen.
+   *
+   * Returned raw rather than as an age so the caller can subtract its own
+   * ticking clock: an age computed here would only be recomputed when the
+   * NEXT tick lands, which is precisely the moment it stops being wrong.
+   */
+  lastTickAtFor(instrument: InstrumentKey): Signal<number | undefined> {
+    return computed(() => this._lastTickAt().get(instrument));
+  }
+
   private applyTick(tick: Tick): void {
     const next = new Map(this._ticks());
     next.set(tick.instrument, tick);
