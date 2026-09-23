@@ -66,7 +66,7 @@ src/                        the application — bootstrap, routes, providers, an
 libs/
   shared/
     models/                 wire-format mirrors of the backend contracts
-    util/                   pure helpers: labels, money/quantity/instrument pipes, layout
+    util/                   pure helpers: labels, money/quantity/instrument pipes, layout, clock
     data-access/            API client, auth, broker links, connector manifests,
                             SignalR market data, venue calendar, kill switch, interceptors
     ui/                     presentational pieces: empty/loading states, tabs, banners,

@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
@@ -19,7 +19,7 @@ import {
   MarketDataService,
   venueTimeZone,
 } from '@akshaya/shared/data-access';
-import { MoneyPipe, timeFrameLabel } from '@akshaya/shared/util';
+import { ClockService, MoneyPipe, timeFrameLabel } from '@akshaya/shared/util';
 import type { Candle, InstrumentDefinition, InstrumentKey, TimeFrame } from '@akshaya/shared/models';
 import { formatInstrumentLabel, parseInstrumentKey } from '@akshaya/shared/models';
 import {
@@ -99,7 +99,8 @@ export class ChartComponent {
   private readonly brokerLinksStore = inject(BrokerLinksStore);
   private readonly connectorStore = inject(ConnectorStore);
   private readonly marketData = inject(MarketDataService);
-  private readonly destroyRef = inject(DestroyRef);
+  /** The app's one ticking clock — this screen used to run its own. See `ClockService`. */
+  private readonly clock = inject(ClockService).now;
   protected readonly store = inject(ChartStore);
   protected readonly watchlist = inject(WatchlistStore);
   // Both root stores the blotters already fill, so arriving from Positions or
@@ -135,7 +136,6 @@ export class ChartComponent {
   private readonly searchText = toSignal(this.searchControl.valueChanges.pipe(
     map((value) => typeof value === 'string' ? value : ''), startWith(''),
   ), { initialValue: '' });
-  private readonly clock = signal(Date.now());
   private readonly reload = signal(0);
   protected readonly rangeOptions = [
     { label: '1D', days: 1 }, { label: '5D', days: 5 }, { label: '1M', days: 30 },
@@ -266,8 +266,6 @@ export class ChartComponent {
     // No-ops when the blotters already hold a current answer — see each store's own note.
     this.portfolio.ensureFresh();
     this.orders.ensureFresh();
-    const clock = setInterval(() => this.clock.set(Date.now()), 1000);
-    this.destroyRef.onDestroy(() => clearInterval(clock));
     effect(() => {
       const saved = saveChartPreferences({
         type: this.chartType(), studies: this.selectedStudies(), volume: this.showVolume(),

@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import type { StreamState } from '@akshaya/shared/models';
+import { ClockService } from '@akshaya/shared/util';
 
 export type ConnectionBadgeStatus = 'live' | 'degraded' | 'stale' | 'disconnected';
 
@@ -53,11 +54,12 @@ export class ConnectionStatusComponent {
   /** Minutes before expiry at which the countdown starts showing — never surprise a trader mid-order. */
   readonly warnWithinMinutes = input(15);
 
-  private readonly now = signal(Date.now());
-
-  constructor() {
-    setInterval(() => this.now.set(Date.now()), 1000);
-  }
+  /**
+   * Shared app clock, not a timer of this badge's own. This component is
+   * rendered once per watchlist row, so a private `setInterval` here was a
+   * wakeup per row per second — and one that was never cleared.
+   */
+  private readonly clock = inject(ClockService);
 
   /**
    * Dot tint per state. The `live` ring is a halo of its own colour, which is
@@ -95,7 +97,7 @@ export class ConnectionStatusComponent {
     if (!expiresAt) {
       return undefined;
     }
-    const msLeft = new Date(expiresAt).getTime() - this.now();
+    const msLeft = new Date(expiresAt).getTime() - this.clock.now();
     const minsLeft = msLeft / 60_000;
     if (minsLeft > this.warnWithinMinutes()) {
       return undefined;

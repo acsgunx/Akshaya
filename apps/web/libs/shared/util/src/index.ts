@@ -1,3 +1,4 @@
+export * from './lib/clock.service';
 export * from './lib/instrument.pipe';
 export * from './lib/labels';
 export * from './lib/layout.service';

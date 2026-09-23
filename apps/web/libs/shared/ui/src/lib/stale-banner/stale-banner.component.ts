@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
+
+import { ClockService } from '@akshaya/shared/util';
 
 /**
  * Sits above any table/chart whose feed has gone quiet. States EXPLICITLY
@@ -37,16 +39,10 @@ export class StaleBannerComponent {
   readonly thresholdMs = input(10_000);
   readonly label = input('data');
 
-  private readonly now = signal(Date.now());
+  private readonly clock = inject(ClockService);
 
-  constructor() {
-    setInterval(() => this.now.set(Date.now()), 1000);
-  }
-
-  private readonly ageMs = computed(() => {
-    const at = this.lastUpdatedAt();
-    return at === undefined ? undefined : this.now() - at;
-  });
+  /** Shared app clock, not a timer of this banner's own — see `ClockService`. */
+  private readonly ageMs = this.clock.ageMsSince(this.lastUpdatedAt);
 
   readonly visible = computed(() => {
     const age = this.ageMs();

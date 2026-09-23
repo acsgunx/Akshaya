@@ -11,6 +11,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { BrokerLinksStore, ConnectorStore, MarketDataService, VenueStateService } from '@akshaya/shared/data-access';
 import {
+  ClockService,
   MoneyPipe,
   orderTypeLabel,
   orderTypeNeedsLimitPrice,
@@ -95,6 +96,7 @@ export class OrderTicketComponent {
   private readonly brokerLinksStore = inject(BrokerLinksStore);
   private readonly marketData = inject(MarketDataService);
   private readonly venueState = inject(VenueStateService);
+  private readonly clock = inject(ClockService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly store = inject(OrderTicketStore);
@@ -165,8 +167,17 @@ export class OrderTicketComponent {
   protected readonly isBuy = computed(() => this.sideValue() === 'buy');
 
   protected readonly quote = computed(() => this.marketData.tickFor(this.instrument())());
-  protected readonly tickAgeMs = computed(() => this.marketData.ageMsFor(this.instrument())());
-  protected readonly isFeedStale = computed(() => (this.tickAgeMs() ?? Number.POSITIVE_INFINITY) > 10_000);
+  /**
+   * When the last tick ARRIVED, measured against the shared ticking clock —
+   * never an age handed over by the service, which only re-evaluates when the
+   * NEXT tick lands and so reports ≈0 for as long as the feed is silent.
+   *
+   * This gates the badge above the price a trader is about to send an order
+   * at, so the dead-feed case is the one that has to be right: a quiet feed
+   * must read "stale" within ten seconds, not stay green indefinitely.
+   */
+  private readonly lastTickAt = computed(() => this.marketData.lastTickAtFor(this.instrument())());
+  protected readonly isFeedStale = this.clock.isOlderThan(this.lastTickAt, 10_000);
   protected readonly connectionState = this.marketData.connectionState;
 
   protected readonly orderTypeLabel = orderTypeLabel;
