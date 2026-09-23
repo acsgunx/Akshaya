@@ -25,6 +25,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { filter, map, take } from 'rxjs';
 
 import { ActivityService, AuthStore, BrokerLinksStore, ConnectorStore } from '@akshaya/shared/data-access';
+import { BrandMarkComponent } from '@akshaya/shared/ui';
 import { dismissBootSplash } from './shell/boot-splash';
 import { ActivityBarComponent } from './shell/activity-bar/activity-bar.component';
 import { AppearanceMenuComponent } from './shell/appearance/appearance-menu.component';
@@ -70,6 +71,7 @@ interface TabItem {
     MatIconModule,
     ActivityBarComponent,
     AppearanceMenuComponent,
+    BrandMarkComponent,
     KillSwitchComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -87,6 +89,7 @@ interface TabItem {
               The wordmark is what gives way on a very narrow phone (320px, kill
               switch engaged): the kill switch and its state never may.
             -->
+            <ak-brand-mark class="size-7" />
             <span class="min-w-0 truncate text-base font-bold">Akshaya</span>
             <nav class="hidden flex-1 gap-1 lg:flex" aria-label="Primary">
               @for (item of navItems; track item.path) {

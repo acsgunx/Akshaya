@@ -11,7 +11,13 @@
   <!-- Tints the mobile browser's own toolbar to match the top bar. Starts dark (the
        default theme); `AppearanceStore` rewrites it when the user picks light. -->
   <meta name="theme-color" content="#1a1d22" />
-  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <!-- SVG first for browsers that take it; the .ico stays for the rest.
+       `public/icon.svg` is the master artwork — the same mark the header and
+       the boot splash draw inline. -->
+  <link rel="icon" href="favicon.ico" sizes="32x32" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="site.webmanifest" />
   <!-- Roboto + Material Symbols: self-hosted at build time in a real deploy; Google Fonts
        here only to keep this scaffold runnable without a font pipeline. -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -61,6 +67,7 @@
     #ak-boot[data-state='leaving'] { opacity: 0; pointer-events: none; }
     #ak-boot p { margin: 0; }
     #ak-boot a { color: light-dark(#7d00fa, #d5baff); }
+    .ak-boot-logo { width: 56px; height: 56px; }
     .ak-boot-mark { font-size: 20px; font-weight: 700; color: light-dark(#14161a, #f4f6fa); }
     .ak-boot-track { width: 160px; height: 2px; overflow: hidden; border-radius: 2px; background: light-dark(#e2e6ee, #2a2f38); }
     .ak-boot-track::before {
@@ -94,6 +101,21 @@
 </head>
 <body>
   <div id="ak-boot">
+    <!-- The brand mark, inlined: the splash must paint before any asset request
+         returns. Same artwork as `public/icon.svg`. -->
+    <svg class="ak-boot-logo" viewBox="0 0 512 512" aria-hidden="true">
+      <defs>
+        <linearGradient id="akb-bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#8f35ff" />
+          <stop offset="1" stop-color="#4e00ba" />
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="112" fill="url(#akb-bg)" />
+      <path d="M256 96v74" stroke="#fff" stroke-width="30" stroke-linecap="round" fill="none" />
+      <path d="M150 396L228 196M284 196L362 396M224 196h64" stroke="#fff" stroke-width="54"
+            stroke-linecap="round" stroke-linejoin="round" fill="none" />
+      <path d="M202 336l108-24" stroke="#fff" stroke-width="38" stroke-linecap="round" fill="none" />
+    </svg>
     <p class="ak-boot-mark">Akshaya</p>
     <div class="ak-boot-track" aria-hidden="true"></div>
     <div class="ak-boot-status" role="status">

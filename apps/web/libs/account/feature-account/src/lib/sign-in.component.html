@@ -3,7 +3,10 @@
   aria-labelledby="ak-auth-title"
 >
   <header class="mb-5.5">
-    <span class="mb-2.5 block text-[13px] font-bold tracking-[0.06em] uppercase text-brand">Akshaya</span>
+    <span class="mb-2.5 flex items-center gap-2 text-[13px] font-bold tracking-[0.06em] uppercase text-brand">
+      <ak-brand-mark class="size-5" />
+      Akshaya
+    </span>
     <h1 id="ak-auth-title" class="text-xl/tight font-bold">{{ isRegister() ? 'Create your account' : 'Sign in' }}</h1>
     <p class="mt-1 text-[13px] text-text-secondary">
       {{

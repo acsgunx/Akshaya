@@ -1,3 +1,4 @@
+export * from './lib/brand-mark/brand-mark.component';
 export * from './lib/chart-link/chart-link.component';
 export * from './lib/confirm-dialog/confirm-dialog.service';
 export * from './lib/connection-status/connection-status.component';
