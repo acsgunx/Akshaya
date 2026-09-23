@@ -31,8 +31,14 @@
         @if (buildInfo(); as info) {
           <div class="flex gap-3">
             <dt class="min-w-27.5 text-text-tertiary">App version</dt>
-            <dd [title]="info.commit ? 'commit ' + info.commit : null">{{ formatBuildInfo(info) }}</dd>
+            <dd [title]="formatBuildDetail(info) || null">{{ formatBuildInfo(info) }}</dd>
           </div>
+          @if (info.builtAt) {
+            <div class="flex gap-3">
+              <dt class="min-w-27.5 text-text-tertiary">Built at</dt>
+              <dd>{{ info.builtAt | date: 'medium' }}</dd>
+            </div>
+          }
         }
       </dl>
       <div class="mt-3.5 flex items-center gap-2">

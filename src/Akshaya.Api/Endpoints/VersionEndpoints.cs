@@ -23,14 +23,16 @@ public static class VersionEndpoints
 }
 
 /// <summary>
-/// What <c>GET /api/version</c> returns. Both fields come out of the API assembly's
+/// What <c>GET /api/version</c> returns. Version and commit come out of the API assembly's
 /// <see cref="AssemblyInformationalVersionAttribute"/>: the SDK stamps it as
 /// <c>"{Version}+{SourceRevisionId}"</c>, and SourceRevisionId is the git HEAD whenever
 /// the build runs inside a checkout — which the CI and both code-deploy workflows do.
 /// Container builds have no .git (it is dockerignored), so deploy/Dockerfile accepts a
 /// <c>GIT_SHA</c> build arg and passes it to <c>dotnet publish</c> instead.
+/// <c>BuiltAt</c> is the UTC compile time the csproj stamps into assembly metadata —
+/// it is what distinguishes two deployments of the same commit.
 /// </summary>
-public sealed record BuildInfo(string Version, string? Commit)
+public sealed record BuildInfo(string Version, string? Commit, string? BuiltAt)
 {
     public static readonly BuildInfo Current = From(typeof(BuildInfo).Assembly);
 
@@ -46,6 +48,11 @@ public sealed record BuildInfo(string Version, string? Commit)
             : informational ?? assembly.GetName().Version?.ToString() ?? "0.0.0";
         string? commit = plus >= 0 ? informational![(plus + 1)..] : null;
 
-        return new BuildInfo(version, commit);
+        string? builtAt = assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "BuildTimestampUtc")
+            ?.Value;
+
+        return new BuildInfo(version, commit, builtAt);
     }
 }
