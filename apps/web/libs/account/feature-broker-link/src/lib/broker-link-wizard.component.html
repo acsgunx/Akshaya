@@ -7,7 +7,7 @@
     <header class="flex items-center gap-3.5 border-b border-border px-6 py-5">
       <span class="grid size-11 shrink-0 place-items-center rounded-md bg-surface-3 text-[15px] font-bold text-brand" aria-hidden="true">{{ monogram() }}</span>
       <div class="min-w-0 flex-1">
-        <h1 class="text-[17px]/tight font-bold">Link {{ manifest()!.displayName }}</h1>
+        <h1 class="text-[17px]/tight font-bold">{{ replace() ? 'Reconnect' : 'Link' }} {{ manifest()!.displayName }}</h1>
         <p class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-tertiary">
           {{ manifest()!.vendor }}
           @for (j of manifest()!.jurisdictions; track j) {

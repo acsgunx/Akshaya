@@ -62,6 +62,8 @@ export const BrokerLinkStore = signalStore(
         savedCredentialId?: string;
         /** Field keys to remember, applied only if the broker accepts this login. */
         rememberFields?: readonly string[];
+        /** A link this login replaces once it completes — see `ApiService.beginLink`. */
+        replacesLinkId?: string;
       }>(
         pipe(
           tap(() => patchState(store, { loading: true, error: undefined })),

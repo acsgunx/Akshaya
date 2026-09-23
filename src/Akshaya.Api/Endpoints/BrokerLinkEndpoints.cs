@@ -98,10 +98,12 @@ public static class BrokerLinkEndpoints
                 credentials,
                 request.RedirectUri,
                 request.RememberFields,
+                request.ReplacesLinkId,
                 user,
                 pending,
                 links,
                 vault,
+                connectors,
                 clock,
                 ct);
         });
@@ -162,10 +164,12 @@ public static class BrokerLinkEndpoints
                 flow.Credentials,
                 flow.RedirectUri,
                 flow.RememberFields,
+                flow.ReplacesLinkId,
                 user,
                 pending,
                 links,
                 vault,
+                connectors,
                 clock,
                 ct,
                 existingPendingId: id);
@@ -217,10 +221,12 @@ public static class BrokerLinkEndpoints
         IReadOnlyDictionary<string, string> credentials,
         string? redirectUri,
         IReadOnlyList<string> rememberFields,
+        string? replacesLinkId,
         ICurrentUserAccessor user,
         PendingLinkAuthStore pending,
         IBrokerLinkStore links,
         BrokerCredentialVault vault,
+        IConnectorFactory connectors,
         IClock clock,
         CancellationToken ct,
         string? existingPendingId = null)
@@ -242,6 +248,7 @@ public static class BrokerLinkEndpoints
             };
 
             await links.SaveAsync(link, ct);
+            await RemoveReplacedAsync(replacesLinkId, connectorId, user, links, connectors, ct);
 
             // Only now — the broker has accepted these, so they are worth remembering.
             await RememberAsync(connectorId, nickname, credentials, rememberFields, user, vault, ct);
@@ -264,11 +271,64 @@ public static class BrokerLinkEndpoints
             credentials,
             redirectUri,
             rememberFields,
+            replacesLinkId,
             user.TenantId,
             user.UserId,
             clock.UtcNow));
 
         return Results.Ok(AuthStepDto.From(step, id));
+    }
+
+    /// <summary>
+    /// Drops the link a successful reconnect was meant to replace. Same-tenant AND
+    /// same-connector only — a caller naming someone else's link id (or a link for a
+    /// different broker) gets silently ignored rather than handed a delete primitive.
+    ///
+    /// Runs AFTER the new link is already saved and never reports failure upward: the
+    /// login succeeded, and a stale row left behind is cleanup the user can still do
+    /// from the brokers screen, not a reason to turn a completed link into a 500.
+    /// </summary>
+    private static async Task RemoveReplacedAsync(
+        string? replacesLinkId,
+        string connectorId,
+        ICurrentUserAccessor user,
+        IBrokerLinkStore links,
+        IConnectorFactory connectors,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(replacesLinkId))
+        {
+            return;
+        }
+
+        try
+        {
+            var replaced = await links.GetAsync(replacesLinkId, ct);
+            if (replaced is null
+                || !string.Equals(replaced.TenantId, user.TenantId, StringComparison.Ordinal)
+                || !string.Equals(replaced.ConnectorId, connectorId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            // Same best-effort revoke as DELETE /api/links/{id}: a broker that cannot be
+            // reached right now must not stop the removal on our side.
+            if (replaced.Session is { } session)
+            {
+                var connectorResult = connectors.CreateUnauthenticated(connectorId);
+                if (connectorResult.IsSuccess)
+                {
+                    await using var connector = connectorResult.Value;
+                    await connector.Auth.RevokeAsync(session, ct);
+                }
+            }
+
+            await links.RemoveAsync(replacesLinkId, ct);
+        }
+        catch
+        {
+            // See the method doc: post-commit cleanup never fails a completed login.
+        }
     }
 
     /// <summary>
@@ -353,6 +413,7 @@ public sealed record PendingLinkAuth(
     IReadOnlyDictionary<string, string> Credentials,
     string? RedirectUri,
     IReadOnlyList<string> RememberFields,
+    string? ReplacesLinkId,
     string TenantId,
     string UserId,
     DateTimeOffset StartedAt);

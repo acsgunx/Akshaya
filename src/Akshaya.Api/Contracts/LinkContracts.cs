@@ -44,6 +44,14 @@ public sealed record BeginLinkRequestDto
     /// fails, which is worse than no button.
     /// </summary>
     public IReadOnlyList<string> RememberFields { get; init; } = [];
+
+    /// <summary>
+    /// When set, this login is a RECONNECT for an existing link: once the broker accepts it,
+    /// the named link is revoked and removed so the fresh session replaces it rather than
+    /// stacking a dead duplicate next to it. Ignored unless the named link belongs to the
+    /// same user and the same connector — anything else is someone else's link id.
+    /// </summary>
+    public string? ReplacesLinkId { get; init; }
 }
 
 public sealed class BeginLinkRequestDtoValidator : AbstractValidator<BeginLinkRequestDto>
