@@ -118,7 +118,7 @@ public sealed class ModifyOrderHandler(
         // activating a second one for the link we already have open.
         var quoteTask = connector.MarketData.GetQuoteAsync(order.Instrument, ct);
         var instrumentTask = connector.Reference.ResolveAsync(order.Instrument, ct);
-        var snapshotTask = snapshots.GetAsync(command.TenantId, command.UserId, order.BrokerLinkId, ct, connector);
+        var snapshotTask = snapshots.GetAsync(command.TenantId, command.UserId, order.BrokerLinkId, connector, ct);
 
         await Task.WhenAll(quoteTask, instrumentTask, snapshotTask);
 

@@ -29,8 +29,8 @@ public sealed class ConnectorRiskSnapshotProvider(
         string tenantId,
         string userId,
         string brokerLinkId,
-        CancellationToken ct = default,
-        IBrokerConnector? connector = null)
+        IBrokerConnector? connector = null,
+        CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(brokerLinkId);

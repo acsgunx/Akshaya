@@ -54,6 +54,9 @@ public interface IRiskSnapshotProvider
     /// <summary>
     /// The snapshot for one link, from cache when it is warm.
     /// </summary>
+    /// <param name="tenantId">The tenant the caller is acting for.</param>
+    /// <param name="userId">The caller's own user id within that tenant.</param>
+    /// <param name="brokerLinkId">The link whose positions and balances the snapshot describes.</param>
     /// <param name="connector">
     /// A connector the CALLER already holds open for this link, when it has one. Supplying it
     /// is not an optimisation of style: the order path resolves a connector, and an
@@ -61,11 +64,15 @@ public interface IRiskSnapshotProvider
     /// session, a second set of sockets and a second decorator chain to ask a question the
     /// caller's own connector could already answer. The caller keeps ownership — the provider
     /// must never dispose a connector it was handed.
+    ///
+    /// It sits BEFORE <paramref name="ct"/> because CA1068 requires the cancellation token to
+    /// be the last parameter. Both are optional, so callers that pass neither are unaffected.
     /// </param>
+    /// <param name="ct">Cancels the build. A cached snapshot is returned without observing it.</param>
     Task<RiskSnapshot> GetAsync(
         string tenantId,
         string userId,
         string brokerLinkId,
-        CancellationToken ct = default,
-        IBrokerConnector? connector = null);
+        IBrokerConnector? connector = null,
+        CancellationToken ct = default);
 }
