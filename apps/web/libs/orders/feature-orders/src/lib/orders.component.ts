@@ -21,6 +21,7 @@ import {
 import type { ConnectorManifest, ModifyOrderRequest, OrderRecord } from '@akshaya/shared/models';
 import { canModifyField, isOrderStateTerminal, isOrderStateWorking, isOrderUnresolved } from '@akshaya/shared/models';
 import {
+  AK_DIALOG_DEFAULTS,
   ChartLinkComponent,
   ConfirmDialogService,
   EmptyStateComponent,
@@ -125,7 +126,13 @@ export class OrdersComponent implements OnInit {
 
     const ref = this.dialog.open<ModifyOrderDialogComponent, ModifyOrderDialogData, ModifyOrderRequest>(
       ModifyOrderDialogComponent,
-      { data: { order, manifest }, width: '440px', autoFocus: 'first-tabbable', restoreFocus: true },
+      {
+        ...AK_DIALOG_DEFAULTS,
+        data: { order, manifest },
+        width: '440px',
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+      },
     );
 
     ref

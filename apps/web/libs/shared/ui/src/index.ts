@@ -1,6 +1,7 @@
 export * from './lib/chart-link/chart-link.component';
 export * from './lib/confirm-dialog/confirm-dialog.service';
 export * from './lib/connection-status/connection-status.component';
+export * from './lib/dialog/dialog-defaults';
 export * from './lib/empty-state/empty-state.component';
 export * from './lib/loading-state/loading-state.component';
 export * from './lib/refresh-button/refresh-button.component';

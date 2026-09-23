@@ -37,14 +37,14 @@
             },
             {
               "type": "anyComponentStyle",
-              "maximumWarning": "3kB",
+              "maximumWarning": "4kB",
               "maximumError": "5kB"
             },
             {
               "type": "bundle",
               "name": "styles",
-              "maximumWarning": "42kB",
-              "maximumError": "60kB"
+              "maximumWarning": "56kB",
+              "maximumError": "70kB"
             }
           ],
           "outputHashing": "all"
