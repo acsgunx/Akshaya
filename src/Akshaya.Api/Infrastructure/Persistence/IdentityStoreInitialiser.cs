@@ -45,6 +45,36 @@ public static class IdentityStoreInitialiser
             // set of migrations it would cost to maintain.
             logger.LogInformation("Ensuring identity schema exists ({Mode}).", options.Mode);
             await db.Database.EnsureCreatedAsync(ct);
+
+            // EnsureCreated only builds a FRESH database — a file that already exists is left
+            // exactly as it was, so a new table added after that first run never appears.
+            // Additive, idempotent DDL is the upgrade path this mode chooses instead of a
+            // migration history: every statement must be a no-op on a database that already
+            // has the shape.
+            await db.Database.ExecuteSqlAsync(
+                $"""
+                CREATE TABLE IF NOT EXISTS "broker_links" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_broker_links" PRIMARY KEY,
+                    "TenantId" TEXT NOT NULL,
+                    "UserId" TEXT NOT NULL,
+                    "ConnectorId" TEXT NOT NULL,
+                    "Nickname" TEXT NULL,
+                    "SessionKeyId" TEXT NULL,
+                    "SessionWrappedDataKey" BLOB NULL,
+                    "SessionPayload" BLOB NULL,
+                    "CreatedAt" TEXT NOT NULL,
+                    "LastAuthenticatedAt" TEXT NULL,
+                    "IsActive" INTEGER NOT NULL,
+                    CONSTRAINT "FK_broker_links_users_UserId"
+                        FOREIGN KEY ("UserId") REFERENCES "users" ("Id") ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS "IX_broker_links_TenantId_UserId"
+                    ON "broker_links" ("TenantId", "UserId");
+                CREATE INDEX IF NOT EXISTS "IX_broker_links_IsActive"
+                    ON "broker_links" ("IsActive");
+                CREATE INDEX IF NOT EXISTS "IX_broker_links_UserId"
+                    ON "broker_links" ("UserId");
+                """, ct);
         }
 
         await SeedAsync(sp, db, options, logger, ct);

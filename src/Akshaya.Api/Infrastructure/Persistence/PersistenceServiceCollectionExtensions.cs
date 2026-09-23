@@ -1,6 +1,8 @@
 using Akshaya.Modules.Identity.Infrastructure.Ef;
+using Akshaya.Modules.Trading.Ports;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 
@@ -59,6 +61,16 @@ public static class PersistenceServiceCollectionExtensions
             default:
                 AddSqliteFile(services, ResolveSqlitePath(options.SqlitePath, contentRootPath));
                 break;
+        }
+
+        if (options.Mode != PersistenceMode.InMemory)
+        {
+            // A durable store exists, so broker links — and the sealed sessions inside them —
+            // survive a deploy instead of signing every user out of their broker on restart.
+            // Replace rather than TryAdd: trading's AddDevelopmentTradingStores already put the
+            // in-memory store in, and the durable one must win unconditionally. InMemory mode is
+            // deliberately disposable; its links die with the process like everything else in it.
+            services.Replace(ServiceDescriptor.Singleton<IBrokerLinkStore, EfBrokerLinkStore>());
         }
 
         services.AddHealthChecks().AddCheck<IdentityStoreHealthCheck>("identity-store");

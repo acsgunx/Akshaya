@@ -127,6 +127,48 @@ public sealed class SavedCredentialRow
 }
 
 /// <summary>
+/// Row shape for a linked broker account.
+///
+/// The live session rides along sealed, exactly like <see cref="SavedCredentialRow"/>: a fresh
+/// data key encrypts the JSON blob, the active master key wraps the data key, and the key id on
+/// the row is what lets yesterday's links still open after a rotation. The three session
+/// columns are null together — a link mid-authentication or whose session has died is still a
+/// link, and callers distinguish it by the session being absent, not by the row being missing.
+///
+/// The domain record this maps to (<c>BrokerLink</c>) lives in the trading module, which must
+/// not depend on this module — so the row deliberately carries no From/ToDomain of its own.
+/// The API's <c>EfBrokerLinkStore</c> owns the mapping, where referencing both modules is the
+/// composition root's job.
+/// </summary>
+public sealed class BrokerLinkRow
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string TenantId { get; set; } = string.Empty;
+
+    public string UserId { get; set; } = string.Empty;
+
+    public string ConnectorId { get; set; } = string.Empty;
+
+    public string? Nickname { get; set; }
+
+    /// <summary>Which master key sealed <see cref="SessionWrappedDataKey"/>. Null with no session.</summary>
+    public string? SessionKeyId { get; set; }
+
+    /// <summary>The per-record data key, wrapped by the master key. Null with no session.</summary>
+    public byte[]? SessionWrappedDataKey { get; set; }
+
+    /// <summary>The sealed <c>BrokerSession</c> JSON. Null with no session — never partial.</summary>
+    public byte[]? SessionPayload { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset? LastAuthenticatedAt { get; set; }
+
+    public bool IsActive { get; set; }
+}
+
+/// <summary>
 /// The identity module's own schema, in its own <c>identity</c> namespace/schema.
 ///
 /// One DbContext per module rather than one for the application: modules that own separate
@@ -140,6 +182,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<UserAccountRow> Users => Set<UserAccountRow>();
 
     public DbSet<SavedCredentialRow> SavedCredentials => Set<SavedCredentialRow>();
+
+    public DbSet<BrokerLinkRow> BrokerLinks => Set<BrokerLinkRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -184,6 +228,30 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             // Deleting an account takes its saved credentials with it. Leaving encrypted
             // credentials behind for a user who no longer exists is exactly the kind of
             // orphaned secret nobody remembers to clean up.
+            entity.HasOne<UserAccountRow>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BrokerLinkRow>(entity =>
+        {
+            entity.ToTable("broker_links");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(64);
+            entity.Property(e => e.TenantId).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.UserId).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.ConnectorId).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Nickname).HasMaxLength(120);
+            entity.Property(e => e.SessionKeyId).HasMaxLength(64);
+
+            // ListAsync's read path: "this tenant's links" (optionally per user), and
+            // ListActiveAsync's "every live link" sweep. Both are single-index lookups.
+            entity.HasIndex(e => new { e.TenantId, e.UserId });
+            entity.HasIndex(e => e.IsActive);
+
+            // Same orphaned-secret rule as saved credentials: deleting an account takes its
+            // broker links — and the sealed sessions inside them — with it.
             entity.HasOne<UserAccountRow>()
                 .WithMany()
                 .HasForeignKey(e => e.UserId)

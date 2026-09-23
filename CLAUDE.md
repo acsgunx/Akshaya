@@ -36,8 +36,9 @@ Running `dotnet test` yourself outside the assistant is unaffected.
 `scripts/rerun.sh` (or `.ps1` / `.py`) — clean-build + run API (:5080) and
 web (:4200). Flags: `-ApiOnly`, `-WebOnly`, `-Detached`, `-NoClean`, `-Relaxed`.
 
-**No database server is needed.** Identity (accounts + the encrypted saved-credential
-vault) is the only persisted store; everything else is in-memory. `Persistence:Mode`
+**No database server is needed.** Identity (accounts, the encrypted saved-credential
+vault, and broker links with their sealed sessions) is the only persisted store;
+everything else is in-memory. `Persistence:Mode`
 selects `Sqlite` (default — a file under `src/Akshaya.Api/App_Data/`), `InMemory`, or
 `Postgres`. The API creates or migrates its own schema on startup in every mode, so
 there is no `dotnet ef database update` step; `scripts/dev-up.sh` is only for the

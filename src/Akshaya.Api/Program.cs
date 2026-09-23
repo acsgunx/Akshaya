@@ -188,11 +188,12 @@ try
     builder.Services.Configure<InstrumentMasterOptions>(
         builder.Configuration.GetSection(InstrumentMasterOptions.SectionName));
 
-    // ── Identity: accounts, sessions, and the saved-broker-credential vault. ──────────────────
+    // ── Identity: accounts, sessions, the saved-credential vault, and broker links. ───────────
     //
     // The ONLY persisted store in the application, and that is deliberate: orders, positions and
-    // risk policies can all be rebuilt from the broker on restart, whereas a user's account and
-    // the credentials they asked us to remember cannot be rebuilt from anything.
+    // risk policies can all be rebuilt from the broker on restart, whereas a user's account,
+    // the credentials they asked us to remember and the broker sessions they signed into cannot
+    // be rebuilt from anything.
     //
     // Because it is the only one, it is also the only reason a deployment would need a database
     // SERVER — so which store backs it is a configuration choice rather than a compile-time one.
