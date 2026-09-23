@@ -9,6 +9,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { AuthStore } from '@akshaya/shared/data-access';
 import { MINIMUM_PASSWORD_LENGTH } from '@akshaya/shared/models';
+import { BrandMarkComponent } from '@akshaya/shared/ui';
 
 /**
  * One component for both sign-in and sign-up.
@@ -28,6 +29,7 @@ import { MINIMUM_PASSWORD_LENGTH } from '@akshaya/shared/models';
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    BrandMarkComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './sign-in.component.html',
