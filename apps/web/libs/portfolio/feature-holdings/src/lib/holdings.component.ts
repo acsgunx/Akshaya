@@ -1,5 +1,12 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
-import { PercentPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, TemplateRef, computed, inject, signal } from '@angular/core';
+import { DatePipe, PercentPipe } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -18,6 +25,8 @@ import {
   RefreshingDirective,
   SectionTabsComponent,
 } from '@akshaya/shared/ui';
+import { DELIVERY_REFERENCE, deliveryBreakEven, estimateDelivery, validTariff } from './delivery-charges';
+import type { DeliveryTariff, DeliveryTariffs } from './delivery-charges';
 
 /** Invested, current value and return for every holding in ONE currency. */
 export interface HoldingsTotal {
@@ -46,6 +55,13 @@ export interface HoldingsTotal {
   selector: 'ak-holdings',
   standalone: true,
   imports: [
+    DatePipe,
+    ReactiveFormsModule,
+    MatCheckboxModule,
+    MatDialogModule,
+    MatExpansionModule,
+    MatFormFieldModule,
+    MatInputModule,
     PercentPipe,
     ScrollingModule,
     MatButtonModule,
@@ -70,6 +86,99 @@ export class HoldingsComponent implements OnInit {
   protected readonly store = inject(DashboardStore);
   protected readonly layout = inject(LayoutService);
   protected readonly portfolioTabs = PORTFOLIO_TABS;
+  private readonly dialog = inject(MatDialog);
+  private readonly destroyRef = inject(DestroyRef);
+  protected readonly includeBuyCharges = signal(true);
+  protected readonly tariffs = signal<DeliveryTariffs>({});
+  protected readonly validTariff = validTariff;
+  protected readonly inr = (amount: number): Money => ({ amount: String(amount), currency: 'INR' });
+  private readonly selectedKey = signal<string | undefined>(undefined);
+  private readonly scenarioPrice = signal<number | null | undefined>(undefined);
+  protected readonly sellPriceControl = new FormControl<number | null>(null, [Validators.required, Validators.min(0.01)]);
+  private readonly accountForms = new Map<string, ReturnType<HoldingsComponent['createTariffForm']>>();
+
+  protected readonly chargeAccounts = computed(() => {
+    const accounts = new Map<string, BrokerHoldingLeg>();
+    for (const holding of this.holdings().filter(item => item.currency === 'INR')) {
+      for (const leg of holding.legs) accounts.set(leg.brokerLinkId, leg);
+    }
+    return [...accounts.values()].map(leg => ({
+      id: leg.brokerLinkId, name: leg.displayName, form: this.tariffFormFor(leg.brokerLinkId),
+    }));
+  });
+
+  protected readonly estimates = computed(() => new Map(this.holdings().map(holding => [
+    holding.groupKey, estimateDelivery(holding, this.tariffs(), this.includeBuyCharges()),
+  ])));
+
+  protected readonly netTotals = computed(() => {
+    const values = [...this.estimates().values()].flatMap(result => result.value ? [result.value] : []);
+    if (!values.length) return undefined;
+    const sum = (key: 'invested' | 'grossPnl' | 'buyCharges' | 'sellCharges' | 'totalCharges' | 'netPnl' | 'netProceeds') =>
+      values.reduce((total, value) => total + Math.round(value[key] * 100), 0) / 100;
+    return {
+      count: values.length, gross: sum('grossPnl'), charges: sum('totalCharges'), buy: sum('buyCharges'),
+      sell: sum('sellCharges'), net: sum('netPnl'), proceeds: sum('netProceeds'),
+      returnFraction: sum('netPnl') / (sum('invested') + sum('buyCharges')),
+    };
+  });
+
+  protected readonly selectedHolding = computed(() => this.holdings().find(holding => holding.groupKey === this.selectedKey()));
+  protected readonly selectedEstimate = computed(() => {
+    const holding = this.selectedHolding();
+    return holding ? estimateDelivery(holding, this.tariffs(), this.includeBuyCharges(), this.scenarioPrice()) : undefined;
+  });
+  protected readonly breakEven = computed(() => {
+    const holding = this.selectedHolding();
+    return holding ? deliveryBreakEven(holding, this.tariffs(), this.includeBuyCharges()) : undefined;
+  });
+
+  constructor() {
+    this.sellPriceControl.valueChanges.pipe(takeUntilDestroyed()).subscribe(value => this.scenarioPrice.set(value));
+  }
+
+  private createTariffForm(id: string) {
+    const tariff = this.tariffs()[id] ?? DELIVERY_REFERENCE;
+    const form = new FormGroup({
+      brokeragePercent: new FormControl(tariff.brokeragePercent, [Validators.required, Validators.min(0), Validators.max(100)]),
+      brokerageCap: new FormControl(tariff.brokerageCap, [Validators.required, Validators.min(0)]),
+      dpCharge: new FormControl(tariff.dpCharge, [Validators.required, Validators.min(0)]),
+    });
+    form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.tariffs.update(tariffs => ({ ...tariffs, [id]: form.getRawValue() }));
+    });
+    return form;
+  }
+
+  private tariffFormFor(id: string) {
+    let form = this.accountForms.get(id);
+    if (!form) {
+      form = this.createTariffForm(id);
+      this.accountForms.set(id, form);
+    }
+    return form;
+  }
+
+  protected tariffFor(id: string): DeliveryTariff {
+    return this.tariffs()[id] ?? DELIVERY_REFERENCE;
+  }
+
+  protected resetTariffs(): void {
+    for (const form of this.accountForms.values()) form.reset(DELIVERY_REFERENCE);
+  }
+
+  protected showCalculation(holding: BlendedHolding, template: TemplateRef<unknown>): void {
+    this.selectedKey.set(holding.groupKey);
+    this.resetSellPrice();
+    this.dialog.open(template, { width: '780px', maxWidth: '96vw', ariaLabel: 'Delivery profit calculator' });
+  }
+
+  protected resetSellPrice(): void {
+    const holding = this.selectedHolding();
+    const estimate = holding ? this.estimates().get(holding.groupKey)?.value : undefined;
+    this.scenarioPrice.set(undefined);
+    this.sellPriceControl.setValue(estimate ? estimate.saleValue / estimate.quantity : null, { emitEvent: false });
+  }
 
   /**
    * The quantity in this leg that can actually be sold: total less pledged.
@@ -137,16 +246,7 @@ export class HoldingsComponent implements OnInit {
 
   /** Return on cost for one holding, as a fraction. Undefined when it cannot be computed. */
   protected returnFor(holding: BlendedHolding): number | undefined {
-    const quantity = Number(holding.quantity);
-    const averagePrice = Number(holding.averagePrice.amount);
-    const cost = quantity * averagePrice;
-
-    if (!Number.isFinite(cost) || cost <= 0) {
-      return undefined;
-    }
-
-    const pnl = Number(holding.unrealisedPnl?.amount);
-    return Number.isFinite(pnl) ? pnl / cost : undefined;
+    return this.estimates().get(holding.groupKey)?.value?.returnFraction;
   }
 
   /** True when any of this holding is pledged as collateral and therefore not freely sellable. */
