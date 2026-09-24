@@ -128,10 +128,10 @@
     </p>
   }
   <h3 class="mb-2 text-sm font-semibold">Charge breakdown · INR</h3>
-  <div class="max-h-80 overflow-auto rounded-lg border border-border" tabindex="0" role="region" aria-label="Scrollable buy and sell charge breakdown">
+  <div class="overflow-x-auto rounded-lg border border-border">
     <table class="w-full min-w-[460px] text-left text-sm">
       <caption class="sr-only">Estimated charges split between buy and sell for the selected trade type</caption>
-      <thead class="sticky top-0 bg-surface-2 text-xs text-text-secondary"><tr><th scope="col" class="p-3">Charge</th><th scope="col" class="p-3 text-right">Buy</th><th scope="col" class="p-3 text-right">Sell</th><th scope="col" class="p-3 text-right">Total</th></tr></thead>
+      <thead class="bg-surface-2 text-xs text-text-secondary"><tr><th scope="col" class="p-3">Charge</th><th scope="col" class="p-3 text-right">Buy</th><th scope="col" class="p-3 text-right">Sell</th><th scope="col" class="p-3 text-right">Total</th></tr></thead>
       <tbody>
         @for (line of result.lines; track line.label) {
           <tr class="border-t border-border">
@@ -142,7 +142,7 @@
           </tr>
         }
       </tbody>
-      <tfoot class="sticky bottom-0 border-t border-border bg-surface-2 font-semibold"><tr><th scope="row" class="p-3">Total charges</th><td class="whitespace-nowrap p-3 text-right">{{ inr(result.buyCharges) | akMoney }}</td><td class="whitespace-nowrap p-3 text-right">{{ inr(result.sellCharges) | akMoney }}</td><td class="whitespace-nowrap p-3 text-right">{{ inr(result.totalCharges) | akMoney }}</td></tr></tfoot>
+      <tfoot class="border-t border-border bg-surface-2 font-semibold"><tr><th scope="row" class="p-3">Total charges</th><td class="whitespace-nowrap p-3 text-right">{{ inr(result.buyCharges) | akMoney }}</td><td class="whitespace-nowrap p-3 text-right">{{ inr(result.sellCharges) | akMoney }}</td><td class="whitespace-nowrap p-3 text-right">{{ inr(result.totalCharges) | akMoney }}</td></tr></tfoot>
     </table>
   </div>
   <p class="mt-3 text-xs text-text-secondary tabular-nums">
