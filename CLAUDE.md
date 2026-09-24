@@ -95,6 +95,10 @@ initial bundle and the production build fails its budget.
 `@nx/angular` is not installed: its optional peers pull Angular 21 tooling that conflicts
 with Angular 22. Nx runs the `@angular/build` builders from `project.json` directly.
 
+For final verification of web-library edits, run `npm run build -- --skip-nx-cache` from
+`apps/web`, plus `npm run lint`. A stale cached build was observed after holdings-library
+edits; bypassing the cache ensures the current Angular templates and TypeScript are compiled.
+
 ## Chart workspace
 
 `libs/market/feature-chart` owns broker history, symbol search, replay and the

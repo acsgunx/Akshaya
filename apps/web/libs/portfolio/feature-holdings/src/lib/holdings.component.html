@@ -10,6 +10,15 @@
     <ak-refresh-button class="shrink-0" what="holdings" [busy]="store.loading()" (refresh)="store.refresh(undefined)" />
   </header>
 
+  @if (store.error(); as error) {
+    <p class="mb-3 rounded-lg border border-danger p-3 text-sm text-danger" role="alert">{{ error }} Existing figures may be stale.</p>
+  }
+  @if (store.snapshot()?.isPartial) {
+    <p class="mb-3 rounded-lg border border-warning p-3 text-sm text-warning" role="status">
+      Portfolio is incomplete: one or more accounts could not be loaded. Totals cover the available holdings only.
+    </p>
+  }
+
   @if (store.loading() && !store.snapshot()) {
     <ak-loading-state label="Loading holdings…" />
   } @else if (holdings().length === 0) {
@@ -40,7 +49,7 @@
               <p class="ak-total-secondary ak-num">{{ total.current | akMoney }}</p>
             </div>
             <div>
-              <span class="ak-label">Unrealised</span>
+              <span class="ak-label">Gross unrealised P&amp;L</span>
               <p
                 class="ak-total-secondary ak-num"
                 [class.ak-buy-text]="+total.unrealisedPnl.amount >= 0"
@@ -55,7 +64,86 @@
           </div>
         </article>
       }
+      @if (netTotals(); as net) {
+        <article class="ak-card min-w-0 flex-[1_1_230px]">
+          <span class="ak-label">Estimated charges · INR</span>
+          <p class="mt-1 text-[22px] font-bold tabular-nums">{{ inr(net.charges) | akMoney }}</p>
+          <dl class="mt-3 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-2.5 text-sm">
+            <div><dt class="ak-label">Buy side</dt><dd class="mt-1 tabular-nums">{{ inr(net.buy) | akMoney }}</dd></div>
+            <div><dt class="ak-label">Sell side incl. DP</dt><dd class="mt-1 tabular-nums">{{ inr(net.sell) | akMoney }}</dd></div>
+          </dl>
+        </article>
+        <article class="ak-card min-w-0 flex-[1_1_280px] border-brand!">
+          <span class="ak-label">Estimated net P&amp;L · INR</span>
+          <p class="mt-1 text-[26px] font-bold tabular-nums" [class.text-buy]="net.net >= 0" [class.text-sell]="net.net < 0">
+            {{ inr(net.net) | akMoney: { signDisplay: 'exceptZero' } }}
+            <span class="text-sm font-medium">({{ net.returnFraction | percent: '1.2-2' }})</span>
+          </p>
+          <p class="mt-2 text-xs text-text-secondary tabular-nums">
+            Gross {{ inr(net.gross) | akMoney }} − charges {{ inr(net.charges) | akMoney }}
+          </p>
+          <p class="mt-1 text-xs text-text-secondary tabular-nums">Est. sale proceeds: {{ inr(net.proceeds) | akMoney }}</p>
+        </article>
+      }
     </div>
+
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-text-secondary">
+      <p>
+        Net estimates cover {{ netTotals()?.count ?? 0 }} of {{ holdings().length }} holdings.
+        Zerodha delivery reference, not broker-confirmed charges or capital-gains tax.
+      </p>
+      <p>Snapshot: {{ store.snapshot()?.asOf | date: 'medium' }}</p>
+    </div>
+
+    <mat-expansion-panel class="mb-5">
+      <mat-expansion-panel-header>
+        <mat-panel-title>Charge assumptions</mat-panel-title>
+        <mat-panel-description class="max-sm:hidden!">Review rates for your accounts</mat-panel-description>
+      </mat-expansion-panel-header>
+      <p class="mb-3 text-sm text-text-secondary">
+        Defaults use the <a class="text-brand underline" href="https://zerodha.com/charges/" target="_blank" rel="noopener noreferrer">Zerodha resident delivery schedule</a>
+        checked 24 Sep 2026: ₹0 brokerage and ₹13 DP + GST. This is a reference for every account, not an automatically detected broker tariff.
+        Changes apply to this screen only and reset when you leave it.
+      </p>
+      <mat-checkbox [checked]="includeBuyCharges()" (change)="includeBuyCharges.set($event.checked)">
+        Estimate buy-side charges as well as sell-side charges
+      </mat-checkbox>
+      <p class="mb-4 text-xs text-text-secondary">
+        Turn this off if your average cost already includes acquisition charges to avoid counting them twice.
+        Historical buy charges are approximated using today's rates and the reported average cost.
+      </p>
+      @for (account of chargeAccounts(); track account.id) {
+        <div class="mb-3 rounded-lg border border-border p-3">
+          <h3 class="mb-3 text-sm font-semibold">{{ account.name }}</h3>
+          <div [formGroup]="account.form" class="grid gap-3 sm:grid-cols-3">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Brokerage (%) per side</mat-label>
+              <input matInput type="number" inputmode="decimal" min="0" max="100" step="0.01" formControlName="brokeragePercent" />
+              <mat-hint>0 for zero-brokerage delivery</mat-hint>
+            </mat-form-field>
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Brokerage cap (₹ / order)</mat-label>
+              <input matInput type="number" inputmode="decimal" min="0" step="0.01" formControlName="brokerageCap" />
+              <mat-hint>Min(rate × turnover, cap)</mat-hint>
+            </mat-form-field>
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>DP before GST (₹ / stock)</mat-label>
+              <input matInput type="number" inputmode="decimal" min="0" step="0.01" formControlName="dpCharge" />
+              <mat-hint>Once per selling account</mat-hint>
+            </mat-form-field>
+          </div>
+          @if (!validTariff(tariffFor(account.id))) {
+            <p class="mt-2 text-xs text-danger" role="alert">Enter all three non-negative values; brokerage must be between 0 and 100%. Estimates for this account are unavailable until corrected.</p>
+          }
+        </div>
+      }
+      <button mat-button type="button" (click)="resetTariffs()">Reset reference rates</button>
+      <p class="mt-2 text-xs text-text-secondary">
+        Assumes one buy and one sell order per stock per account, with one DP debit on sale. Uses the displayed exchange for all legs of a blended holding;
+        special BSE scrip rates, ETFs, NRI tariffs, auction/call-and-trade charges, financing, slippage and income tax are not modelled.
+        Full quantities include pledged shares; those must be released before selling. Contract-note rounding and historical trades can change the final charges.
+      </p>
+    </mat-expansion-panel>
 
     @if (layout.compact()) {
       <!--
@@ -78,6 +166,7 @@
         [akRefreshing]="store.loading()"
       >
         @for (holding of holdings(); track holding.groupKey) {
+          @let estimate = estimates().get(holding.groupKey)?.value;
           <li class="cv-auto-[92px] border-b border-border last:border-b-0">
             <button
               type="button"
@@ -94,10 +183,11 @@
                   </span>
                   <span
                     class="shrink-0 text-[15px] font-semibold tabular-nums"
-                    [class.text-buy]="!holding.unrealisedPnl || +holding.unrealisedPnl.amount >= 0"
-                    [class.text-sell]="holding.unrealisedPnl && +holding.unrealisedPnl.amount < 0"
+                    [class.text-buy]="estimate && estimate.netPnl >= 0"
+                    [class.text-sell]="estimate && estimate.netPnl < 0"
                   >
-                    {{ holding.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
+                    {{ (estimate ? inr(estimate.netPnl) : undefined) | akMoney: { signDisplay: 'exceptZero' } }}
+                    <span class="text-[10px] font-normal text-text-tertiary">net est.</span>
                   </span>
                 </span>
 
@@ -110,8 +200,8 @@
                     [class.text-buy]="(returnFor(holding) ?? 0) >= 0"
                     [class.text-sell]="(returnFor(holding) ?? 0) < 0"
                   >
-                    @if (returnFor(holding); as ret) {
-                      {{ ret > 0 ? '+' : '' }}{{ ret | percent: '1.2-2' }}
+                    @if (returnFor(holding) !== undefined) {
+                      {{ returnFor(holding) | percent: '1.2-2' }} net
                     } @else {
                       —
                     }
@@ -145,6 +235,13 @@
                 >expand_more</mat-icon
               >
             </button>
+            <div class="flex flex-wrap items-center justify-between gap-1 px-4 pb-2 text-xs text-text-secondary">
+              <span class="tabular-nums">Gross {{ (estimate ? inr(estimate.grossPnl) : holding.unrealisedPnl) | akMoney: { signDisplay: 'exceptZero' } }}</span>
+              <button mat-button type="button" (click)="showCalculation(holding, calculation)" [attr.aria-label]="'Calculate net profit for ' + (holding.instrument | akInstrument)">
+                {{ estimate ? 'Charges ' + (inr(estimate.totalCharges) | akMoney) : 'Estimate unavailable' }}
+                <mat-icon aria-hidden="true">calculate</mat-icon>
+              </button>
+            </div>
 
             @if (isExpanded(holding.groupKey)) {
               <!--
@@ -203,14 +300,15 @@
         <span class="ak-col-price">Avg cost</span>
         <span class="ak-col-price">Last</span>
         <span class="ak-col-pnl">Value</span>
-        <span class="ak-col-pnl">Unrealised</span>
-        <span class="ak-col-return">Return</span>
+        <span class="ak-col-pnl">Gross / Net est.</span>
+        <span class="ak-col-return">Net return</span>
         <span></span>
       </div>
 
       <!-- Virtualised: only visible rows render, even with a few thousand holdings. -->
       <cdk-virtual-scroll-viewport itemSize="44" class="ak-viewport" [akRefreshing]="store.loading()">
         <div *cdkVirtualFor="let holding of holdings(); trackBy: trackByGroupKey">
+          @let estimate = estimates().get(holding.groupKey)?.value;
           <div class="ak-trow" role="row">
             <!--
               Expandable even with ONE leg, as on the positions blotter: the leg row is where Sell
@@ -257,20 +355,21 @@
             <span class="ak-col-price">{{ holding.averagePrice | akMoney }}</span>
             <span class="ak-col-price">{{ holding.lastPrice | akMoney }}</span>
             <span class="ak-col-pnl">{{ holding.currentValue | akMoney }}</span>
-            <span
-              class="ak-col-pnl"
-              [class.ak-buy-text]="!holding.unrealisedPnl || +holding.unrealisedPnl.amount >= 0"
-              [class.ak-sell-text]="holding.unrealisedPnl && +holding.unrealisedPnl.amount < 0"
-            >
-              {{ holding.unrealisedPnl | akMoney: { signDisplay: 'exceptZero' } }}
-            </span>
+            <button type="button" class="ak-col-pnl ak-focus-halo rounded-sm text-right" (click)="showCalculation(holding, calculation)"
+              [attr.aria-label]="'Show charges and net profit for ' + (holding.instrument | akInstrument)"
+              [matTooltip]="estimate ? 'View charges, net profit and break-even' : estimates().get(holding.groupKey)?.unavailable ?? 'Estimate unavailable'">
+              <span class="block text-[11px] text-text-tertiary">{{ (estimate ? inr(estimate.grossPnl) : holding.unrealisedPnl) | akMoney: { signDisplay: 'exceptZero' } }}</span>
+              <span class="block font-semibold underline decoration-dotted underline-offset-2" [class.text-buy]="estimate && estimate.netPnl >= 0" [class.text-sell]="estimate && estimate.netPnl < 0">
+                {{ (estimate ? inr(estimate.netPnl) : undefined) | akMoney: { signDisplay: 'exceptZero' } }}
+              </span>
+            </button>
             <span
               class="ak-col-return"
               [class.ak-buy-text]="(returnFor(holding) ?? 0) >= 0"
               [class.ak-sell-text]="(returnFor(holding) ?? 0) < 0"
             >
-              @if (returnFor(holding); as ret) {
-                {{ ret | percent: '1.2-2' }}
+              @if (returnFor(holding) !== undefined) {
+                {{ returnFor(holding) | percent: '1.2-2' }}
               } @else {
                 —
               }
@@ -319,3 +418,85 @@
     }
   }
 </section>
+
+<ng-template #calculation>
+  <h2 mat-dialog-title>Delivery profit calculator</h2>
+  <mat-dialog-content>
+    @if (selectedHolding(); as holding) {
+      <div class="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p class="font-semibold text-text-primary">{{ holding.instrument | akInstrument }}</p>
+          <p class="text-xs text-text-secondary">{{ holding.quantity | akQuantity }} shares · {{ holding.legs.length }} account(s) · {{ holding.instrument | akInstrument: 'detail' }}</p>
+        </div>
+        <span class="rounded-full border border-border px-2 py-1 text-xs text-text-secondary">Estimate, not realised profit</span>
+      </div>
+      <div class="flex flex-wrap items-start gap-3">
+        <mat-form-field appearance="outline" class="min-w-0 flex-1">
+          <mat-label>What-if sell price (₹ / share)</mat-label>
+          <input matInput type="number" inputmode="decimal" min="0.01" step="0.01" [formControl]="sellPriceControl" />
+          <mat-hint>Changes this calculation only. No order is placed.</mat-hint>
+        </mat-form-field>
+        <button mat-button type="button" class="mt-2" (click)="resetSellPrice()">Use snapshot</button>
+      </div>
+      @if (selectedEstimate()?.value; as estimate) {
+        <div class="my-4 rounded-lg border border-brand bg-surface-2 p-4">
+          <span class="text-xs text-text-secondary">Estimated net profit / loss</span>
+          <p class="mt-1 text-2xl font-bold tabular-nums" [class.text-buy]="estimate.netPnl >= 0" [class.text-sell]="estimate.netPnl < 0">
+            {{ inr(estimate.netPnl) | akMoney: { signDisplay: 'exceptZero' } }}
+            <span class="text-sm font-medium">({{ estimate.returnFraction | percent: '1.2-2' }})</span>
+          </p>
+          <p class="mt-1 text-xs text-text-secondary tabular-nums">
+            Gross P&amp;L {{ inr(estimate.grossPnl) | akMoney }} − total charges {{ inr(estimate.totalCharges) | akMoney }}
+          </p>
+        </div>
+        <dl class="mb-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
+          <div><dt class="text-xs text-text-secondary">Reported cost</dt><dd class="mt-1 tabular-nums">{{ inr(estimate.invested) | akMoney }}</dd></div>
+          <div><dt class="text-xs text-text-secondary">Sale value</dt><dd class="mt-1 tabular-nums">{{ inr(estimate.saleValue) | akMoney }}</dd></div>
+          <div><dt class="text-xs text-text-secondary">Net sale proceeds</dt><dd class="mt-1 tabular-nums">{{ inr(estimate.netProceeds) | akMoney }}</dd></div>
+          <div><dt class="text-xs text-text-secondary">Break-even / share</dt><dd class="mt-1 tabular-nums">{{ (breakEven() !== undefined ? inr(breakEven()!) : undefined) | akMoney }}</dd></div>
+        </dl>
+        <div class="overflow-x-auto rounded-lg border border-border">
+          <table class="w-full text-left text-sm">
+            <caption class="sr-only">Estimated delivery charges in Indian rupees, split between buy and sell</caption>
+            <thead class="bg-surface-2 text-xs text-text-secondary">
+              <tr><th scope="col" class="p-3 font-medium">Charge</th><th scope="col" class="p-3 text-right font-medium">Buy</th><th scope="col" class="p-3 text-right font-medium">Sell</th><th scope="col" class="p-3 text-right font-medium">Total</th></tr>
+            </thead>
+            <tbody>
+              @for (line of estimate.lines; track line.label) {
+                <tr class="border-t border-border">
+                  <th scope="row" class="p-3 font-normal"><span class="block">{{ line.label }}</span><span class="mt-0.5 block text-[11px] text-text-tertiary">{{ line.basis }}</span></th>
+                  <td class="whitespace-nowrap p-3 text-right">{{ inr(line.buy) | akMoney }}</td>
+                  <td class="whitespace-nowrap p-3 text-right">{{ inr(line.sell) | akMoney }}</td>
+                  <td class="whitespace-nowrap p-3 text-right">{{ inr(line.buy + line.sell) | akMoney }}</td>
+                </tr>
+              }
+            </tbody>
+            <tfoot class="border-t border-border bg-surface-2 font-semibold">
+              <tr><th scope="row" class="p-3">Total charges</th><td class="whitespace-nowrap p-3 text-right">{{ inr(estimate.buyCharges) | akMoney }}</td><td class="whitespace-nowrap p-3 text-right">{{ inr(estimate.sellCharges) | akMoney }}</td><td class="whitespace-nowrap p-3 text-right">{{ inr(estimate.totalCharges) | akMoney }}</td></tr>
+            </tfoot>
+          </table>
+        </div>
+        <div class="mt-4 space-y-2 text-xs text-text-secondary">
+          <p class="tabular-nums">Sale proceeds = {{ inr(estimate.saleValue) | akMoney }} sale value − {{ inr(estimate.sellCharges) | akMoney }} sell charges = {{ inr(estimate.netProceeds) | akMoney }}.</p>
+          <p class="tabular-nums">Net P&amp;L = {{ inr(estimate.netProceeds) | akMoney }} proceeds − {{ inr(estimate.invested) | akMoney }} reported cost − {{ inr(estimate.buyCharges) | akMoney }} added buy charges.</p>
+          <p>Net return uses reported cost + added buy charges. Break-even estimates a common sale price across these accounts, including sell charges and DP; it is not an exchange tick-size quote.</p>
+          <p>{{ includeBuyCharges() ? 'Buy-side charges are reconstructed at current rates, not taken from historical contract notes.' : 'Buy-side charges are not added. This assumes they are already included in reported cost.' }}</p>
+        </div>
+      } @else {
+        <p class="my-4 rounded-lg border border-warning p-3 text-sm text-warning" role="status">{{ selectedEstimate()?.unavailable }}</p>
+      }
+      @if (isPledged(holding)) {
+        <p class="mt-3 text-xs text-warning">Includes {{ holding.pledgedQuantity | akQuantity }} pledged shares. This models the full holding; pledged shares must be released before sale.</p>
+      }
+      <p class="mt-4 text-xs text-text-secondary">
+        Uses the reference/custom rates in Charge assumptions, not a broker quote. One order per side and one DP debit per stock/account;
+        charges are rounded per account. Actual execution, historical rates, special scrip tariffs and contract-note rounding can differ.
+        Excludes capital-gains tax, financing and other account/service charges.
+        <a class="text-brand underline" href="https://zerodha.com/brokerage-calculator/#tab-equities" target="_blank" rel="noopener noreferrer">Reference calculator</a>.
+      </p>
+    } @else {
+      <p>This holding is no longer present. Close the calculator and refresh holdings.</p>
+    }
+  </mat-dialog-content>
+  <mat-dialog-actions align="end"><button mat-button mat-dialog-close type="button">Close</button></mat-dialog-actions>
+</ng-template>
