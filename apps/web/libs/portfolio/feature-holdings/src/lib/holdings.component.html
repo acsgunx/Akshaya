@@ -90,7 +90,7 @@
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-text-secondary">
       <p>
         Net estimates cover {{ netTotals()?.count ?? 0 }} of {{ holdings().length }} holdings.
-        Zerodha delivery reference, not broker-confirmed charges or capital-gains tax.
+        Illustrative delivery rates, not broker-confirmed charges or capital-gains tax.
       </p>
       <p>Snapshot: {{ store.snapshot()?.asOf | date: 'medium' }}</p>
     </div>
@@ -101,8 +101,8 @@
         <mat-panel-description class="max-sm:hidden!">Review rates for your accounts</mat-panel-description>
       </mat-expansion-panel-header>
       <p class="mb-3 text-sm text-text-secondary">
-        Defaults use the <a class="text-brand underline" href="https://zerodha.com/charges/" target="_blank" rel="noopener noreferrer">Zerodha resident delivery schedule</a>
-        checked 24 Sep 2026: ₹0 brokerage and ₹13 DP + GST. This is a reference for every account, not an automatically detected broker tariff.
+        Defaults assume ₹0 brokerage and ₹13 DP + GST, with statutory rates checked 24 Sep 2026.
+        These are illustrative resident delivery rates, not an automatically detected broker tariff. Review them against each account's fee schedule.
         Changes apply to this screen only and reset when you leave it.
       </p>
       <mat-checkbox [checked]="includeBuyCharges()" (change)="includeBuyCharges.set($event.checked)">
@@ -492,7 +492,7 @@
         Uses the reference/custom rates in Charge assumptions, not a broker quote. One order per side and one DP debit per stock/account;
         charges are rounded per account. Actual execution, historical rates, special scrip tariffs and contract-note rounding can differ.
         Excludes capital-gains tax, financing and other account/service charges.
-        <a class="text-brand underline" href="https://zerodha.com/brokerage-calculator/#tab-equities" target="_blank" rel="noopener noreferrer">Reference calculator</a>.
+        Confirm the rates against your account's fee schedule and the final charges against its contract notes.
       </p>
     } @else {
       <p>This holding is no longer present. Close the calculator and refresh holdings.</p>
