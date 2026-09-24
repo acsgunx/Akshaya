@@ -109,7 +109,7 @@
                     three fit a 320px phone — with icons and stock padding, Convert wraps alone
                     onto a second line.
                   -->
-                  <div class="mt-2.5 grid grid-cols-3 gap-2 [--mat-button-outlined-horizontal-padding:--spacing(3)]">
+                  <div class="mt-2.5 grid grid-cols-4 gap-2 [--mat-button-outlined-horizontal-padding:--spacing(3)]">
                     <!-- Opens the ticket pointed the other way. It does NOT place the order — see `exit`. -->
                     <button
                       mat-stroked-button
@@ -126,6 +126,14 @@
                       [attr.aria-label]="'Add to ' + pos.instrument + ' at ' + leg.displayName"
                     >
                       Add
+                    </button>
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="openCalculator(pos, leg)"
+                      [attr.aria-label]="'Profit and charges calculator for ' + pos.instrument + ' at ' + leg.displayName"
+                    >
+                      Calc
                     </button>
                     @if (canConvert(leg)) {
                       <button
@@ -222,6 +230,15 @@
                   two things an order or a conversion cannot do without.
                 -->
                 <span class="flex items-center justify-end gap-1">
+                  <button
+                    mat-icon-button
+                    type="button"
+                    (click)="openCalculator(pos, leg)"
+                    [attr.aria-label]="'Profit and charges calculator for ' + pos.instrument + ' at ' + leg.displayName"
+                    matTooltip="Net profit after charges — all trade types"
+                  >
+                    <mat-icon aria-hidden="true">calculate</mat-icon>
+                  </button>
                   <button
                     mat-icon-button
                     type="button"

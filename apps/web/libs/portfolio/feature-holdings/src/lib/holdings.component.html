@@ -498,5 +498,12 @@
       <p>This holding is no longer present. Close the calculator and refresh holdings.</p>
     }
   </mat-dialog-content>
-  <mat-dialog-actions align="end"><button mat-button mat-dialog-close type="button">Close</button></mat-dialog-actions>
+  <mat-dialog-actions align="end">
+    @if (selectedHolding(); as holding) {
+      <button mat-stroked-button mat-dialog-close type="button" (click)="openAllTypesCalculator(holding)">
+        Compare all trade types
+      </button>
+    }
+    <button mat-button mat-dialog-close type="button">Close</button>
+  </mat-dialog-actions>
 </ng-template>

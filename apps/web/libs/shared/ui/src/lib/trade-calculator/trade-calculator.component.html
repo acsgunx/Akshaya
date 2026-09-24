@@ -1,0 +1,159 @@
+<p class="mb-3 text-xs text-text-secondary">
+  Four independent scenarios. Select a type to edit its prices, quantity and rates. These are not equivalent instruments or broker quotes.
+  @if (seed()?.label; as label) { Initial {{ seed()?.type }} inputs copied from {{ label }}; other types start with examples. }
+  Scenarios never change your portfolio or place an order.
+</p>
+
+<mat-button-toggle-group class="mb-4 grid! w-full grid-cols-2 sm:grid-cols-4" aria-label="Trade type" [value]="selectedType()" (change)="selectType($event.value)">
+  @for (type of comparisons(); track type.value) {
+    <mat-button-toggle [value]="type.value" class="min-w-0 [--mat-standard-button-toggle-height:auto]">
+      <span class="block py-2 text-left leading-normal">
+        <span class="block text-xs font-semibold">{{ type.label }}</span>
+        @if (type.estimate; as result) {
+          <span class="mt-1 block text-base font-bold tabular-nums" [class.text-buy]="result.netPnl >= 0" [class.text-sell]="result.netPnl < 0">{{ inr(result.netPnl) | akMoney: { signDisplay: 'exceptZero' } }}</span>
+          <span class="mt-1 block text-[11px] text-text-secondary tabular-nums">Charges {{ inr(result.totalCharges) | akMoney }}</span>
+        } @else {
+          <span class="mt-1 block text-sm text-text-secondary">Check inputs</span>
+        }
+      </span>
+    </mat-button-toggle>
+  }
+</mat-button-toggle-group>
+
+<div [formGroup]="form()">
+  <div class="grid gap-x-3 sm:grid-cols-2 lg:grid-cols-4">
+    <mat-form-field appearance="outline">
+      <mat-label>Exchange</mat-label>
+      <mat-select formControlName="exchange"><mat-option value="XNSE">NSE</mat-option><mat-option value="XBOM">BSE</mat-option></mat-select>
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>{{ selectedType() === 'options' ? 'Buy premium (₹ / unit)' : 'Buy price (₹ / unit)' }}</mat-label>
+      <input matInput type="number" inputmode="decimal" min="0.01" step="0.01" formControlName="buyPrice" />
+      <mat-error>Enter a positive buy price.</mat-error>
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>{{ selectedType() === 'options' ? 'Sell premium (₹ / unit)' : 'Sell price (₹ / unit)' }}</mat-label>
+      <input matInput type="number" inputmode="decimal" min="0.01" step="0.01" formControlName="sellPrice" />
+      <mat-error>Enter a positive sell price.</mat-error>
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>{{ derivative() ? (values().quantityMode === 'lots' ? 'Number of lots' : 'Quantity (units, not lots)') : 'Quantity (shares)' }}</mat-label>
+      <input matInput type="number" inputmode="numeric" min="1" step="1" formControlName="quantity" />
+      <mat-error>Enter a positive whole quantity.</mat-error>
+    </mat-form-field>
+  </div>
+  <div class="flex flex-wrap items-start gap-3">
+    @if (selectedType() !== 'delivery') {
+      <mat-form-field appearance="outline" class="w-48" subscriptSizing="dynamic">
+        <mat-label>Opening direction</mat-label>
+        <mat-select formControlName="direction"><mat-option value="long">Buy first (long)</mat-option><mat-option value="short">Sell first (short)</mat-option></mat-select>
+      </mat-form-field>
+    }
+    @if (derivative()) {
+      <mat-form-field appearance="outline" class="w-44" subscriptSizing="dynamic">
+        <mat-label>Quantity entered as</mat-label>
+        <mat-select formControlName="quantityMode"><mat-option value="units">Units</mat-option><mat-option value="lots">Lots</mat-option></mat-select>
+      </mat-form-field>
+      @if (values().quantityMode === 'lots') {
+        <mat-form-field appearance="outline" class="w-44" subscriptSizing="dynamic">
+          <mat-label>Units per lot</mat-label>
+          <input matInput type="number" inputmode="numeric" min="1" step="1" formControlName="lotSize" />
+          <mat-hint>Use the contract's actual lot size</mat-hint>
+        </mat-form-field>
+      }
+    }
+    <button mat-button type="button" class="ml-auto" (click)="resetScenario()">Reset to example</button>
+  </div>
+  @if (derivative()) {
+    <p class="mt-3 text-xs text-text-secondary">
+      {{ selectedType() === 'options' ? 'Use option premiums, not the strike or underlying price.' : 'Use the futures contract price, not margin paid.' }}
+      Quantity is total underlying units; in lots mode it is lots × lot size. No margin or return-on-margin estimate is made.
+    </p>
+  }
+
+  <mat-expansion-panel class="my-4">
+    <mat-expansion-panel-header><mat-panel-title>Brokerage &amp; DP assumptions</mat-panel-title></mat-expansion-panel-header>
+    <p class="mb-3 text-xs text-text-secondary">Illustrative rates, not detected from your account. One executed order per side and one stock/account. Values are separate for each trade type and reset when the calculator closes.</p>
+    <div class="grid gap-3 sm:grid-cols-2">
+      @if (selectedType() === 'options') {
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Flat brokerage (₹ / order)</mat-label>
+          <input matInput type="number" inputmode="decimal" min="0" step="0.01" formControlName="flatBrokerage" />
+          <mat-error>Enter a non-negative fee.</mat-error>
+        </mat-form-field>
+      } @else {
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Brokerage (%) per side</mat-label>
+          <input matInput type="number" inputmode="decimal" min="0" max="100" step="0.01" formControlName="brokeragePercent" />
+          <mat-error>Enter a rate from 0 to 100%.</mat-error>
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Brokerage cap (₹ / order)</mat-label>
+          <input matInput type="number" inputmode="decimal" min="0" step="0.01" formControlName="brokerageCap" />
+          <mat-error>Enter a non-negative cap.</mat-error>
+        </mat-form-field>
+      }
+      @if (selectedType() === 'delivery') {
+        <mat-checkbox formControlName="includeDp">Include delivery DP charge + GST</mat-checkbox>
+        @if (values().includeDp) {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>DP before GST (₹ / stock)</mat-label>
+            <input matInput type="number" inputmode="decimal" min="0" step="0.01" formControlName="dpCharge" />
+            <mat-error>Enter a non-negative DP fee.</mat-error>
+          </mat-form-field>
+        }
+      }
+    </div>
+  </mat-expansion-panel>
+</div>
+
+@if (estimate(); as result) {
+  <div class="mb-4 grid gap-4 rounded-lg border border-brand bg-surface-2 p-4 sm:grid-cols-2">
+    <div>
+      <p class="text-xs text-text-secondary">Estimated net P&amp;L after charges</p>
+      <p class="mt-1 text-2xl font-bold tabular-nums" [class.text-buy]="result.netPnl >= 0" [class.text-sell]="result.netPnl < 0">{{ inr(result.netPnl) | akMoney: { signDisplay: 'exceptZero' } }}</p>
+      <p class="mt-1 text-xs text-text-secondary tabular-nums">Gross {{ inr(result.grossPnl) | akMoney }} − charges {{ inr(result.totalCharges) | akMoney }}</p>
+    </div>
+    <dl class="grid grid-cols-2 gap-3 text-sm">
+      <div><dt class="text-xs text-text-secondary">Turnover</dt><dd class="mt-1 tabular-nums">{{ inr(result.turnover) | akMoney }}</dd></div>
+      <div><dt class="text-xs text-text-secondary">Total units</dt><dd class="mt-1 tabular-nums">{{ scenario().quantity | number: '1.0-0' }}</dd></div>
+      <div><dt class="text-xs text-text-secondary">Points to cover charges</dt><dd class="mt-1 tabular-nums">{{ result.costPerUnit | number: '1.2-2' }}</dd></div>
+      <div><dt class="text-xs text-text-secondary">{{ scenario().direction === 'short' ? 'Break-even buy price' : 'Break-even sell price' }}</dt><dd class="mt-1 tabular-nums">{{ (breakEven() !== undefined ? inr(breakEven()!) : undefined) | akMoney }}</dd></div>
+    </dl>
+  </div>
+  @if (selectedType() === 'delivery' && tradingOnly(); as trading) {
+    <p class="mb-3 text-xs text-text-secondary tabular-nums">
+      Trading charges {{ inr(trading.totalCharges) | akMoney }} + DP with GST {{ inr(result.totalCharges - trading.totalCharges) | akMoney }} = {{ inr(result.totalCharges) | akMoney }}.
+      {{ values().includeDp ? 'DP is included in net P&L.' : 'DP is excluded; a delivery sale may incur this additional cost.' }}
+    </p>
+  }
+  <h3 class="mb-2 text-sm font-semibold">Charge breakdown · INR</h3>
+  <div class="max-h-80 overflow-auto rounded-lg border border-border" tabindex="0" role="region" aria-label="Scrollable buy and sell charge breakdown">
+    <table class="w-full min-w-[460px] text-left text-sm">
+      <caption class="sr-only">Estimated charges split between buy and sell for the selected trade type</caption>
+      <thead class="sticky top-0 bg-surface-2 text-xs text-text-secondary"><tr><th scope="col" class="p-3">Charge</th><th scope="col" class="p-3 text-right">Buy</th><th scope="col" class="p-3 text-right">Sell</th><th scope="col" class="p-3 text-right">Total</th></tr></thead>
+      <tbody>
+        @for (line of result.lines; track line.label) {
+          <tr class="border-t border-border">
+            <th scope="row" class="max-w-64 px-3 py-2 font-normal"><span class="block">{{ line.label }}</span><span class="mt-0.5 block text-[11px] text-text-tertiary">{{ line.basis }}</span></th>
+            <td class="whitespace-nowrap px-3 py-2 text-right">{{ inr(line.buy) | akMoney }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right">{{ inr(line.sell) | akMoney }}</td>
+            <td class="whitespace-nowrap px-3 py-2 text-right">{{ inr(line.total) | akMoney }}</td>
+          </tr>
+        }
+      </tbody>
+      <tfoot class="sticky bottom-0 border-t border-border bg-surface-2 font-semibold"><tr><th scope="row" class="p-3">Total charges</th><td class="whitespace-nowrap p-3 text-right">{{ inr(result.buyCharges) | akMoney }}</td><td class="whitespace-nowrap p-3 text-right">{{ inr(result.sellCharges) | akMoney }}</td><td class="whitespace-nowrap p-3 text-right">{{ inr(result.totalCharges) | akMoney }}</td></tr></tfoot>
+    </table>
+  </div>
+  <p class="mt-3 text-xs text-text-secondary tabular-nums">
+    Net P&amp;L = {{ inr(result.sellValue) | akMoney }} sell value − {{ inr(result.buyValue) | akMoney }} buy value − {{ inr(result.totalCharges) | akMoney }} charges.
+    Points to cover charges = charges ÷ units. Break-even recalculates charges at the exit price; it is an estimate, not an exchange tick-size quote.
+  </p>
+} @else {
+  <p class="my-4 rounded-lg border border-warning p-3 text-sm text-warning" role="status">Enter positive buy/sell prices and a positive whole quantity. Lots mode also needs a positive whole lot size. Review all applicable brokerage and DP fees; values must be non-negative, within the supported range, and brokerage at most 100%.</p>
+}
+<p class="mt-3 text-xs text-text-tertiary">
+  Reference rates checked 24 Sep 2026. STT and stamp duty use whole-rupee rounding; other charge totals use paise rounding over this round trip. Buy/sell splits allocate rounding differences to sell.
+  Historical holdings estimates instead round each account/side separately and can differ slightly. This scenario always includes buy-side charges and uses its own reference/custom fees, not the holdings account overrides.
+  Equity F&amp;O trade closes only: exercise, assignment, expiry and physical settlement are excluded, as are special scrip/ETF rates, NRI tariffs, financing, slippage, other service charges and capital-gains tax.
+</p>

@@ -1,4 +1,6 @@
+import { parseInstrumentKey } from '@akshaya/shared/models';
 import type { BlendedHolding, BrokerHoldingLeg } from '@akshaya/shared/models';
+import { calculateTradeCharges, referenceTradeTariff } from '@akshaya/shared/util';
 
 export interface DeliveryTariff {
   readonly brokeragePercent: number | null;
@@ -6,11 +8,7 @@ export interface DeliveryTariff {
   readonly dpCharge: number | null;
 }
 
-export const DELIVERY_REFERENCE: DeliveryTariff = {
-  brokeragePercent: 0,
-  brokerageCap: 20,
-  dpCharge: 13,
-};
+export const DELIVERY_REFERENCE: DeliveryTariff = referenceTradeTariff('delivery');
 
 export interface DeliveryChargeLine {
   readonly label: string;
@@ -62,8 +60,9 @@ export function estimateDelivery(
   includeBuyCharges: boolean,
   sellPrice?: number | null,
 ): HoldingEstimate {
-  const [venue, , asset, ...suffix] = holding.instrument.split(':');
-  if (holding.currency !== 'INR' || (venue !== 'XNSE' && venue !== 'XBOM') || asset !== 'Equity' || suffix.length) {
+  const instrument = parseInstrumentKey(holding.instrument);
+  const venue = instrument?.venue;
+  if (holding.currency !== 'INR' || (venue !== 'XNSE' && venue !== 'XBOM') || instrument?.assetClass !== 'equity') {
     return { unavailable: 'Estimates are available for INR delivery equities on NSE and BSE only.' };
   }
   if (sellPrice !== undefined && (sellPrice === null || !Number.isFinite(sellPrice) || sellPrice < 0.01)) {
@@ -75,17 +74,7 @@ export function estimateDelivery(
     return { unavailable: 'A complete, positive whole-share quantity and account breakdown are required.' };
   }
 
-  const exchangeRate = venue === 'XNSE' ? 0.0000297 : 0.0000375;
-  const lines: DeliveryChargeLine[] = [
-    { label: 'Brokerage', basis: 'Account rate × turnover, capped per assumed order', buy: 0, sell: 0 },
-    { label: 'STT', basis: '0.1% on buy and sell; rounded to nearest rupee per account/side', buy: 0, sell: 0 },
-    { label: 'Exchange transaction', basis: `${venue === 'XNSE' ? 'NSE 0.00297% excluding IPFT' : 'BSE 0.00375%'} on both sides`, buy: 0, sell: 0 },
-    { label: 'SEBI', basis: '₹10 per crore on both sides', buy: 0, sell: 0 },
-    { label: 'IPFT', basis: venue === 'XNSE' ? 'NSE 0.0001%; exchange + IPFT = 0.00307% as in the reference calculator' : 'Not applied for BSE', buy: 0, sell: 0 },
-    { label: 'Stamp duty', basis: '0.015% on buy turnover only; rounded to nearest rupee', buy: 0, sell: 0 },
-    { label: 'DP charge', basis: 'Once per stock per selling account; before GST', buy: 0, sell: 0 },
-    { label: 'GST', basis: '18% of brokerage, exchange, SEBI, IPFT and DP charges', buy: 0, sell: 0 },
-  ];
+  const lines: DeliveryChargeLine[] = [];
   let invested = 0;
   let saleValue = 0;
   const accounts = new Map<string, { buy: number; sell: number }>();
@@ -113,24 +102,16 @@ export function estimateDelivery(
   }
   for (const [id, { buy, sell }] of accounts) {
     const tariff = tariffs[id] ?? DELIVERY_REFERENCE;
-    for (const side of ['buy', 'sell'] as const) {
-      if (side === 'buy' && !includeBuyCharges) continue;
-      const turnover = side === 'buy' ? buy : sell;
-      const brokerage = round(Math.min(turnover * tariff.brokeragePercent! / 100, tariff.brokerageCap!));
-      const exchange = round(turnover * exchangeRate);
-      const sebi = round(turnover * 0.000001);
-      const ipft = venue === 'XNSE' ? round(turnover * 0.000001) : 0;
-      const dp = side === 'sell' ? round(tariff.dpCharge!) : 0;
-      const values = [
-        brokerage, Math.round(round(turnover * 0.001)), exchange, sebi, ipft,
-        side === 'buy' ? Math.round(round(turnover * 0.00015)) : 0, dp,
-        round((brokerage + exchange + sebi + ipft + dp) * 0.18),
-      ];
-      values.forEach((value, index) => {
-        const line = lines[index]!;
-        lines[index] = { ...line, [side]: round(line[side] + value) };
-      });
-    }
+    calculateTradeCharges({
+      type: 'delivery', exchange: venue, buyValue: buy, sellValue: sell, includeBuyCharges, rounding: 'perSide',
+      tariff: { brokeragePercent: tariff.brokeragePercent!, brokerageCap: tariff.brokerageCap!, dpCharge: tariff.dpCharge!, flatBrokerage: 0 },
+    }).forEach((line, index) => {
+      const previous = lines[index];
+      lines[index] = {
+        label: line.label, basis: line.basis,
+        buy: round((previous?.buy ?? 0) + line.buy), sell: round((previous?.sell ?? 0) + line.sell),
+      };
+    });
   }
   invested = round(invested);
   saleValue = round(saleValue);
