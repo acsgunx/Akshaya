@@ -98,6 +98,15 @@ with Angular 22. Nx runs the `@angular/build` builders from `project.json` direc
 For final verification of web-library edits, run `npm run build -- --skip-nx-cache` from
 `apps/web`, plus `npm run lint`. A stale cached build was observed after holdings-library
 edits; bypassing the cache ensures the current Angular templates and TypeScript are compiled.
+Also run `python3 scripts/verify-structure.py` from a clean checkout: its broker-leakage check
+covers UI copy and URLs, not just conditional logic. Nested local worktrees are scanned too,
+so use a separate clean worktree when they produce unrelated failures; do not weaken the check.
+
+The holdings calculator's illustrative delivery defaults were checked against
+https://zerodha.com/charges/ and https://zerodha.com/brokerage-calculator/#tab-equities
+(including https://zerodha.com/static/js/brokerage.js) on 24 Sep 2026. Keep this source
+attribution in project notes, not hard-coded broker branding or URLs in the generic UI.
+The defaults are user-editable estimates, not tariffs inferred from a connector.
 
 ## Chart workspace
 
