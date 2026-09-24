@@ -17,6 +17,7 @@ import { InstrumentPipe, LayoutService, MoneyPipe, QuantityPipe } from '@akshaya
 import type { BlendedHolding, BrokerHoldingLeg, CurrencyCode, Money } from '@akshaya/shared/models';
 import { DashboardStore } from '@akshaya/portfolio/data-access';
 import {
+  AK_DIALOG_DEFAULTS,
   ChartLinkComponent,
   EmptyStateComponent,
   LoadingStateComponent,
@@ -24,7 +25,10 @@ import {
   RefreshButtonComponent,
   RefreshingDirective,
   SectionTabsComponent,
+  TradeCalculatorDialogComponent,
 } from '@akshaya/shared/ui';
+import { parseInstrumentKey } from '@akshaya/shared/models';
+import type { TradeCalculatorSeed } from '@akshaya/shared/util';
 import { DELIVERY_REFERENCE, deliveryBreakEven, estimateDelivery, validTariff } from './delivery-charges';
 import type { DeliveryTariff, DeliveryTariffs } from './delivery-charges';
 
@@ -178,6 +182,24 @@ export class HoldingsComponent implements OnInit {
     const estimate = holding ? this.estimates().get(holding.groupKey)?.value : undefined;
     this.scenarioPrice.set(undefined);
     this.sellPriceControl.setValue(estimate ? estimate.saleValue / estimate.quantity : null, { emitEvent: false });
+  }
+
+  protected openAllTypesCalculator(holding: BlendedHolding): void {
+    const parsed = parseInstrumentKey(holding.instrument);
+    const seed: TradeCalculatorSeed | undefined =
+      parsed && (parsed.venue === 'XNSE' || parsed.venue === 'XBOM')
+        ? {
+            type: 'delivery',
+            exchange: parsed.venue,
+            buyPrice: Number(holding.averagePrice.amount),
+            sellPrice: Number(holding.lastPrice?.amount),
+            quantity: Number(holding.quantity),
+            label: holding.instrument,
+          }
+        : undefined;
+    this.dialog.open(TradeCalculatorDialogComponent, {
+      ...AK_DIALOG_DEFAULTS, data: seed, width: '980px', ariaLabel: 'Profit and charges calculator for all trade types',
+    });
   }
 
   /**

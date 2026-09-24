@@ -27,7 +27,10 @@ import {
   RefreshButtonComponent,
   RefreshingDirective,
   SectionTabsComponent,
+  TradeCalculatorDialogComponent,
 } from '@akshaya/shared/ui';
+import { parseInstrumentKey } from '@akshaya/shared/models';
+import type { TradeCalculatorSeed, TradeChargeType } from '@akshaya/shared/util';
 import { ConvertPositionDialogComponent, ConvertPositionDialogData } from './convert-position-dialog.component';
 
 /**
@@ -223,6 +226,35 @@ export class PositionsComponent implements OnInit {
       const next = new Set(set);
       next.delete(brokerLinkId);
       return next;
+    });
+  }
+
+  /**
+   * Seeds the charges calculator with this leg's actual position. Equity legs map
+   * to intraday or delivery by product; futures/options map by instrument class.
+   * Unsupported venues/currencies open the calculator with defaults instead.
+   */
+  protected openCalculator(pos: BlendedPosition, leg: BrokerPositionLeg): void {
+    const parsed = parseInstrumentKey(pos.instrument);
+    const quantity = Math.abs(Number(leg.netQuantity));
+    const type: TradeChargeType =
+      parsed?.assetClass === 'future' ? 'futures'
+      : parsed?.assetClass === 'option' ? 'options'
+      : leg.positionEffect === 'delivery' ? 'delivery' : 'intraday';
+    const seed: TradeCalculatorSeed | undefined =
+      parsed && (parsed.venue === 'XNSE' || parsed.venue === 'XBOM') && pos.currency === 'INR' && quantity > 0
+        ? {
+            type,
+            exchange: parsed.venue,
+            buyPrice: Number(leg.averagePrice.amount),
+            sellPrice: Number(leg.lastPrice?.amount),
+            quantity,
+            direction: Number(leg.netQuantity) >= 0 ? 'long' : 'short',
+            label: `${pos.instrument} · ${leg.displayName}`,
+          }
+        : undefined;
+    this.dialog.open(TradeCalculatorDialogComponent, {
+      ...AK_DIALOG_DEFAULTS, data: seed, width: '980px', ariaLabel: 'Profit and charges calculator for all trade types',
     });
   }
 

@@ -9,3 +9,4 @@ export * from './lib/refresh-button/refresh-button.component';
 export * from './lib/refreshing/refreshing.directive';
 export * from './lib/section-tabs/section-tabs.component';
 export * from './lib/stale-banner/stale-banner.component';
+export * from './lib/trade-calculator/trade-calculator.component';
