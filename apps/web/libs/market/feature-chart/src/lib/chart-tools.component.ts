@@ -10,6 +10,8 @@ export interface DrawingToolState {
   readonly undo: boolean;
   readonly redo: boolean;
   readonly count: number;
+  /** A single drawing is selected, so it can be removed on its own. */
+  readonly selected: boolean;
 }
 
 /**
@@ -36,7 +38,10 @@ export interface DrawingToolState {
       <button mat-icon-button aria-label="Undo last drawing" matTooltip="Undo drawing" [disabled]="!state().undo || !ready()" (click)="undo.emit()"><mat-icon>undo</mat-icon></button>
       <button mat-icon-button aria-label="Redo drawing" matTooltip="Redo drawing" [disabled]="!state().redo || !ready()" (click)="redo.emit()"><mat-icon>redo</mat-icon></button>
       <button mat-icon-button aria-label="Toggle drawing visibility" matTooltip="Show / hide drawings" [attr.aria-pressed]="visible()" (click)="visibilityToggle.emit()"><mat-icon>{{ visible() ? 'visibility' : 'visibility_off' }}</mat-icon></button>
-      <button mat-icon-button aria-label="Remove all drawings" matTooltip="Remove drawings" [disabled]="!state().count || !ready()" (click)="remove.emit()"><mat-icon>delete_outline</mat-icon></button>
+      <!-- Click a drawing with the crosshair tool to select it; this removes
+           that one. "Remove drawings" below still clears the lot. -->
+      <button mat-icon-button aria-label="Remove the selected drawing" matTooltip="Remove selected drawing · Delete" [disabled]="!state().selected || !ready()" (click)="removeSelected.emit()"><mat-icon>backspace</mat-icon></button>
+      <button mat-icon-button aria-label="Remove all drawings" matTooltip="Remove all drawings" [disabled]="!state().count || !ready()" (click)="remove.emit()"><mat-icon>delete_outline</mat-icon></button>
     </nav>
   `,
   styles: `
@@ -61,5 +66,6 @@ export class ChartToolsComponent {
   readonly undo = output<void>();
   readonly redo = output<void>();
   readonly visibilityToggle = output<void>();
+  readonly removeSelected = output<void>();
   readonly remove = output<void>();
 }

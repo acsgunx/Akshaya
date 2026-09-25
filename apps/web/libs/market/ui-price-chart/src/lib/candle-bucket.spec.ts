@@ -34,21 +34,23 @@ describe('foldTickIntoBar', () => {
     high: 102,
     low: 99,
     close: 101,
+    volume: 1_000,
   };
 
   it('extends the current bar while the tick is still inside its window', () => {
     const next = foldTickIntoBar(bar, 103, at('2026-09-03T10:07:31Z'), 'fiveMinutes');
-    expect(next).toEqual({ time: bar.time, open: 100, high: 103, low: 99, close: 103 });
+    expect(next).toEqual({ time: bar.time, open: 100, high: 103, low: 99, close: 103, volume: 1_000 });
   });
 
   it('keeps the open and only widens the extremes it needs to', () => {
     const next = foldTickIntoBar(bar, 98, at('2026-09-03T10:07:31Z'), 'fiveMinutes');
-    expect(next).toEqual({ time: bar.time, open: 100, high: 102, low: 98, close: 98 });
+    expect(next).toEqual({ time: bar.time, open: 100, high: 102, low: 98, close: 98, volume: 1_000 });
   });
 
   it('opens a new bar once the tick crosses the boundary', () => {
     const next = foldTickIntoBar(bar, 104, at('2026-09-03T10:10:02Z'), 'fiveMinutes');
-    expect(next).toEqual({ time: at('2026-09-03T10:10:00Z'), open: 104, high: 104, low: 104, close: 104 });
+    // A bar opened from ticks carries no volume — see `ChartBar.volume`.
+    expect(next).toEqual({ time: at('2026-09-03T10:10:00Z'), open: 104, high: 104, low: 104, close: 104, volume: 0 });
   });
 
   it('drops a tick that belongs before the bar we already hold', () => {
@@ -62,12 +64,12 @@ describe('foldTickIntoBar', () => {
     // boundary — inventing one here would place it at a UTC midnight that is
     // mid-session for somebody.
     const next = foldTickIntoBar(bar, 105, at('2026-09-05T03:00:00Z'), 'oneDay');
-    expect(next).toEqual({ time: bar.time, open: 100, high: 105, low: 99, close: 105 });
+    expect(next).toEqual({ time: bar.time, open: 100, high: 105, low: 99, close: 105, volume: 1_000 });
   });
 
   it('opens the current bucket when there is no history yet on a fixed-width frame', () => {
     const next = foldTickIntoBar(undefined, 50, at('2026-09-03T10:07:31Z'), 'fiveMinutes');
-    expect(next).toEqual({ time: at('2026-09-03T10:05:00Z'), open: 50, high: 50, low: 50, close: 50 });
+    expect(next).toEqual({ time: at('2026-09-03T10:05:00Z'), open: 50, high: 50, low: 50, close: 50, volume: 0 });
   });
 
   it('waits for history rather than inventing a bar on a session-relative frame', () => {

@@ -4,6 +4,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -19,24 +20,35 @@ import {
   MarketDataService,
   venueTimeZone,
 } from '@akshaya/shared/data-access';
-import { ClockService, MoneyPipe, timeFrameLabel } from '@akshaya/shared/util';
+import { ClockService, timeFrameLabel } from '@akshaya/shared/util';
 import type { Candle, InstrumentDefinition, InstrumentKey, TimeFrame } from '@akshaya/shared/models';
 import { formatInstrumentLabel, parseInstrumentKey } from '@akshaya/shared/models';
 import {
+  AK_DIALOG_DEFAULTS,
   ConnectionStatusComponent,
   EmptyStateComponent,
   LoadingStateComponent,
   StaleBannerComponent,
 } from '@akshaya/shared/ui';
-import type { ChartBar, ChartType, DrawingTool, StudyId } from '@akshaya/market/ui-price-chart';
-import { CHART_TYPES, PriceChartComponent, STUDIES } from '@akshaya/market/ui-price-chart';
+import type {
+  ChartBar,
+  ChartType,
+  DrawingTool,
+  IndicatorKind,
+  StudyInstance,
+  StudyLegendEntry,
+} from '@akshaya/market/ui-price-chart';
+import { CHART_TYPES, PriceChartComponent, newStudy, studyLabel } from '@akshaya/market/ui-price-chart';
 import { DashboardStore } from '@akshaya/portfolio/data-access';
 import { OrdersStore } from '@akshaya/orders/data-access';
 import { WatchlistStore } from '@akshaya/market/data-access';
 import { exposureLevels, exposureRows, type ExposureRow } from './chart-exposure';
 import { loadChartPreferences, saveChartPreferences } from './chart-preferences';
+import { ChartIndicatorPickerComponent, type ChartIndicatorPickerData } from './chart-indicator-picker.component';
+import { ChartLegendComponent } from './chart-legend.component';
 import { ChartMenuComponent } from './chart-menu.component';
 import { ChartReplayBarComponent } from './chart-replay-bar.component';
+import { ChartStudySettingsComponent, type ChartStudySettingsResult } from './chart-study-settings.component';
 import { ChartSidebarComponent } from './chart-sidebar.component';
 import { ChartToolsComponent } from './chart-tools.component';
 import { ChartStore } from './chart.store';
@@ -74,12 +86,12 @@ const DEFAULT_TIME_FRAME: TimeFrame = 'oneDay';
     ReactiveFormsModule,
     DecimalPipe,
     RouterLink,
-    MoneyPipe,
     ConnectionStatusComponent,
     EmptyStateComponent,
     LoadingStateComponent,
     PriceChartComponent,
     StaleBannerComponent,
+    ChartLegendComponent,
     ChartMenuComponent,
     ChartReplayBarComponent,
     ChartSidebarComponent,
@@ -109,15 +121,20 @@ export class ChartComponent {
   private readonly orders = inject(OrdersStore);
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
+  private readonly dialogs = inject(MatDialog);
   protected readonly chart = viewChild(PriceChartComponent);
   private readonly menuHost = viewChild<ChartMenuComponent, ElementRef<HTMLElement>>(ChartMenuComponent, { read: ElementRef });
   private readonly chartCard = viewChild<ElementRef<HTMLElement>>('chartCard');
   protected readonly chartTypes = CHART_TYPES;
-  protected readonly studyOptions = STUDIES;
   protected readonly chartType = signal<ChartType>('candles');
-  protected readonly selectedStudies = signal<readonly StudyId[]>(['stochRsi']);
+  /** The studies on the chart, in order — see `StudyInstance`. */
+  protected readonly studies = signal<readonly StudyInstance[]>([]);
+  /** What each study reads at the cursor, straight from the chart. */
+  protected readonly studyValues = signal<readonly StudyLegendEntry[]>([]);
   protected readonly showVolume = signal(true);
   protected readonly showGrid = signal(true);
+  protected readonly showLegend = signal(true);
+  protected readonly magnet = signal(false);
   protected readonly showSidebar = signal(true);
   /** Average prices and working orders drawn on the chart. The sidebar lists them either way. */
   protected readonly showExposure = signal(true);
@@ -125,11 +142,11 @@ export class ChartComponent {
   protected readonly scaleMode = signal<'normal' | 'log' | 'percentage'>('normal');
   protected readonly drawingTool = signal<DrawingTool>('cursor');
   protected readonly drawingsVisible = signal(true);
-  protected readonly drawingState = signal({ undo: false, redo: false, count: 0 });
+  protected readonly drawingState = signal({ undo: false, redo: false, count: 0, selected: false });
   /** Pointer position + chart value where the chart was right-clicked, or menu closed. */
   protected readonly contextMenu = signal<{ x: number; y: number; price: number | undefined; time: number | undefined } | undefined>(undefined);
   protected readonly hoveredBar = signal<ChartBar | undefined>(undefined);
-  protected readonly status = signal('Scroll to zoom · drag to pan · double-click an axis to reset');
+  protected readonly status = signal('Scroll to zoom · drag to pan · click a drawing to select it');
   protected readonly replayIndex = signal<number | undefined>(undefined);
   protected readonly playing = signal(false);
   protected readonly searchControl = new FormControl('', { nonNullable: true });
@@ -215,7 +232,8 @@ export class ChartComponent {
   protected readonly displayedCandles = computed(() => this.history().slice(0, this.replayIndex()));
   protected readonly ready = computed(() => !this.store.loading() && !this.store.error() && this.history().length > 0);
   protected readonly currentType = computed(() => CHART_TYPES.find((type) => type.id === this.chartType()) ?? CHART_TYPES[0]!);
-  protected readonly activeStudies = computed(() => STUDIES.filter((study) => this.selectedStudies().includes(study.id)));
+  /** Only the visible studies are drawn, so this is what the chart is handed. */
+  protected readonly drawnStudies = computed(() => this.studies().filter((study) => study.visible));
   /** What the user holds or has resting in this instrument — see `exposureRows`. */
   protected readonly exposure = computed<readonly ExposureRow[]>(
     () => exposureRows(this.instrument(), this.portfolio.snapshot(), this.orders.orders()),
@@ -268,8 +286,9 @@ export class ChartComponent {
     this.orders.ensureFresh();
     effect(() => {
       const saved = saveChartPreferences({
-        type: this.chartType(), studies: this.selectedStudies(), volume: this.showVolume(),
+        type: this.chartType(), studies: this.studies(), volume: this.showVolume(),
         grid: this.showGrid(), sidebar: this.showSidebar(), scale: this.scaleMode(), exposure: this.showExposure(),
+        legend: this.showLegend(), magnet: this.magnet(),
       });
       if (!saved) { this.status.set('Chart preferences cannot be saved on this device.'); }
     });
@@ -309,7 +328,7 @@ export class ChartComponent {
       this.playing.set(false);
       this.hoveredBar.set(undefined);
       this.drawingTool.set('cursor');
-      this.drawingState.set({ undo: false, redo: false, count: 0 });
+      this.drawingState.set({ undo: false, redo: false, count: 0, selected: false });
       if (!frame || !manifest?.marketData.historical) {
         return;
       }
@@ -335,8 +354,47 @@ export class ChartComponent {
       ...(includeDate ? { month: 'short', day: 'numeric' } as const : { second: '2-digit' } as const), hourCycle: 'h23' }).format(date);
   }
 
-  protected toggleStudy(id: StudyId): void {
-    this.selectedStudies.update((studies) => studies.includes(id) ? studies.filter((study) => study !== id) : [...studies, id]);
+  /** Opens the indicator library. It edits `studies` live — see `ChartIndicatorPickerData`. */
+  protected openIndicators(): void {
+    const data: ChartIndicatorPickerData = {
+      studies: this.studies.asReadonly(),
+      add: (kind) => this.addStudy(kind),
+      remove: (id) => this.removeStudy(id),
+    };
+    this.dialogs.open(ChartIndicatorPickerComponent, { ...AK_DIALOG_DEFAULTS, width: '460px', data,
+      autoFocus: 'first-tabbable', restoreFocus: true });
+  }
+
+  protected addStudy(kind: IndicatorKind): void {
+    const study = newStudy(kind, this.studies());
+    if (!study) { return; }
+    this.studies.update((studies) => [...studies, study]);
+    this.status.set(`${studyLabel(study.kind, study.params)} added. Click its name on the chart to change it.`);
+  }
+
+  protected removeStudy(id: string): void {
+    const going = this.studies().find((study) => study.id === id);
+    this.studies.update((studies) => studies.filter((study) => study.id !== id));
+    if (going) { this.status.set(`${studyLabel(going.kind, going.params)} removed.`); }
+  }
+
+  protected toggleStudyVisible(id: string): void {
+    this.studies.update((studies) => studies.map((study) => study.id === id ? { ...study, visible: !study.visible } : study));
+  }
+
+  /** Per-study settings: parameters and colour, or removal. */
+  protected configureStudy(id: string): void {
+    const study = this.studies().find((item) => item.id === id);
+    if (!study) { return; }
+    this.dialogs.open(ChartStudySettingsComponent, { ...AK_DIALOG_DEFAULTS, width: '380px', data: study,
+      restoreFocus: true })
+      .afterClosed()
+      .subscribe((result: ChartStudySettingsResult) => {
+        if (result === 'remove') { this.removeStudy(id); return; }
+        if (!result) { return; }
+        this.studies.update((studies) => studies.map((item) => item.id === id ? result : item));
+        this.status.set(`${studyLabel(result.kind, result.params)} updated.`);
+      });
   }
 
   protected openSymbol(instrument: InstrumentDefinition): void {
@@ -353,7 +411,7 @@ export class ChartComponent {
     this.drawingTool.set(tool);
     this.chart()?.cancelDrawing();
     if (tool !== 'cursor') { this.drawingsVisible.set(true); }
-    this.status.set(tool === 'cursor' ? 'Scroll to zoom · drag to pan · double-click an axis to reset'
+    this.status.set(tool === 'cursor' ? 'Scroll to zoom · drag to pan · click a drawing to select it'
       : tool === 'horizontal' ? 'Click the price chart to place a horizontal line. Escape cancels.'
         : tool === 'measure' ? 'Click two points on the price chart to measure the range. Escape cancels.'
           : 'Click two points on the price chart. Escape cancels.');
@@ -444,6 +502,10 @@ export class ChartComponent {
       event.preventDefault();
       this.chart()?.placeDrawingAtCursor();
     }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && this.drawingState().selected) {
+      event.preventDefault();
+      if (this.chart()?.deleteSelectedDrawing()) { this.status.set('Drawing removed. Control or Command Z brings it back.'); }
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       if (event.shiftKey) { this.chart()?.redoDrawing(); } else { this.chart()?.undoDrawing(); }
@@ -455,11 +517,13 @@ export class ChartComponent {
   private restorePreferences(): void {
     const { preferences, ok } = loadChartPreferences();
     this.chartType.set(preferences.type);
-    this.selectedStudies.set(preferences.studies);
+    this.studies.set(preferences.studies);
     this.showVolume.set(preferences.volume);
     this.showGrid.set(preferences.grid);
     this.showSidebar.set(preferences.sidebar);
     this.showExposure.set(preferences.exposure);
+    this.showLegend.set(preferences.legend);
+    this.magnet.set(preferences.magnet);
     this.scaleMode.set(preferences.scale);
     if (!ok) { untracked(() => this.status.set('Using default chart preferences.')); }
   }

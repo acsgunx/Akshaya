@@ -6,6 +6,8 @@ export interface DrawingState {
   readonly undo: boolean;
   readonly redo: boolean;
   readonly count: number;
+  /** One drawing is selected, so "delete this one" is available. */
+  readonly selected: boolean;
 }
 
 /**
@@ -55,12 +57,20 @@ export class DrawingController {
   readonly primitive = new ChartDrawings();
 
   private items: ChartDrawing[] = [];
-  private redoItems: ChartDrawing[] = [];
+  /**
+   * The redo stack keeps each removal's POSITION, not just the drawing. A
+   * drawing deleted from the middle of the list has to come back to the middle:
+   * draw order is what decides which of two overlapping drawings a click
+   * selects, so restoring it last would silently rearrange the chart.
+   */
+  private redoItems: { readonly drawing: ChartDrawing; readonly index: number }[] = [];
   private startAnchor: DrawingAnchor | undefined;
   private previewAnchor: DrawingAnchor | undefined;
   private measureStart: DrawingAnchor | undefined;
   private measureEnd: DrawingAnchor | undefined;
   private measurePreview: DrawingAnchor | undefined;
+  /** Index of the selected drawing, or -1. Selection is never persisted. */
+  private selected = -1;
   /** Where these drawings are saved: one key per link, instrument and timeframe. */
   private key = '';
 
@@ -75,6 +85,7 @@ export class DrawingController {
     this.measureStart = undefined;
     this.measureEnd = undefined;
     this.measurePreview = undefined;
+    this.selected = -1;
     try {
       const parsed: unknown = JSON.parse(localStorage.getItem(storageKey(key)) ?? '[]');
       if (Array.isArray(parsed)) { this.items = parsed.filter(validDrawing).slice(-MAX_DRAWINGS); }
@@ -86,6 +97,11 @@ export class DrawingController {
   resetPending(): void {
     this.startAnchor = undefined;
     this.previewAnchor = undefined;
+  }
+
+  /** True when a drawing is selected — what the Delete key acts on. */
+  get hasSelection(): boolean {
+    return this.selected >= 0;
   }
 
   /**
@@ -130,9 +146,9 @@ export class DrawingController {
       this.surface.notice(`This chart has reached its ${MAX_DRAWINGS}-drawing limit. Remove a drawing before adding another.`);
       return;
     }
-    // Two-point tools take the first click as their start; a horizontal line
-    // is finished by the click that placed it.
-    if (tool !== 'horizontal' && !this.startAnchor) {
+    // Two-point tools take the first click as their start; a horizontal or
+    // vertical line is finished by the click that placed it.
+    if (tool !== 'horizontal' && tool !== 'vertical' && !this.startAnchor) {
       this.startAnchor = anchor;
       this.surface.notice('Choose the second point on the price chart. Escape cancels.');
       return;
@@ -142,6 +158,33 @@ export class DrawingController {
     this.cancel();
     this.save();
     this.surface.completed();
+  }
+
+  /**
+   * A click with the cursor tool: selects the drawing under the pixel, or
+   * clears the selection when the click landed on empty chart.
+   *
+   * Returns true when something was selected, so the caller can say so in the
+   * status line — the only feedback a keyboard user gets that Delete will now
+   * remove something.
+   */
+  selectAt(point: { readonly x: number; readonly y: number } | undefined): boolean {
+    const hit = point ? this.primitive.drawingAt(point.x, point.y) : undefined;
+    const changed = this.selected !== (hit ?? -1);
+    this.selected = hit ?? -1;
+    if (changed) { this.publish(); }
+    return hit !== undefined;
+  }
+
+  /** Removes the selected drawing. Undoable, like any other removal. */
+  removeSelected(): boolean {
+    const drawing = this.items[this.selected];
+    if (!drawing) { return false; }
+    this.redoItems.push({ drawing, index: this.selected });
+    this.items.splice(this.selected, 1);
+    this.selected = -1;
+    this.save();
+    return true;
   }
 
   /** Drops a horizontal line straight onto the chart (context menu "add line at price"). */
@@ -172,17 +215,18 @@ export class DrawingController {
 
   undo(): void {
     const drawing = this.items.pop();
-    if (drawing) { this.redoItems.push(drawing); this.save(); }
+    if (drawing) { this.redoItems.push({ drawing, index: this.items.length }); this.selected = -1; this.save(); }
   }
 
   redo(): void {
-    const drawing = this.redoItems.pop();
-    if (drawing) { this.items.push(drawing); this.save(); }
+    const undone = this.redoItems.pop();
+    if (undone) { this.items.splice(Math.min(undone.index, this.items.length), 0, undone.drawing); this.save(); }
   }
 
   clear(): void {
     this.items = [];
     this.redoItems = [];
+    this.selected = -1;
     this.save();
   }
 
@@ -203,6 +247,7 @@ export class DrawingController {
     this.primitive.update(
       this.surface.visible() ? [...this.items, ...preview] : [],
       this.surface.color('--ak-brand'),
+      this.surface.visible() ? this.selected : -1,
       measure,
     );
   }
@@ -230,6 +275,7 @@ export class DrawingController {
 
   private save(): void {
     this.items = this.items.slice(-MAX_DRAWINGS);
+    if (this.selected >= this.items.length) { this.selected = -1; }
     try { localStorage.setItem(storageKey(this.key), JSON.stringify(this.items)); }
     catch { this.surface.notice('Drawings are available for this session only; device storage is unavailable.'); }
     this.publish();
@@ -237,6 +283,7 @@ export class DrawingController {
 
   private publish(): void {
     this.render();
-    this.surface.state({ undo: this.items.length > 0, redo: this.redoItems.length > 0, count: this.items.length });
+    this.surface.state({ undo: this.items.length > 0, redo: this.redoItems.length > 0,
+      count: this.items.length, selected: this.selected >= 0 });
   }
 }

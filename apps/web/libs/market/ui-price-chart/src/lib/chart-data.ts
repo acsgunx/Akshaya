@@ -2,8 +2,6 @@ import type { Candle } from '@akshaya/shared/models';
 
 import type { ChartBar } from './candle-bucket';
 
-export interface VolumePoint { readonly time: number; readonly value: number }
-
 /**
  * Broker candles turned into bars the library will actually draw: one per
  * time, strictly ascending, each internally consistent.
@@ -17,7 +15,7 @@ export interface VolumePoint { readonly time: number; readonly value: number }
  * Sorted whatever order the connector returned them in: newest-first (or
  * unsorted) must not silently render an empty chart either.
  */
-export function normalizeCandles(candles: readonly Candle[]): { bars: ChartBar[]; volumes: VolumePoint[] } {
+export function normalizeCandles(candles: readonly Candle[]): ChartBar[] {
   const byTime = new Map<number, Candle>();
   for (const candle of candles) {
     const time = Math.floor(Date.parse(candle.openTime) / 1000);
@@ -33,19 +31,21 @@ export function normalizeCandles(candles: readonly Candle[]): { bars: ChartBar[]
     }
   }
 
-  const bars: ChartBar[] = [];
-  const volumes: VolumePoint[] = [];
-  for (const [time, candle] of [...byTime].sort(([a], [b]) => a - b)) {
-    bars.push({ time, open: candle.open, high: candle.high, low: candle.low, close: candle.close });
-    volumes.push({ time, value: Number.isFinite(candle.volume) ? Math.max(0, candle.volume) : 0 });
-  }
-  return { bars, volumes };
+  return [...byTime].sort(([a], [b]) => a - b).map(([time, candle]) => ({
+    time,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: Number.isFinite(candle.volume) ? Math.max(0, candle.volume) : 0,
+  }));
 }
 
 /** The loaded bars as CSV, times in UTC ISO-8601 — what "Download OHLC CSV" saves. */
 export function barsToCsv(bars: readonly ChartBar[]): string {
-  const rows = bars.map((bar) => [new Date(bar.time * 1000).toISOString(), bar.open, bar.high, bar.low, bar.close].join(','));
-  return ['Time (UTC),Open,High,Low,Close', ...rows].join('\r\n');
+  const rows = bars.map((bar) => [new Date(bar.time * 1000).toISOString(),
+    bar.open, bar.high, bar.low, bar.close, bar.volume].join(','));
+  return ['Time (UTC),Open,High,Low,Close,Volume', ...rows].join('\r\n');
 }
 
 /** Hands a file to the browser's download, with a name safe on every OS. */
