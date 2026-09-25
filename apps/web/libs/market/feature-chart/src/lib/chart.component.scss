@@ -21,7 +21,15 @@
 }
 
 .ak-study {
-  @apply cursor-pointer rounded border border-border bg-surface-2 px-2 py-0.5 text-text-secondary hover:text-text-primary;
+  @apply inline-flex cursor-pointer items-center gap-1 rounded border border-border bg-surface-2 px-2 py-0.5
+    text-text-secondary hover:text-text-primary;
+}
+
+// Material sizes its icon font at 24px, which is twice the line this chip sits on.
+.ak-study-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
 }
 
 .ak-tf:disabled { @apply cursor-default opacity-40; }

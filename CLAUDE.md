@@ -114,6 +114,28 @@ The defaults are user-editable estimates, not tariffs inferred from a connector.
 watchlist sidebar. `libs/market/ui-price-chart` owns chart rendering, study calculations
 and drawing primitives. Keep this dependency behind the lazy chart route.
 
+Indicators are DATA, not code paths. `chart-indicators.ts` holds one `IndicatorDefinition`
+per study — label, category, parameter metadata, defaults and a `build` that turns bars
+into plots — and the picker dialog, the per-study settings sheet, the legend, the panes and
+the saved preferences all read that list. Adding an indicator means appending one object
+there and nothing else; do not add a `StudyId` union, a switch arm or a menu entry. Its
+numeric parts belong in `indicator-math.ts`, whose warm-up contract (same length as the
+input, `NaN` where there is no value yet, never shifted) is what lets the legend read a
+value at the cursor by index and a tick update the last slot in place.
+
+Studies are INSTANCES with ids, parameters and colours, so two SMAs at different lengths
+are two records of the same `kind`. `normalizeParams` clamps every parameter to the range
+its definition declares, on the way in and on the way out of the settings sheet — periods
+arrive from `localStorage` and from a number field.
+
+Indicators are computed on the REAL bars even when the price is drawn as Heikin Ashi, and
+the O/H/L/C readout stays on the real bars too: an averaged open is not a price anything
+traded at. Volume-based studies hold their last historical value on a forming bar, because
+`ChartBar.volume` is 0 for a bar built from ticks (a tick's quantity is session-cumulative
+on several connectors). A plot's forward `offset` is clamped at the last bar — Ichimoku's
+cloud is not projected, for the same reason `BUCKET_SECONDS` omits the daily frames: the
+chart does not invent session times.
+
 Lightweight Charts does not parse CSS `color(srgb ...)` returned by `color-mix()`.
 Resolve theme tokens to sRGB `rgb()`/`rgba()` before passing them to the library;
 `PriceChartComponent.token()` handles this using a cached canvas conversion.

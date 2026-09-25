@@ -27,10 +27,11 @@ import { barsToCsv, downloadFile, normalizeCandles } from './chart-data';
 import { ChartSeries, type ChartPriceLevel } from './chart-series';
 import { DrawingController, type DrawingState } from './chart-drawing-controller';
 import type { DrawingAnchor, DrawingTool } from './chart-drawings';
-import { type ChartType, type StudyId } from './chart-studies';
-import { StudyPanes } from './chart-study-panes';
+import type { StudyInstance } from './chart-indicators';
+import { StudyPanes, type StudyLegendEntry } from './chart-study-panes';
 import { timeAxisOptions } from './chart-time-format';
 import { ChartTokens } from './chart-tokens';
+import type { ChartType } from './chart-types';
 
 /**
  * TradingView Lightweight Charts, wrapped as a dumb presentational component:
@@ -113,9 +114,12 @@ export class PriceChartComponent {
   readonly ariaLabel = input('Price chart');
 
   readonly chartType = input<ChartType>('candles');
-  readonly studies = input<readonly StudyId[]>([]);
+  /** The studies to draw, in order. Instances, not flags — see `StudyInstance`. */
+  readonly studies = input<readonly StudyInstance[]>([]);
   readonly scaleMode = input<'normal' | 'log' | 'percentage'>('normal');
   readonly showGrid = input(true);
+  /** Magnet snaps the crosshair to the nearest series value, as TradingView's does. */
+  readonly crosshair = input<'normal' | 'magnet'>('normal');
   readonly drawingTool = input<DrawingTool>('cursor');
   readonly drawingsVisible = input(true);
   readonly drawingKey = input('');
@@ -124,6 +128,8 @@ export class PriceChartComponent {
   /** Reference lines on the price series. Replacing the list redraws them; pan and zoom survive. */
   readonly priceLevels = input<readonly ChartPriceLevel[]>([]);
   readonly barChange = output<ChartBar | undefined>();
+  /** What each study reads at the cursor, for the chart legend. */
+  readonly studyLegend = output<readonly StudyLegendEntry[]>();
   readonly drawingComplete = output<void>();
   readonly drawingState = output<DrawingState>();
   readonly notice = output<string>();
@@ -139,6 +145,12 @@ export class PriceChartComponent {
   private hoveredTime: number | undefined;
   private keyboardAnchor: DrawingAnchor | undefined;
   private updateFrame = 0;
+  /**
+   * The first bar's time of the series currently drawn. A refresh that returns
+   * the same window should not throw away the user's pan and zoom, and this is
+   * how "same series, more bars" is told from "different instrument".
+   */
+  private seriesAnchor: string | undefined;
 
   /** Created with the chart, because the probe it reads tokens through has to live in the host. */
   private tokens: ChartTokens | undefined;
@@ -184,6 +196,7 @@ export class PriceChartComponent {
       this.showGrid();
       this.showVolume();
       this.precision();
+      this.crosshair();
       this.drawingTool();
       this.drawingsVisible();
       this.drawing.resetPending();
@@ -259,7 +272,7 @@ export class PriceChartComponent {
       });
     this.replacePriceSeries();
     this.chart.subscribeCrosshairMove((event) => this.onCrosshair(event));
-    this.chart.subscribeClick((event) => this.drawing.click(this.anchorFrom(event)));
+    this.chart.subscribeClick((event) => this.onClick(event));
     // The library swallows nothing here — the browser's own menu would open
     // over the canvas, so suppress it and hand the point to the page's menu.
     element.addEventListener('contextmenu', (event) => {
@@ -311,6 +324,10 @@ export class PriceChartComponent {
         background: { color: this.token('--ak-surface-1', 'transparent') },
         textColor: text,
         attributionLogo: true,
+        // The separator a user drags to resize a study pane. Without an explicit
+        // colour it is the library's own grey, which is invisible on the dark
+        // theme and the reason pane heights looked fixed.
+        panes: { separatorColor: border, separatorHoverColor: this.token('--ak-brand', border), enableResize: true },
       },
       grid: { vertLines: { color: border }, horzLines: { color: border } },
       rightPriceScale: { borderColor: border },
@@ -318,7 +335,7 @@ export class PriceChartComponent {
       crosshair: { vertLine: { color: text, labelBackgroundColor: border }, horzLine: { color: text, labelBackgroundColor: border } },
     });
 
-    this.series?.applyTheme(this.chartType());
+    this.series?.applyTheme();
   }
 
   /**
@@ -337,11 +354,17 @@ export class PriceChartComponent {
       return;
     }
 
-    const { bars, volumes } = normalizeCandles(this.candles());
-
-    const previousRange = this.replay() ? chart.timeScale().getVisibleLogicalRange() : null;
+    const bars = normalizeCandles(this.candles());
+    // Replay steps through the same series one bar at a time, and a refresh
+    // returns the same window with a few more bars on the end. Neither is a new
+    // chart, so neither should reset the view the user set up.
+    const anchor = `${this.drawingKey()}:${bars[0]?.time ?? ''}`;
+    const sameSeries = anchor === this.seriesAnchor;
+    const previousRange = sameSeries ? chart.timeScale().getVisibleLogicalRange() : null;
+    const previousCount = this.bars.length;
+    this.seriesAnchor = anchor;
     this.bars = bars;
-    series.setBars(bars, volumes);
+    series.setBars(bars);
     this.lastBar = bars.at(-1);
     this.hoveredTime = undefined;
     this.keyboardAnchor = undefined;
@@ -351,8 +374,10 @@ export class PriceChartComponent {
     this.drawStudies();
     this.applySettings();
     if (previousRange) {
-      const width = previousRange.to - previousRange.from;
-      chart.timeScale().setVisibleLogicalRange({ from: bars.length - width, to: bars.length });
+      // Held at the same width, shifted by however many bars arrived — so a
+      // replay step and a refresh both keep the window the user was reading.
+      const shift = bars.length - previousCount;
+      chart.timeScale().setVisibleLogicalRange({ from: previousRange.from + shift, to: previousRange.to + shift });
     } else {
       chart.timeScale().fitContent();
     }
@@ -376,10 +401,10 @@ export class PriceChartComponent {
     const opened = this.lastBar?.time !== bar.time;
     if (opened) { this.bars.push(bar); } else { this.bars[this.bars.length - 1] = bar; }
     this.lastBar = bar;
-    this.series?.updateBar(bar, opened);
+    this.series?.updateBar(bar, opened, this.bars);
     if (this.hoveredTime === undefined || this.hoveredTime === bar.time) { this.barChange.emit(bar); }
     cancelAnimationFrame(this.updateFrame);
-    this.updateFrame = requestAnimationFrame(() => this.drawStudies(false));
+    this.updateFrame = requestAnimationFrame(() => this.drawStudies(true));
   }
 
   moveCursor(horizontal: number, vertical: number): void {
@@ -395,6 +420,7 @@ export class PriceChartComponent {
     this.hoveredTime = bar.time;
     chart.setCrosshairPosition(this.keyboardAnchor.price, bar.time as UTCTimestamp, series);
     this.barChange.emit(bar);
+    this.emitLegend(bar.time);
     this.drawing.cursorMoved(this.keyboardAnchor);
     this.notice.emit(`Cursor price ${this.keyboardAnchor.price.toFixed(this.precision())}. Arrow keys move; Enter places a drawing point.`);
   }
@@ -408,7 +434,7 @@ export class PriceChartComponent {
     // Through the same pixel round trip a mouse click takes, so a cursor
     // parked off-screen places nothing, exactly as a click there would.
     if (x !== null && x !== undefined && y !== null && y !== undefined) {
-      this.drawing.click(this.anchorFrom({ point: { x, y }, time: anchor.time as UTCTimestamp, paneIndex: 0, seriesData: new Map() }));
+      this.onClick({ point: { x, y }, time: anchor.time as UTCTimestamp, paneIndex: 0, seriesData: new Map() });
     }
   }
 
@@ -438,6 +464,8 @@ export class PriceChartComponent {
   undoDrawing(): void { this.drawing.undo(); }
   redoDrawing(): void { this.drawing.redo(); }
   clearDrawings(): void { this.drawing.clear(); }
+  /** Removes the drawing the user selected, if any. True when one went. */
+  deleteSelectedDrawing(): boolean { return this.drawing.removeSelected(); }
   /** Emits the chart-menu position for a client point — shared by the canvas
    *  contextmenu listener and the card backdrop's right-click re-anchor.
    *  Returns false when the point falls outside the chart surface. */
@@ -478,23 +506,58 @@ export class PriceChartComponent {
     const drawing = this.drawingTool() !== 'cursor';
     this.chart?.applyOptions({
       grid: { vertLines: { visible: this.showGrid() }, horzLines: { visible: this.showGrid() } },
-      handleScroll: !drawing,
-      handleScale: !drawing,
+      crosshair: { mode: this.crosshair() === 'magnet' ? CrosshairMode.MagnetOHLC : CrosshairMode.Normal },
+      // While a drawing tool is armed, a DRAG must not pan — the two points of a
+      // trend line are two clicks, and panning between them moves the chart out
+      // from under the second one. The wheel and the axes keep working, which is
+      // what TradingView does and what the old blanket `handleScroll: false`
+      // took away: zooming to place a point accurately was impossible.
+      handleScroll: drawing
+        ? { mouseWheel: true, pressedMouseMove: false, horzTouchDrag: false, vertTouchDrag: false }
+        : true,
+      handleScale: drawing
+        ? { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: true }
+        : { axisPressedMouseMove: { time: true, price: true } },
     });
     this.series?.applySettings(this.scaleMode(), this.precision(), this.showVolume());
     this.host().nativeElement.style.cursor = drawing ? 'crosshair' : '';
     this.drawing.render();
   }
 
-  /** Redraws the indicator panes; `rebuild` false is the per-tick path. See `StudyPanes`. */
-  private drawStudies(rebuild = true): void {
-    this.studyPanes?.sync(this.bars, this.studies(), rebuild);
+  /** Redraws the indicator panes; `live` is the per-tick path. See `StudyPanes`. */
+  private drawStudies(live = false): void {
+    this.studyPanes?.sync(this.bars, this.studies(), { live });
+    this.emitLegend(this.hoveredTime);
+  }
+
+  /** Hands the legend the studies' values at a bar time (the last bar when absent). */
+  private emitLegend(time: number | undefined): void {
+    const panes = this.studyPanes;
+    if (!panes) { return; }
+    const index = time === undefined ? undefined : this.bars.findIndex((bar) => bar.time === time);
+    this.studyLegend.emit(panes.legend(index === undefined || index < 0 ? undefined : index));
   }
 
   private onCrosshair(event: MouseEventParams): void {
     this.hoveredTime = typeof event.time === 'number' ? event.time : undefined;
     this.barChange.emit(this.bars.find((bar) => bar.time === this.hoveredTime) ?? this.lastBar);
+    this.emitLegend(this.hoveredTime);
     this.drawing.pointerMoved(() => this.anchorFrom(event));
+  }
+
+  /**
+   * A click on the chart. With a tool armed it places a drawing point; with the
+   * cursor it SELECTS the drawing under the pointer, which is what makes
+   * removing one of forty drawings possible without clearing them all.
+   */
+  private onClick(event: MouseEventParams): void {
+    if (this.drawingTool() === 'cursor') {
+      if ((event.paneIndex ?? 0) !== 0 || !event.point) { return; }
+      const selected = this.drawing.selectAt(event.point);
+      if (selected) { this.notice.emit('Drawing selected. Delete or Backspace removes it; Escape deselects.'); }
+      return;
+    }
+    this.drawing.click(this.anchorFrom(event));
   }
 
   private anchorFrom(event: MouseEventParams): DrawingAnchor | undefined {

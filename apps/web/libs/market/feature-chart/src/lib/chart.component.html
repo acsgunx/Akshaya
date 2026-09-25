@@ -52,7 +52,7 @@
       </div>
       <span class="mx-1 h-6 border-l border-border" aria-hidden="true"></span>
       <button mat-button [matMenuTriggerFor]="typeMenu"><mat-icon aria-hidden="true">{{ currentType().icon }}</mat-icon>{{ currentType().label }}</button>
-      <button mat-button [matMenuTriggerFor]="indicatorMenu"><mat-icon aria-hidden="true">query_stats</mat-icon>Indicators <span class="ml-1 text-text-secondary">{{ selectedStudies().length }}</span></button>
+      <button mat-button (click)="openIndicators()"><mat-icon aria-hidden="true">query_stats</mat-icon>Indicators <span class="ml-1 text-text-secondary">{{ studies().length }}</span></button>
       <button mat-button [disabled]="!ready() || history().length < 2" [attr.aria-pressed]="isReplay()" (click)="toggleReplay()"><mat-icon aria-hidden="true">replay</mat-icon>{{ isReplay() ? 'Exit replay' : 'Replay' }}</button>
       <div class="ml-auto flex items-center">
         <button mat-icon-button aria-label="Refresh chart history" matTooltip="Refresh history" [disabled]="store.loading()" (click)="refresh()"><mat-icon>refresh</mat-icon></button>
@@ -90,6 +90,7 @@
         (undo)="chart()?.undoDrawing()"
         (redo)="chart()?.redoDrawing()"
         (visibilityToggle)="drawingsVisible.set(!drawingsVisible())"
+        (removeSelected)="chart()?.deleteSelectedDrawing()"
         (remove)="removeDrawings()"
       />
 
@@ -112,11 +113,14 @@
           @if (priceLevels().length) {
             <button type="button" class="ak-study" aria-label="Hide positions and orders from the chart" matTooltip="Your average prices and working orders · click to hide" (click)="showExposure.set(false)">Positions &amp; orders <span aria-hidden="true">×</span></button>
           }
-          @for (study of activeStudies(); track study.id) {
-            <button type="button" class="ak-study" [attr.aria-label]="'Remove ' + study.label" [matTooltip]="study.detail + ' · click to remove'" (click)="toggleStudy(study.id)">{{ study.label }} <span aria-hidden="true">×</span></button>
+          <!-- The studies themselves are named in the legend over the chart,
+               where their values at the cursor are. -->
+          <button type="button" class="ak-study" (click)="openIndicators()"><mat-icon class="ak-study-icon" aria-hidden="true">add</mat-icon>Indicator</button>
+          @if (studies().length && !showLegend()) {
+            <span class="rounded bg-surface-2 px-2 py-1 text-text-secondary">{{ studies().length }} indicator{{ studies().length === 1 ? '' : 's' }} · legend hidden</span>
           }
         </div>
-        <div #chartCard class="ak-chart-card relative" tabindex="0" role="group" aria-label="Interactive price chart. Right-click opens chart actions. Plus and minus zoom. Arrow keys move the cursor. Enter places a drawing point. Escape cancels drawing. Control or Command Z undoes a drawing.">
+        <div #chartCard class="ak-chart-card relative" tabindex="0" role="group" aria-label="Interactive price chart. Right-click opens chart actions. Plus and minus zoom. Arrow keys move the cursor. Enter places a drawing point. Click a drawing to select it, then Delete to remove it. Escape cancels. Control or Command Z undoes a drawing.">
           @if (store.loading()) {
             <ak-loading-state label="Loading {{ timeFrame() ? label(timeFrame()!) : '' }} bars…" />
           } @else if (store.error(); as error) {
@@ -130,10 +134,21 @@
           "15m bars came back" cannot be folded into a 1m bar at a 15m label.
         -->
             <ak-price-chart [candles]="displayedCandles()" [timeFrame]="loadedFrame" [tick]="quote()" [timeZone]="timeZone()" [ariaLabel]="instrumentLabel() + ' ' + label(loadedFrame) + ' price chart'"
-              [chartType]="chartType()" [studies]="selectedStudies()" [showVolume]="showVolume()" [showGrid]="showGrid()" [scaleMode]="scaleMode()" [precision]="precision()"
+              [chartType]="chartType()" [studies]="drawnStudies()" [showVolume]="showVolume()" [showGrid]="showGrid()" [scaleMode]="scaleMode()" [precision]="precision()"
+              [crosshair]="magnet() ? 'magnet' : 'normal'"
               [drawingTool]="drawingTool()" [drawingsVisible]="drawingsVisible()" [drawingKey]="brokerLinkId() + ':' + instrument() + ':' + loadedFrame" [replay]="isReplay()" [priceLevels]="priceLevels()"
-              (barChange)="hoveredBar.set($event)" (drawingComplete)="selectTool('cursor')" (drawingState)="drawingState.set($event)" (notice)="status.set($event)"
+              (barChange)="hoveredBar.set($event)" (studyLegend)="studyValues.set($event)" (drawingComplete)="selectTool('cursor')" (drawingState)="drawingState.set($event)" (notice)="status.set($event)"
               (chartMenu)="openContextMenu($event)" />
+            @if (showLegend() && studies().length) {
+              <ak-chart-legend
+                [studies]="studies()"
+                [entries]="studyValues()"
+                [precision]="precision()"
+                (visibilityToggle)="toggleStudyVisible($event)"
+                (configure)="configureStudy($event)"
+                (remove)="removeStudy($event)"
+              />
+            }
           }
           @if (contextMenu(); as menu) {
             <ak-chart-menu
@@ -192,24 +207,31 @@
     </div>
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-2 px-3 py-2 text-[10px] text-text-secondary">
       <span role="status">{{ status() }}</span>
-      <span>{{ displayedCandles().length | number }} loaded bars · {{ drawingState().count }} drawings · saved on this device</span>
+      <span>{{ displayedCandles().length | number }} loaded bars · {{ studies().length }} indicator{{ studies().length === 1 ? '' : 's' }} · {{ drawingState().count }} drawing{{ drawingState().count === 1 ? '' : 's' }} · saved on this device</span>
     </div>
   }
 </section>
 
 <mat-menu #typeMenu="matMenu">
-  @for (type of chartTypes; track type.id) { <button mat-menu-item role="menuitemradio" [attr.aria-checked]="chartType() === type.id" (click)="chartType.set(type.id)"><mat-icon>{{ chartType() === type.id ? 'check' : type.icon }}</mat-icon>{{ type.label }}</button> }
-</mat-menu>
-<mat-menu #indicatorMenu="matMenu">
-  @for (study of studyOptions; track study.id) {
-    <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="selectedStudies().includes(study.id)" (click)="toggleStudy(study.id)"><mat-icon>{{ selectedStudies().includes(study.id) ? 'check_box' : 'check_box_outline_blank' }}</mat-icon><span>{{ study.label }}<small class="block text-[10px] text-text-secondary">{{ study.detail }}</small></span></button>
+  @for (type of chartTypes; track type.id) {
+    <button mat-menu-item role="menuitemradio" [attr.aria-checked]="chartType() === type.id" (click)="chartType.set(type.id)">
+      <mat-icon>{{ chartType() === type.id ? 'check' : type.icon }}</mat-icon>
+      <span>{{ type.label }}<small class="block text-[10px] text-text-secondary">{{ type.detail }}</small></span>
+    </button>
   }
-  <p class="max-w-64 px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Calculated from loaded bars. Each study needs enough history to warm up. Values on a forming bar can change.</p>
+  <!--
+    Heikin Ashi averages each bar into the one before it, so its open and close
+    are not prices anything traded at. The O/H/L/C readout above the chart and
+    every indicator keep reading the REAL bars — see `heikinAshi`.
+  -->
+  <p class="max-w-64 px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Heikin Ashi bars are averaged, so their open and close are not traded prices. The readout and the indicators stay on the real bars.</p>
 </mat-menu>
 <mat-menu #settingsMenu="matMenu">
   <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showVolume()" (click)="showVolume.set(!showVolume())"><mat-icon>{{ showVolume() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Historical volume</button>
   <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showGrid()" (click)="showGrid.set(!showGrid())"><mat-icon>{{ showGrid() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Grid lines</button>
   <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showExposure()" (click)="showExposure.set(!showExposure())"><mat-icon>{{ showExposure() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Positions &amp; orders</button>
+  <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="showLegend()" (click)="showLegend.set(!showLegend())"><mat-icon>{{ showLegend() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Values legend</button>
+  <button mat-menu-item role="menuitemcheckbox" [attr.aria-checked]="magnet()" (click)="magnet.set(!magnet())"><mat-icon>{{ magnet() ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>Magnet crosshair</button>
   <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'normal'" (click)="scaleMode.set('normal')"><mat-icon>{{ scaleMode() === 'normal' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Regular scale</button>
   <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'log'" (click)="scaleMode.set('log')"><mat-icon>{{ scaleMode() === 'log' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Logarithmic scale</button>
   <button mat-menu-item role="menuitemradio" [attr.aria-checked]="scaleMode() === 'percentage'" (click)="scaleMode.set('percentage')"><mat-icon>{{ scaleMode() === 'percentage' ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>Percentage scale</button>

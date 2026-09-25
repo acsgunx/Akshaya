@@ -39,13 +39,24 @@ export function bucketStart(epochSeconds: number, timeFrame: TimeFrame): number 
   return width === undefined ? undefined : Math.floor(epochSeconds / width) * width;
 }
 
-/** An OHLC bar in the shape Lightweight Charts consumes (`time` in epoch SECONDS). */
+/**
+ * An OHLC bar in the shape Lightweight Charts consumes (`time` in epoch SECONDS),
+ * carrying the bar's volume so volume-based studies can read it.
+ *
+ * `volume` is HISTORICAL only, and 0 on a bar formed from live ticks: a tick's
+ * quantity field is session-cumulative on several connectors, so adding it to a
+ * bar would draw a volume climbing all day. OBV, MFI, VWMA, CMF and VWAP
+ * therefore hold their last historical value on the forming bar rather than
+ * jumping, which is honest; the alternative is a volume study that moves for
+ * the wrong reason.
+ */
 export interface ChartBar {
   readonly time: number;
   readonly open: number;
   readonly high: number;
   readonly low: number;
   readonly close: number;
+  readonly volume: number;
 }
 
 /**
@@ -80,7 +91,7 @@ export function foldTickIntoBar(
   // a session-relative one has no boundary to place it on, so it waits.
   if (!lastBar) {
     const start = bucketStart(tickEpochSeconds, timeFrame);
-    return start === undefined ? undefined : { time: start, open: price, high: price, low: price, close: price };
+    return start === undefined ? undefined : { time: start, open: price, high: price, low: price, close: price, volume: 0 };
   }
 
   const width = bucketSeconds(timeFrame);
@@ -99,7 +110,7 @@ export function foldTickIntoBar(
 
   return start === lastBar.time
     ? updateBar(lastBar, price)
-    : { time: start, open: price, high: price, low: price, close: price };
+    : { time: start, open: price, high: price, low: price, close: price, volume: 0 };
 }
 
 function updateBar(bar: ChartBar, price: number): ChartBar {
@@ -109,5 +120,7 @@ function updateBar(bar: ChartBar, price: number): ChartBar {
     high: Math.max(bar.high, price),
     low: Math.min(bar.low, price),
     close: price,
+    // Carried, never accumulated from the tick — see `ChartBar.volume`.
+    volume: bar.volume,
   };
 }

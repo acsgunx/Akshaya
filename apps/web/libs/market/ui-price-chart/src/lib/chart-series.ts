@@ -1,5 +1,6 @@
 import {
   AreaSeries,
+  BaselineSeries,
   BarSeries,
   CandlestickSeries,
   HistogramSeries,
@@ -13,13 +14,15 @@ import {
 } from 'lightweight-charts';
 
 import type { ChartBar } from './candle-bucket';
-import type { VolumePoint } from './chart-data';
-import type { ChartType } from './chart-studies';
+import { heikinAshi, type ChartType } from './chart-types';
 
 /** Resolves an `--ak-*` token to a colour the library can paint — see `ChartTokens`. */
 type TokenColor = (name: string, fallback: string) => string;
 
 export type ScaleMode = 'normal' | 'log' | 'percentage';
+
+/** Every series form the price can take; `Baseline` is shaded either side of a reference close. */
+type PriceSeries = ISeriesApi<'Candlestick' | 'Bar' | 'Line' | 'Area' | 'Baseline'>;
 
 /**
  * A horizontal price the caller wants marked — an average cost, a resting
@@ -48,11 +51,19 @@ export interface ChartPriceLevel {
  * each one needs to behave (a volume overlay's scale margins, a hollow
  * candle's transparent body, the tick-size precision). The component above
  * owns the chart, the bars and when any of this happens.
+ *
+ * `Heikin Ashi` is the one form that is not just a different series type: the
+ * bars themselves are transformed (see `heikinAshi`). The RAW bars are what
+ * every caller keeps — the crosshair readout, the studies, the drawings and the
+ * order ticket all read those — so the transform lives here and nowhere else.
  */
 export class ChartSeries {
-  private price: ISeriesApi<'Candlestick' | 'Bar' | 'Line' | 'Area'> | undefined;
+  private price: PriceSeries | undefined;
   private volume: ISeriesApi<'Histogram'> | undefined;
   private levels: IPriceLine[] = [];
+  private type: ChartType = 'candles';
+  /** Raw bars, as handed in. `displayBars` derives what is actually drawn. */
+  private bars: readonly ChartBar[] = [];
 
   /**
    * `attach` is called with each newly created price series, so the drawing
@@ -62,25 +73,28 @@ export class ChartSeries {
   constructor(
     private readonly chart: IChartApi,
     private readonly token: TokenColor,
-    private readonly attach: (previous: ISeriesApi<'Candlestick' | 'Bar' | 'Line' | 'Area'> | undefined, current: ISeriesApi<'Candlestick' | 'Bar' | 'Line' | 'Area'>) => void,
+    private readonly attach: (previous: PriceSeries | undefined, current: PriceSeries) => void,
   ) {}
 
   /** The price series, for turning pixels into prices and back. Undefined until `setType`. */
-  get priceSeries(): ISeriesApi<'Candlestick' | 'Bar' | 'Line' | 'Area'> | undefined {
+  get priceSeries(): PriceSeries | undefined {
     return this.price;
   }
 
   /** Creates the price series, or swaps it for another form, keeping the bars already drawn. */
   setType(type: ChartType, bars: readonly ChartBar[]): void {
     const previous = this.price;
+    this.type = type;
+    this.bars = bars;
     const options = { priceLineVisible: true, lastValueVisible: true };
     switch (type) {
       case 'line': this.price = this.chart.addSeries(LineSeries, options); break;
       case 'area': this.price = this.chart.addSeries(AreaSeries, options); break;
+      case 'baseline': this.price = this.chart.addSeries(BaselineSeries, options); break;
       case 'bars': this.price = this.chart.addSeries(BarSeries, options); break;
       default: this.price = this.chart.addSeries(CandlestickSeries, options);
     }
-    this.price.setData(bars.map((bar) => pricePoint(bar)));
+    this.price.setData(this.displayBars().map(pricePoint));
     // A price line belongs to its series and is removed with it, so the old
     // handles are dropped rather than removed a second time.
     this.levels = [];
@@ -92,10 +106,12 @@ export class ChartSeries {
   }
 
   /** Replaces every bar: a new instrument, timeframe or history load. */
-  setBars(bars: readonly ChartBar[], volumes: readonly VolumePoint[]): void {
-    this.price?.setData(bars.map((bar) => pricePoint(bar)));
+  setBars(bars: readonly ChartBar[]): void {
+    this.bars = bars;
+    this.price?.setData(this.displayBars().map(pricePoint));
+    this.applyBaseline();
 
-    if (volumes.some((point) => point.value > 0)) {
+    if (bars.some((bar) => bar.volume > 0)) {
       this.volume ??= this.chart.addSeries(HistogramSeries, {
         priceScaleId: 'volume',
         priceFormat: { type: 'volume' },
@@ -110,8 +126,11 @@ export class ChartSeries {
       this.chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
       const up = this.token('--ak-buy-surface', 'transparent');
       const down = this.token('--ak-sell-surface', 'transparent');
-      this.volume.setData(volumes.map((point, i) => ({ time: point.time as UTCTimestamp, value: point.value,
-        color: (bars[i]?.close ?? 0) >= (bars[i]?.open ?? 0) ? up : down })));
+      this.volume.setData(bars.map((bar) => ({
+        time: bar.time as UTCTimestamp,
+        value: Math.max(0, bar.volume),
+        color: bar.close >= bar.open ? up : down,
+      })));
     } else if (this.volume) {
       this.chart.removeSeries(this.volume);
       this.volume = undefined;
@@ -123,18 +142,31 @@ export class ChartSeries {
     return this.volume !== undefined;
   }
 
-  /** The forming bar, on every tick. `opened` adds the volume placeholder for a new bar. */
-  updateBar(bar: ChartBar, opened: boolean): void {
-    if (opened) { this.volume?.update({ time: bar.time as UTCTimestamp, value: 0 }); }
+  /**
+   * The forming bar, on every tick. `opened` adds the volume placeholder for a new bar.
+   *
+   * Heikin Ashi is re-derived for the tail rather than for the whole series: an
+   * HA bar depends only on the one before it, so the last two raw bars are
+   * enough to produce the last HA bar correctly.
+   */
+  updateBar(bar: ChartBar, opened: boolean, bars: readonly ChartBar[]): void {
+    this.bars = bars;
+    if (opened) { this.volume?.update({ time: bar.time as UTCTimestamp, value: Math.max(0, bar.volume) }); }
+    if (this.type === 'heikinAshi') {
+      const tail = heikinAshi(this.bars);
+      const last = tail.at(-1);
+      if (last) { this.price?.update(pricePoint(last)); }
+      return;
+    }
     this.price?.update(pricePoint(bar));
   }
 
-  /** Pushes the current token values into the series. `type` decides the hollow candle's body. */
-  applyTheme(type: ChartType): void {
+  /** Pushes the current token values into the series. The chart type decides the candle body. */
+  applyTheme(): void {
     const up = this.token('--ak-buy', '#3b82f6');
     const down = this.token('--ak-sell', '#f59e0b');
     this.price?.applyOptions({
-      upColor: type === 'hollow' ? 'transparent' : up,
+      upColor: this.type === 'hollow' ? 'transparent' : up,
       downColor: down,
       borderUpColor: up,
       borderDownColor: down,
@@ -144,6 +176,14 @@ export class ChartSeries {
       lineColor: up,
       topColor: this.token('--ak-buy-surface', 'transparent'),
       bottomColor: 'transparent',
+      // Baseline only: shaded toward buy above the reference close and toward
+      // sell below it, which is the one place those two tokens ARE a direction.
+      topLineColor: up,
+      topFillColor1: this.token('--ak-buy-surface', 'transparent'),
+      topFillColor2: 'transparent',
+      bottomLineColor: down,
+      bottomFillColor1: 'transparent',
+      bottomFillColor2: this.token('--ak-sell-surface', 'transparent'),
     });
     this.volume?.applyOptions({ color: this.token('--ak-border', '#2a2f38') });
   }
@@ -175,6 +215,18 @@ export class ChartSeries {
         axisLabelVisible: true,
       }));
     }
+  }
+
+  /** What is drawn: the raw bars, or their Heikin Ashi transform. */
+  private displayBars(): readonly ChartBar[] {
+    return this.type === 'heikinAshi' ? heikinAshi(this.bars) : this.bars;
+  }
+
+  /** The baseline form needs a reference price; the first loaded close is it. */
+  private applyBaseline(): void {
+    if (this.type !== 'baseline') { return; }
+    const first = this.bars[0];
+    if (first) { this.price?.applyOptions({ baseValue: { type: 'price', price: first.close } }); }
   }
 }
 
